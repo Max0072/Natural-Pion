@@ -13,6 +13,100 @@ A general covariance operator on `so(512)` would carry about `8.6e9` free
 numbers; this one carries `131,328`, because the generator is a bivector and the
 covariance of a bivector factorises.
 
+## The algorithm
+
+**Pion's geometry.** A weight matrix is updated by rotating both of its spaces:
+
+```
+W  <-  R_out · W · R_in
+```
+
+Both rotations are orthogonal, so the singular values of `W` never move — the
+spectrum you initialise with is the spectrum you finish with. What is learned is
+the rotation, and rotations near the identity are parameterised by
+skew-symmetric matrices: the Lie algebra `so(n)`.
+
+**The gradient there.** Differentiate the loss along
+`W(t) = exp(t·Ω_out) W exp(t·Ω_in)`. For any skew `Ω`,
+
+```
+<G, W·Ω_in>  = ½ <G_in,  Ω_in>       G_in  = Wᵀ G − Gᵀ W
+<G, Ω_out·W> = ½ <G_out, Ω_out>      G_out = G Wᵀ − W Gᵀ
+```
+
+So `G_in` and `G_out` *are* the Riemannian gradient with respect to the
+rotation, doubled. Pion steps along them directly.
+
+**The idea.** Step along the *natural* gradient instead — `F⁻¹G`, where `F` is
+the covariance of the gradient on the algebra. Steepest descent in the metric
+the noise actually has, rather than the Euclidean one.
+
+**Why that is even possible.** For a single sample `G = δxᵀ` the generator is
+
+```
+G_in = (Wᵀδ) ∧ x = δ'xᵀ − xδ'ᵀ
+```
+
+a **bivector** — an antisymmetrised outer product of two vectors. The covariance
+of such an object, when the two vectors are independent, is fixed entirely by
+their two covariances. Writing `A = E[xxᵀ]` and `S' = Wᵀ E[δδᵀ] W`, the
+covariance as an operator on skew `X` is
+
+```
+F(X) = 2 ( A X S'  +  S' X A )
+```
+
+That is the whole content of the method. A general covariance operator on
+`so(512)` would carry about `8.6·10⁹` free numbers; this one carries `131,328`,
+and not by luck — it follows from the generator being built out of two vectors.
+
+**Taking `S = I`.** The backward covariance is assumed isotropic. The out-side
+operator then becomes `2(XA' + A'X)` with `A' = W A Wᵀ`, a plain symmetric
+eigenproblem, and `A = E[xxᵀ]` is the only statistic the method keeps —
+no backward hook has to exist.
+
+**Inverting `F`.** It is *not* the map `X ↦ AXS'`, which would invert as
+`A⁻¹GS'⁻¹`; the sum of the two orderings does not factor unless `A` and `S'`
+commute, and they do not. But `A` is positive definite, so there is a congruence
+`P` with
+
+```
+Pᵀ A P = I        Pᵀ S' P = diag(λ)
+```
+
+and in those coordinates the operator is elementwise. Substituting `X = P Y Pᵀ`
+turns `F(X) = G` into
+
+```
+2 (λᵢ + λⱼ) · Yᵢⱼ = (Pᵀ G P)ᵢⱼ
+```
+
+Divide, transform back. One eigendecomposition per side, reused for `T_fac`
+steps. For a square or tall `W` under an orthogonal initialisation the
+congruence is unnecessary and `λ` is simply the spectrum of `A`.
+
+**The step.**
+
+```
+A   <- β·A + (1−β)·xᵀx/n                    forward activations only
+G_in, G_out                                 the generators above
+X   =  P [ (Pᵀ G P) / (2(λᵢ+λⱼ)) ] Pᵀ       both sides
+α   =  min(1, quad/curv)                    reads out basis staleness
+W   <- Cayley(−η·α·X_out) · W · Cayley(−η·α·X_in)
+```
+
+with `Cayley(−cX) = (I + c/2·X)⁻¹ (I − c/2·X)`, which is *exactly* orthogonal
+for skew `X` at any step size. That is why the spectrum is preserved exactly
+here and only approximately in Pion, whose truncated exponential satisfies
+`RᵀR = I + A⁴/4`.
+
+**Two approximations, both named.** `x ⊥ δ'` — the K-FAC independence
+assumption, not true in a deep network — and `S = I`. Everything downstream of
+those is exact algebra, not a further approximation.
+
+**Regularisation is one knob.** Every spectrum that reaches a denominator is
+floored at `max(λ, ε·λ_max)`, and nothing else is damped anywhere.
+
 ## Where to look
 
 | | |
