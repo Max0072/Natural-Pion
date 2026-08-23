@@ -1,0 +1,36 @@
+Bootstrap: docker
+From: nvcr.io/nvidia/pytorch:25.04-py3
+
+# NGC's PyTorch image is the base because Megatron-LM expects it: it ships a
+# built TransformerEngine, which the anchor run needs and which is painful to
+# compile against an unfamiliar cluster's CUDA. The lightweight harness needs
+# none of that, but sharing one image keeps both paths reproducible from a
+# single pinned digest.
+#
+# Build (fakeroot is not granted on every cluster; if it is refused, build on
+# a machine where you have it and copy the single .sif across):
+#     apptainer build --fakeroot ngd-pion.sif container/ngd-pion.def
+#
+# Run:
+#     apptainer exec --nv --bind $SCRATCH:$SCRATCH ngd-pion.sif \
+#         python -m harness.run --optimizer ngd --lr 1e-3
+
+%files
+    . /opt/ngd-pion
+
+%post
+    pip install --no-cache-dir --upgrade pip
+    pip install --no-cache-dir datasets transformers sentencepiece
+    pip install --no-cache-dir -e /opt/ngd-pion
+    python -c "import torch; print('torch', torch.__version__)"
+
+%environment
+    export PYTHONNOUSERSITE=1
+    export PYTHONPATH=/opt/ngd-pion:$PYTHONPATH
+    export OMP_NUM_THREADS=8
+
+%test
+    python -c "import ngd_pion, harness; print('import ok')"
+
+%labels
+    Description NGD-Pion: curvature-preconditioned spectrum-preserving optimizer

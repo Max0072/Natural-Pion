@@ -132,3 +132,37 @@ def test_invalid_options_are_refused():
             Pion([p], lr=1e-3, **kwargs)
     with pytest.raises(ValueError, match="2-D"):
         Pion([nn.Parameter(torch.zeros(3))], lr=1e-3)
+
+
+def test_lie_momentum_keeps_buffers_on_the_generators():
+    """Their `lie_lie`: separate buffers on g_in and g_out, both staying skew.
+
+    This is the variant their only published 60M numbers come from, so the
+    anchor run needs it even though their 60M script sets the ambient one.
+    """
+    W = orth(10, seed=14)
+    p = nn.Parameter(W.clone())
+    opt = Pion([p], lr=1e-2, scaling="none", momentum="lie", retraction="cayley", alternate=False)
+    for i in range(3):
+        p.grad = rand(10, 10, seed=300 + i)
+        opt.step()
+    state = opt.state[p]
+    assert {"m_in", "m_out", "v_in", "v_out"} <= set(state)
+    for key in ("m_in", "m_out"):
+        assert (state[key] + state[key].T).abs().max() < 1e-14, "generator momentum must stay skew"
+
+
+def test_the_three_momentum_variants_differ():
+    W = orth(9, seed=15)
+    outs = {}
+    for momentum in ("none", "ambient", "lie"):
+        p = nn.Parameter(W.clone())
+        opt = Pion([p], lr=1e-2, scaling="none", momentum=momentum, retraction="cayley", alternate=False)
+        for i in range(3):
+            p.grad = rand(9, 9, seed=400 + i)
+            opt.step()
+        outs[momentum] = p.detach().clone()
+    keys = list(outs)
+    for i in range(len(keys)):
+        for j in range(i + 1, len(keys)):
+            assert not torch.allclose(outs[keys[i]], outs[keys[j]])

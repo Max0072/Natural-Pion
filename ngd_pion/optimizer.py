@@ -187,6 +187,14 @@ class NGDPion(torch.optim.Optimizer):
         state["alpha"] = float(alpha)
 
         c = group["lr"] * float(alpha)
+        # recorded for diagnostics: dropping Pion's RMS scaling removed what
+        # pinned the rotation angle, so whether it stays bounded is measured
+        # rather than assumed
+        state["angle"] = c * float(
+            torch.maximum(
+                torch.linalg.matrix_norm(X_in, 2), torch.linalg.matrix_norm(X_out, 2)
+            )
+        )
         if group["alternate"]:
             W = W @ cayley(X_in, c) if state["step"] % 2 else cayley(X_out, c) @ W
         else:

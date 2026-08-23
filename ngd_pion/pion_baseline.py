@@ -59,8 +59,12 @@ class Pion(torch.optim.Optimizer):
             is exactly `lr * rms`, erasing the gradient's magnitude entirely;
             `"none"` leaves the generators alone.
         rms: the target RMS. Their 60M script uses `0.2`.
-        momentum: `"ambient"` smooths the raw gradient before extracting
-            generators, as their script does; `"none"` is this file's addition.
+        momentum: `"ambient"` smooths the raw gradient before extracting the
+            generators, which is what their 60M script sets; `"lie"` keeps
+            separate buffers on the two generators instead, which is the
+            variant their only published 60M numbers come from (final loss
+            3.3575 bilateral, 3.3654 alternate); `"none"` is this file's
+            addition, since they offer no way to switch momentum off.
         beta1, beta2: momentum rates. `beta2 = None` disables the second moment.
         retraction: `"trunc"` for their truncated exponential, `"cayley"` for
             the exact one.
@@ -83,8 +87,8 @@ class Pion(torch.optim.Optimizer):
     ) -> None:
         if scaling not in ("rms", "none"):
             raise ValueError(f"scaling must be 'rms' or 'none', got {scaling!r}")
-        if momentum not in ("ambient", "none"):
-            raise ValueError(f"momentum must be 'ambient' or 'none', got {momentum!r}")
+        if momentum not in ("ambient", "lie", "none"):
+            raise ValueError(f"momentum must be 'ambient', 'lie' or 'none', got {momentum!r}")
         if retraction not in ("trunc", "cayley"):
             raise ValueError(f"retraction must be 'trunc' or 'cayley', got {retraction!r}")
         params = list(params)
@@ -107,9 +111,33 @@ class Pion(torch.optim.Optimizer):
         )
 
     @staticmethod
+    def _smooth_lie(g_in, g_out, state: dict, group: dict):
+        """Their `lie_lie`: separate buffers on the two generators.
+
+        The buffers stay skew because the generators are, so the smoothed
+        result is still a valid Lie-algebra element and needs no projection.
+        """
+        out = []
+        for name, g in (("in", g_in), ("out", g_out)):
+            key = f"m_{name}"
+            if key not in state:
+                state[key] = torch.zeros_like(g)
+            state[key].mul_(group["beta1"]).add_(g, alpha=1.0 - group["beta1"])
+            m = state[key]
+            if group["beta2"] is None:
+                out.append(m)
+                continue
+            vkey = f"v_{name}"
+            if vkey not in state:
+                state[vkey] = torch.zeros_like(g)
+            state[vkey].mul_(group["beta2"]).add_(m.square(), alpha=1.0 - group["beta2"])
+            out.append(m / (state[vkey].sqrt() + 1e-8))
+        return out[0], out[1]
+
+    @staticmethod
     def _smooth(g: torch.Tensor, state: dict, group: dict) -> torch.Tensor:
         """Their `transported_ambient_ambient`: smoothing happens in ambient space."""
-        if group["momentum"] == "none":
+        if group["momentum"] != "ambient":
             return g
         if "m" not in state:
             state["m"] = torch.zeros_like(g)
@@ -148,6 +176,8 @@ class Pion(torch.optim.Optimizer):
                 W = p.detach()
                 g = self._smooth(p.grad.detach(), state, group)
                 g_in, g_out = generators(W, g)
+                if group["momentum"] == "lie":
+                    g_in, g_out = self._smooth_lie(g_in, g_out, state, group)
                 g_in, g_out = skew(g_in), skew(g_out)
                 c = self._scale(W, g_in, g_out, group)
 
