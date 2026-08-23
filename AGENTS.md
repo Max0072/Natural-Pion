@@ -1,0 +1,146 @@
+# Working in this repository
+
+NGD-Pion: a curvature-preconditioned variant of [Pion](https://arxiv.org/abs/2605.12492).
+Pion rotates each weight matrix on both sides, leaving its singular values fixed
+for the whole run, and drives the rotation with the raw gradient. This project
+preconditions that rotation by the Fisher operator on the bivector tangent
+space instead. Target venue is ICLR; the deadline is roughly one month from
+2026-08-23.
+
+## Read before changing anything
+
+1. **[`ALGORITHM.md`](ALGORITHM.md)** — the specification. Every design decision
+   with the measurement that produced it. Each module implements one of its
+   sections and says so in its docstring.
+2. This file — the state of play, and the mistakes already made.
+
+`ngd_pion/reference.py` is a deliberately naive numpy transcription of the
+spec. It is the **oracle**: the torch path is correct exactly insofar as it
+reproduces it, and `tests/test_optimizer.py` pins that. Never optimise
+`reference.py`; if the two disagree, the reference is right until proven
+otherwise.
+
+## State of play
+
+**Done.** The mathematics is verified — the Fisher operator against Monte
+Carlo, the closed-form solve against an explicit Kronecker system, the descent
+lemma, the sign, Cayley's exactness, spectrum preservation. The optimizer, the
+Pion baseline with ablation switches, a LLaMA-60M harness in their
+configuration, the anchor machinery, SLURM scripts, a container definition.
+117 tests.
+
+**Not done, and this is the whole risk.** Nothing has been trained at scale.
+The only evidence the method helps is a toy least-squares with an exactly
+reachable target, where natural gradient wins almost tautologically. That test
+was a kill criterion — failing it would have stopped the project — and passing
+it means very little.
+
+**Blocked on the cluster, in order:**
+
+1. Throughput on both partitions. A 60M model does not fill a B200; the peak-FLOPS
+   ratio against the RTX pool will not be the observed ratio, and which pool the
+   long runs belong on depends on measuring it. Twenty minutes, and it changes
+   the allocation plan.
+2. Container, then C4.
+3. **The anchor** — see below. No number this harness produces means anything
+   until it lands.
+4. Learning-rate sweeps, then the comparison.
+
+## The anchor, and why it comes before everything
+
+Every number here is produced inside a harness we wrote, and no measurement
+taken inside it can show the harness is equivalent to theirs. So: run *their*
+configuration here and check we reach *their* published figure.
+
+Their paper reports exactly one pair of concrete 60M numbers, in section 2.4.3:
+final loss **3.3575** bilateral, **3.3654** alternate, both with Lie+Lie
+momentum. **That is not what their 60M shell script runs** — the script sets
+`alternate` and the ambient momentum. `harness/anchor.py` follows the number,
+not the script; following the script would make a miss uninformative.
+
+Run both sides. Reproducing the **0.0079 gap** between them is a sharper check
+than reproducing either level, because the gap is insensitive to data order and
+initialisation in a way the level is not.
+
+If it misses, `anchor.KNOWN_DIFFERENCES` lists the harness differences to rule
+out before calling anything a bug. A miss inside ~0.05 is more likely the flat
+token stream or the C4 subset than a defect.
+
+## Decisions already made — do not reopen without evidence
+
+Each of these was measured. Reversing one is fine; reversing it on intuition is
+not.
+
+| decision | why |
+|---|---|
+| `S = I` (isotropic backward) | out-side collapses to an orthogonal `eigh`, cond 9 against 7350; `A` becomes the only statistic and **no backward hook is needed**. KL-optimal when a Kronecker factor is fixed (Lin et al. 2026); the input side is empirically the better one to keep (Eschenhagen et al. 2026) |
+| Cayley, not their truncated exponential | `R^T R = I + A^4/4` exactly, so the truncation always inflates. More importantly, **ablating their RMS scaling makes it diverge within tens of steps**, so an exact retraction is a *precondition* of the ablation, not a preference |
+| one spectral floor `max(lam, eps*lam_max)`, not a shift | a floor is the identity above itself; a shift perturbs well-determined directions too. 134x more accurate on a wide layer at `eps = 1e-4` |
+| `eps = 1e-4` | **its lower bound is set by the compute dtype, not the problem.** fp32 machine epsilon is 1.2e-7, so `1e-8` is meaningless there — measured 2e-1 error against fp64 |
+| fp32 throughout | fp64 buys nothing (end-to-end error 1e-5 to 1e-3 on real spectra), costs 30-60x on consumer GPUs, and does not exist on some backends |
+| `A` accumulated in fp32 minimum | bf16-level noise in `A` gives a step wrong by 10^3-10^4 |
+| non-orthogonal (Gaussian, std 0.02) init | Pion freezes the spectrum permanently, and a non-trivial spectrum is wanted for expressiveness. Costs only 4.3x on the in-side factorisation; accuracy and step norm are unaffected |
+| fixed `T_fac`, not adaptive | a data-dependent refactor schedule diverges across hardware and destroys reproducibility |
+| `alpha_max = 1` | the trust-region ratio reads out basis staleness; capping at 1 keeps it one-sided, so a stale basis can only shorten the step |
+| no momentum, no RMS scaling in NGD-Pion | deliberate, and both are testable hypotheses rather than oversights. The comparison is against **ablated** Pion, so this is not a confound |
+
+## Traps
+
+Things that look right and are not. Every one of these cost real time here.
+
+- **`eps` tuned in fp64 does not transfer to fp32.** The plateau is four orders
+  wide in fp64 and its lower edge moves up by six orders in fp32.
+- **The floor belongs on every spectrum that reaches a denominator**, including
+  the pencil's own output — not only on the ones being inverted. Flooring
+  sources alone lets `lam` round to zero in fp32.
+- **The dead block is `0/0` only where *both* indices are in the kernel.** The
+  `(kernel, range)` block carries a live gradient over a small denominator and
+  holds ~88% of the step. Do not describe the method as immune to the damping
+  problem; it is not.
+- **`cond(W)` and `cond(lam)` look alarming and mean nothing.** Only `cond(A)`
+  matters, and only for deciding fp32. Where `W` is small so is `W^T delta`, so
+  extreme eigenvalues meet extreme-small numerators.
+- **`from __future__ import annotations` makes `field.type` a string.** Argparse
+  built from dataclass fields silently parses everything as `str` and fails deep
+  inside numpy. `harness/run.py` resolves annotations; keep it that way.
+- **The run log is appended** so preemption keeps history, which means a re-run
+  of the same configuration shares the file. A start marker separates attempts;
+  readers must take the last one.
+- **A truncated run always sits far above a converged target.** That is not a
+  miss. `anchor.check` refuses to judge an incomplete run.
+- **Frobenius norm is not spectral norm.** The rotation angle is set by the
+  spectral norm; conflating them produced a wrong theory here about the step
+  scaling as `sqrt(cond(A))`, which real gradients do not support.
+
+## Open questions, and what would answer each
+
+| question | how to settle it |
+|---|---|
+| does curvature help at all | the comparison. Everything else is preparation |
+| does the Fisher supply the step scale, or is RMS load-bearing | 2x2: `{pion, ngd} x {scaling, none}` at 1.2B tokens |
+| is momentum needed | the step is ~47% sampling noise between two independent halves of 225k tokens; the Fisher reweights that noise but does not average it. Their own ablation says Lie-algebra momentum beats ambient, slightly. Add it *before* `F^-1` if added |
+| what `T_fac` | `alpha` is the free readout — it is identically 1 on a fresh basis and falls as the basis drifts. Log it, then choose |
+| do rotation angles stay bounded without RMS | logged per step as `angle`. On a toy transformer they spanned 1e-4 to 3e-2 with a 286x spread across layers |
+| square vs wide layers | the wide `ffn down` is the only matrix per block with a kernel on the in-side and the only one needing `A^{-1/2}`. Expect it to behave differently |
+
+## Running things
+
+```bash
+pytest -q                                        # 117 tests, seconds
+python -m harness.run --optimizer ngd --lr 1e-3  # one run
+python -m harness.run --anchor bilateral         # the calibration run
+```
+
+See [`docs/CLUSTER.md`](docs/CLUSTER.md) for the cluster sequence.
+
+## House rules
+
+- **Measure before asserting.** Most of the wrong turns in this project were
+  confident interpretations of correct arithmetic. The mathematics held
+  throughout; the readings of it did not.
+- **Every claim in `ALGORITHM.md` carries its number.** Keep it that way — a
+  decision without a measurement beside it will be reopened by the next reader.
+- **One variable per run.** The comparison is `pion_ablated` against `ngd`.
+  Published Pion runs alongside only as context.
+- **Tests pin findings, not just behaviour.** Several tests exist because a
+  subtle result would otherwise silently regress; their docstrings say which.

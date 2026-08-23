@@ -1,27 +1,48 @@
 # NGD-Pion
 
 A curvature-preconditioned variant of [Pion](https://arxiv.org/abs/2605.12492).
-Pion updates a weight matrix by orthogonal rotations on both sides, which
-leaves its singular values untouched for the whole of training; the rotation
-itself is driven by the raw gradient. NGD-Pion preconditions that rotation by
-the Fisher operator on the bivector tangent space instead.
 
-**[`ALGORITHM.md`](ALGORITHM.md) is the specification.** It states every design
-decision together with the measurement behind it, and each module implements
-one of its sections. Read it before changing anything here.
+Pion updates a weight matrix by orthogonal rotations on both sides, which leaves
+its singular values untouched for the whole of training, and drives the rotation
+with the raw gradient. NGD-Pion preconditions that rotation by the Fisher
+operator on the bivector tangent space instead.
 
-## Layout
+The idea in one line: **take the covariance of the gradient on the Lie algebra,
+and it turns out to be expressible through the covariance of the activations.**
+A general covariance operator on `so(512)` would carry about `8.6e9` free
+numbers; this one carries `131,328`, because the generator is a bivector and the
+covariance of a bivector factorises.
+
+## Where to look
 
 | | |
 |---|---|
-| `ngd_pion/reference.py` | numpy transcription of the spec -- the oracle, not for training |
-| `ngd_pion/linalg.py` | `skew`, the spectral floor, Cayley |
-| `ngd_pion/covariance.py` | §3, the input covariance |
-| `ngd_pion/factorization.py` | §4, the bases |
-| `ngd_pion/direction.py` | §1, §5, §6, generators through trust region |
-| `ngd_pion/optimizer.py` | §7, orchestration and retraction |
-| `ngd_pion/pion_baseline.py` | vanilla Pion, with the switches an ablation needs |
-| `harness/` | LLaMA-60M in Pion's configuration, data, training loop |
+| **[`ALGORITHM.md`](ALGORITHM.md)** | the specification — every decision with the measurement behind it |
+| **[`AGENTS.md`](AGENTS.md)** | state of play, decisions not to reopen, traps already hit |
+| **[`docs/CLUSTER.md`](docs/CLUSTER.md)** | the cluster sequence, in order |
+
+Read `ALGORITHM.md` before changing anything. Each module implements one of its
+sections and names it in the docstring.
+
+## Layout
+
+```
+ngd_pion/
+  reference.py       numpy transcription of the spec — the oracle, not for training
+  linalg.py          skew, the spectral floor, Cayley
+  covariance.py      §3  the input covariance
+  factorization.py   §4  the bases
+  direction.py       §1 §5 §6  generators through trust region
+  optimizer.py       §7  orchestration and retraction
+  pion_baseline.py   vanilla Pion, with the switches an ablation needs
+harness/
+  model.py           LLaMA-60M in their configuration
+  data.py            memmapped token corpus
+  config.py          run configuration; its hash names the run
+  train.py           the loop
+  instrument.py      per-layer diagnostics
+  anchor.py          reproduce their published figure
+```
 
 ## Use
 
@@ -34,18 +55,20 @@ recorder = attach(linears, opt)          # feeds the input covariance
 ```
 
 The optimizer takes parameters rather than modules, and the covariance is
-supplied from outside. `attach` covers `nn.Linear`; anything else -- Megatron's
-parallel linears, a fused QKV projection -- writes its own adapter of the same
+supplied from outside. `attach` covers `nn.Linear`; anything else — Megatron's
+parallel linears, a fused QKV projection — writes its own adapter of the same
 size without this package changing.
 
 Give it 2-D weights only. Embeddings, the output head, norm gains and biases
 belong to another optimizer, which is how Pion splits parameters too.
 
-## Running an experiment
+## Running
 
 ```bash
-python scripts/prepare_data.py --out data --target-tokens 5e9
-python -m harness.run --optimizer ngd --lr 1e-3 --seed 0
+pytest -q                                        # 117 tests, seconds
+python scripts/prepare_data.py --out data --target-tokens 1e10
+python -m harness.run --optimizer ngd --lr 1e-3
+python -m harness.run --anchor bilateral         # calibration; read AGENTS.md first
 ```
 
 `RunConfig`'s hash names the output directory and covers every field that can
@@ -53,25 +76,32 @@ change a result, so a sweep is a job array over flags.
 
 ## Comparison design
 
-The point of measurement is `pion_ablated` against `ngd`: identical but for
-`F^-1`. Published Pion runs alongside as context, so the ablated baseline
-cannot be called a straw man.
+The measurement is `pion_ablated` against `ngd`: identical but for `F^-1`.
+Published Pion runs alongside as context, so the ablated baseline cannot be
+called a straw man.
 
-Ablating Pion's RMS scaling forces an exact retraction. Their degree-2
-truncated exponential satisfies `R^T R = I + A^4/4`, so it inflates every step
-and the scaling is what holds the rotation angle small enough for that to stay
-negligible; switch the scaling off and it diverges within tens of steps. Cayley
+Ablating Pion's RMS scaling **forces** an exact retraction. Their degree-2
+truncated exponential satisfies `R^T R = I + A^4/4`, so it inflates every step;
+the scaling is what holds the rotation angle small enough for that to stay
+negligible. Switch the scaling off and it diverges within tens of steps. Cayley
 is exactly orthogonal at any angle, which makes it a precondition of the
-ablation rather than a preference.
+ablation rather than a preference — and removes the confound instead of adding
+one.
+
+## Status
+
+The mathematics is verified against independent routes: the Fisher operator
+against Monte Carlo, the closed-form solve against an explicit Kronecker
+system, the descent lemma, the sign, Cayley's exactness, spectrum preservation.
+
+**Nothing has been trained at scale.** The only evidence the method helps is a
+toy least-squares with an exactly reachable target, where natural gradient wins
+almost tautologically. It was a kill criterion, not a result.
 
 ## Tests
 
-```bash
-pytest -q
-```
-
-The torch path is correct insofar as it reproduces `reference.py`, and the
-tests pin that. They also pin the findings that are easy to regress: that the
-spectral floor's lower bound is set by the working precision, that the step is
-invariant to what `eigh` happens to return, and that the truncated exponential
-diverges unscaled.
+The torch path is correct insofar as it reproduces `reference.py`, and the tests
+pin that. Several also pin findings that would otherwise silently regress — that
+the spectral floor's lower bound is set by the working precision, that the step
+is invariant to whatever `eigh` happens to return, that the truncated
+exponential diverges unscaled. Their docstrings say which.
