@@ -1,0 +1,98 @@
+"""ALGORITHM.md §4 -- the bases that diagonalise the Fisher operator.
+
+The operator on each side is `F(X) = 2(B X C + C X B)`, and it is symmetric in
+`B` and `C`. Diagonalising it means finding `P` with `P^T B P = I` and
+`P^T C P = diag(lam)`; then `F` acts elementwise as `2(lam_i + lam_j)`.
+
+Two paths, and which one applies is a property of the *shapes*, not a tuning
+choice:
+
+* **identity anchor** -- when one of the pair is `I`, `eigh` of the other is
+  already the answer and `P` comes out orthogonal. Under `S = I` this is the
+  out-side, always. It is also the in-side whenever `W^T W = I`, which holds
+  for square and tall `W` under a semi-orthogonal initialisation.
+* **congruence** -- otherwise. Costs an extra `eigh` plus an inverse square
+  root, and yields a `P` that is merely invertible.
+
+Everything batches over leading dimensions, so layers of equal shape are
+factorised in one `eigh` call rather than one per layer.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import torch
+
+from .linalg import floor_eigenvalues, is_identity
+
+__all__ = ["Basis", "basis_identity_anchor", "basis_congruence", "build_bases"]
+
+
+@dataclass(frozen=True)
+class Basis:
+    """`P` and the spectrum `lam` that together diagonalise one side.
+
+    `orthogonal` records which path produced it -- useful for diagnostics and
+    for asserting in tests that the cheap path was taken when it should be.
+    """
+
+    P: torch.Tensor
+    lam: torch.Tensor
+    orthogonal: bool
+
+    @property
+    def denominator(self) -> torch.Tensor:
+        """`2(lam_i + lam_j)`, the eigenvalues of `F` in this basis."""
+        return 2.0 * (self.lam.unsqueeze(-1) + self.lam.unsqueeze(-2))
+
+
+def basis_identity_anchor(C: torch.Tensor, eps: float) -> Basis:
+    """`F(X) = 2(X C + C X)`. A plain symmetric eigenproblem; `P` orthogonal."""
+    lam, Q = torch.linalg.eigh(C)
+    return Basis(P=Q, lam=floor_eigenvalues(lam, eps), orthogonal=True)
+
+
+def basis_congruence(B: torch.Tensor, C: torch.Tensor, eps: float) -> Basis:
+    """`F(X) = 2(B X C + C X B)` with neither factor the identity.
+
+    Goes through the symmetric root `B^{-1/2}` rather than a Cholesky factor:
+    congruence needs only *some* `B = K K^T`, and the symmetric root exposes
+    the eigenvalues so the floor applies to them directly. Both spectra are
+    floored, which is the whole of the regularisation -- the denominators come
+    out positive with nothing further added.
+    """
+    wb, Ub = torch.linalg.eigh(B)
+    wb = floor_eigenvalues(wb, eps)
+    B_inv_half = (Ub * wb.rsqrt().unsqueeze(-2)) @ Ub.transpose(-1, -2)
+
+    wc, Uc = torch.linalg.eigh(C)
+    C_floored = (Uc * floor_eigenvalues(wc, eps).unsqueeze(-2)) @ Uc.transpose(-1, -2)
+
+    M = B_inv_half @ C_floored @ B_inv_half
+    lam, Q = torch.linalg.eigh(0.5 * (M + M.transpose(-1, -2)))
+    # The floor goes on every spectrum that ends up in a denominator, not only
+    # on the ones being inverted. Flooring `B` and `C` does not make `lam`
+    # positive in finite precision: the pencil can spread them over more orders
+    # than the working dtype resolves, and the small end then rounds to zero.
+    return Basis(P=B_inv_half @ Q, lam=floor_eigenvalues(lam, eps), orthogonal=False)
+
+
+def build_bases(W: torch.Tensor, A: torch.Tensor, eps: float) -> tuple[Basis, Basis]:
+    """Both sides for a weight matrix, taking the cheap path wherever it is valid.
+
+    In-side pair is `(A, W^T W)`, out-side is `(S, W A W^T)` with `S = I`.
+
+    In a batch the cheap in-side path is taken only if *every* member has
+    `W^T W = I`; a mixed batch falls back to congruence throughout, which is
+    correct and merely slower.
+    """
+    Wt = W.transpose(-1, -2)
+    gram_in = Wt @ W
+    gram_out = W @ A @ Wt
+
+    if is_identity(gram_in):
+        basis_in = basis_identity_anchor(A, eps)
+    else:
+        basis_in = basis_congruence(A, gram_in, eps)
+    return basis_in, basis_identity_anchor(gram_out, eps)
