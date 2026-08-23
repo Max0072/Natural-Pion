@@ -5,9 +5,12 @@ is the run's name. Two runs with the same hash saw the same configuration; two
 runs with the same hash and the same seed should see the same batches. That is
 what makes a sweep auditable after the fact rather than a folder of guesses.
 
-Defaults follow `opt_llama_60M_pion.sh`, with one unresolved conflict recorded
-in `train_steps`: their script's 37500 steps at 131072 tokens gives 4.9B
-tokens, while the paper says 9.6B for the same experiments.
+Defaults follow `opt_llama_60M_pion.sh`. Their script derives the step count
+rather than stating it -- `TOKEN=9.6`, `GLOBAL_BATCH=512`, and
+`TRAIN_ITER = TOTAL_TOKENS / GLOBAL_BATCH / 256` -- which gives 73242 steps at
+131072 tokens each. 9.6B tokens is 8x the Chinchilla-optimal budget for a 60M
+model, and their comment line `# 1: 1.2; 2: 2.4; 4: 4.8; 8: 9.6;` is that
+multiplier table.
 """
 
 from __future__ import annotations
@@ -48,7 +51,7 @@ class RunConfig:
 
     # schedule, as their script configures it
     batch_sequences: int = 512      # global batch; 512 * 256 = 131072 tokens/step
-    train_steps: int = 37500        # their script; the paper implies twice this
+    train_steps: int = 73242        # TOTAL_TOKENS / GLOBAL_BATCH / 256 = 9.6e9/512/256
     lr_min: float = 1e-5
     warmup_steps: int = 0
     weight_decay: float = 0.1

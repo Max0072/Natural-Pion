@@ -86,7 +86,8 @@ def test_config_hash_covers_science_and_ignores_plumbing():
 def test_token_budget_matches_their_script():
     cfg = RunConfig()
     assert cfg.tokens_per_step == 512 * 256
-    assert cfg.total_tokens == 37500 * 131072  # 4.9B; the paper says 9.6B, unresolved
+    assert cfg.total_tokens == 73242 * 131072  # 9.6B, i.e. 8x Chinchilla for 60M
+    assert abs(cfg.total_tokens - 9.6e9) / 9.6e9 < 1e-4
 
 
 def test_corpus_targets_are_inputs_shifted_by_one(corpus):
@@ -155,3 +156,126 @@ def test_run_end_to_end_and_reduce_loss(optimizer, corpus, tmp_path):
     if optimizer == "ngd":
         assert "angle_max" in train_rows[-1], "NGD runs must log the diagnostics"
         assert train_rows[-1]["alpha_max"] <= 1.0
+
+
+def test_anchor_follows_the_published_number_not_the_shell_script():
+    """Their 60M script runs a different configuration than their reported figures."""
+    from harness.anchor import TARGETS, anchor_config
+
+    cfg = anchor_config("bilateral")
+    assert cfg.optimizer == "pion"
+    assert cfg.pion_momentum == "lie", "the published figures use Lie+Lie"
+    assert cfg.pion_alternate is False, "3.3575 is the bilateral number"
+    assert cfg.pion_scaling == "rms" and cfg.pion_rms == 0.2
+    assert cfg.pion_retraction == "trunc", "their degree-2 truncated exponential"
+    assert cfg.lr == 1e-3 and cfg.lr_min == 1e-5 and cfg.warmup_steps == 0
+    assert cfg.total_tokens == 73242 * 131072
+    assert TARGETS["bilateral"] == 3.3575
+
+    other = anchor_config("alternate")
+    assert other.pion_alternate is True
+    assert TARGETS["alternate"] == 3.3654
+    assert cfg.hash != other.hash
+
+
+def test_anchor_tolerance_is_tighter_than_the_gap_it_must_resolve():
+    """A tolerance looser than their own bilateral-alternate gap would say nothing."""
+    from harness.anchor import TARGETS, TOLERANCE
+
+    gap = TARGETS["alternate"] - TARGETS["bilateral"]
+    assert 0 < TOLERANCE < 3 * gap
+
+
+def test_anchor_check_reads_a_log(tmp_path):
+    from harness.anchor import check
+
+    log = tmp_path / "log.jsonl"
+    log.write_text("\n".join(json.dumps({"step": i, "train_loss": 3.36}) for i in range(20)))
+    result = check(log, "bilateral")
+    assert result["matched"] and result["status"] == "complete"
+    assert result["measured"] == pytest.approx(3.36)
+
+    log.write_text(json.dumps({"step": 0, "train_loss": 4.0}))
+    assert not check(log, "bilateral")["matched"]
+
+
+def test_anchor_refuses_to_judge_a_truncated_run(tmp_path):
+    """A short run always sits above a converged target; that is not a miss."""
+    from harness.anchor import check
+
+    log = tmp_path / "log.jsonl"
+    log.write_text("\n".join(json.dumps({"step": i, "train_loss": 8.0}) for i in range(6)))
+    result = check(log, "bilateral", expected_steps=73242)
+    assert result["status"] == "incomplete"
+    assert result["matched"] is False
+    assert result["steps_run"] == 6 and result["steps_expected"] == 73242
+
+    on_target = tmp_path / "full.jsonl"
+    on_target.write_text("\n".join(json.dumps({"step": i, "train_loss": 3.357}) for i in range(10)))
+    assert check(on_target, "bilateral", expected_steps=10)["status"] == "complete"
+
+
+def test_anchor_rejects_an_unknown_update_side():
+    from harness.anchor import anchor_config
+
+    with pytest.raises(ValueError, match="update_side"):
+        anchor_config("sideways")
+
+
+def test_cli_flags_parse_to_their_declared_types(monkeypatch):
+    """`from __future__ import annotations` turns field.type into a string.
+
+    Resolving the annotations is not cosmetic: without it every flag parses as
+    str, and the failure surfaces deep inside numpy rather than at the parse.
+    """
+    import sys as _sys
+    from typing import get_type_hints
+
+    from harness import run as run_module
+
+    captured = {}
+    monkeypatch.setattr(run_module, "train", lambda cfg, **kw: captured.setdefault("cfg", cfg) or Path("."))
+    monkeypatch.setattr(
+        _sys, "argv",
+        ["run.py", "--optimizer", "pion", "--lr", "3e-4", "--micro-batch", "8",
+         "--train-steps", "5", "--pion-alternate", "false"],
+    )
+    run_module.main()
+    cfg = captured["cfg"]
+    hints = get_type_hints(RunConfig)
+    for name in ("lr", "micro_batch", "train_steps", "pion_alternate", "seed", "grad_clip"):
+        assert isinstance(getattr(cfg, name), hints[name]), f"{name} parsed as the wrong type"
+    assert cfg.lr == 3e-4 and cfg.micro_batch == 8 and cfg.pion_alternate is False
+
+
+def test_anchor_reads_only_the_most_recent_attempt(tmp_path):
+    """The log is appended, so a re-run of the same config shares the file.
+
+    Without a start marker the check reports the previous attempt's step count,
+    which would let a short re-run be judged against a long one's rows.
+    """
+    from harness.anchor import check, final_loss, last_step
+
+    log = tmp_path / "log.jsonl"
+    rows = [{"event": "start", "steps": 100}]
+    rows += [{"step": i, "train_loss": 9.0} for i in range(50)]
+    rows += [{"event": "start", "steps": 100}]
+    rows += [{"step": i, "train_loss": 3.357} for i in range(3)]
+    log.write_text("\n".join(json.dumps(r) for r in rows))
+
+    assert last_step(log) == 2, "must not see the earlier attempt's steps"
+    assert final_loss(log) == pytest.approx(3.357)
+    assert check(log, "bilateral", expected_steps=100)["steps_run"] == 3
+
+
+def test_training_writes_a_start_marker(corpus, tmp_path):
+    cfg = RunConfig(
+        optimizer="adamw", model=SMALL, batch_sequences=4, micro_batch=4,
+        train_steps=3, eval_every=100, eval_batches=1, log_every=1,
+        data_path=str(corpus / "train.bin"), val_path=str(corpus / "val.bin"),
+        out_dir=str(tmp_path),
+    )
+    out = train(cfg, max_steps=3)
+    train(cfg, max_steps=2)
+    rows = [json.loads(line) for line in (out / "log.jsonl").read_text().splitlines()]
+    assert sum(r.get("event") == "start" for r in rows) == 2

@@ -92,7 +92,13 @@ def train(cfg: RunConfig, device: str = "cpu", max_steps: int | None = None) -> 
     out = Path(cfg.out_dir) / cfg.name
     out.mkdir(parents=True, exist_ok=True)
     (out / "manifest.json").write_text(json.dumps(cfg.manifest(), indent=2))
+    # Appending rather than truncating keeps a preempted run's history, but it
+    # also means a re-run with the same configuration writes into the same
+    # file. A start marker separates them so readers can take the last attempt.
     log = (out / "log.jsonl").open("a")
+    log.write(json.dumps({"event": "start", "steps": max_steps or cfg.train_steps,
+                          "time": time.time()}) + "\n")
+    log.flush()
 
     model = Transformer(cfg.model).to(device)
     rot, adamw, recorder = build_optimizers(model, cfg)
