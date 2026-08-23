@@ -138,8 +138,13 @@ def train(cfg: RunConfig, device: str = "cpu", max_steps: int | None = None) -> 
                 opt.step()
 
         if step % cfg.log_every == 0 or step == steps - 1:
+            elapsed = time.time() - started
             row = {"step": step, "lr": lr, "train_loss": loss_sum,
-                   "wall": round(time.time() - started, 1)}
+                   "wall": round(elapsed, 1),
+                   # throughput decides which partition a run belongs on: a 60M
+                   # model does not fill a B200, so the peak-FLOPS ratio against
+                   # an RTX card is not the ratio that matters
+                   "tokens_per_sec": round(cfg.tokens_per_step * (step + 1) / max(elapsed, 1e-9))}
             if isinstance(rot, NGDPion):
                 row.update(summarise(layer_diagnostics(rot, names)))
             log.write(json.dumps(row) + "\n")
