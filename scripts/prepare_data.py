@@ -48,8 +48,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -74,16 +76,38 @@ def _mark(fh, progress: Path, file_index: int, records_in_file: int, tokens: int
     os.replace(tmp, progress)
 
 
-def fetch(dataset: str, filename: str, cache: Path) -> Path:
+def fetch(dataset: str, filename: str, cache: Path, attempts: int = 7) -> Path:
     """Bring one dataset file to local disk, or return the copy already there.
 
     `hf_hub_download` resumes partial transfers and does nothing when the file
     is present, so a shard that restarts pays for no byte twice.
+
+    Retries, because the Hub rate-limits. Thirty-two shards asking for download
+    tokens at once earned a 429 and killed twenty of them outright; a 429 is a
+    request to wait, not a failure, so it is waited out with a doubling delay
+    and a little jitter so the retries do not re-synchronise. An HF_TOKEN
+    raises the limits and makes this rare rather than routine.
     """
     from huggingface_hub import hf_hub_download
 
-    return Path(hf_hub_download(dataset, filename, repo_type="dataset",
-                                local_dir=str(cache)))
+    delay = 5.0
+    for attempt in range(attempts):
+        try:
+            return Path(hf_hub_download(dataset, filename, repo_type="dataset",
+                                        local_dir=str(cache)))
+        except Exception as exc:  # noqa: BLE001
+            text = str(exc)
+            transient = ("429" in text or "Too Many Requests" in text
+                         or "Network error" in text or "timed out" in text
+                         or isinstance(exc, (ConnectionError, TimeoutError, OSError)))
+            if attempt == attempts - 1 or not transient:
+                raise
+            wait = delay * (1.0 + 0.5 * random.random())
+            print(f"    [{filename}] {text.splitlines()[0][:80]} -- retrying in {wait:.0f}s",
+                  flush=True)
+            time.sleep(wait)
+            delay *= 2
+    raise RuntimeError("unreachable")
 
 
 def repo_files(dataset: str, subset: str, split: str) -> list[str]:
@@ -218,6 +242,11 @@ def run_shards(args, files: list[str]) -> None:
     # One thread per process. N shards times M threads on N cores is thrash,
     # and the tokeniser is only a third of the work in any case.
     env.update(TOKENIZERS_PARALLELISM="false", RAYON_NUM_THREADS="1", OMP_NUM_THREADS="1")
+    # The xet transfer path asks the Hub for a per-file token, and thirty-two
+    # shards doing that at once is what earned a 429. Plain HTTP downloads at
+    # the same speed -- 23.8 MB/s against 24.1 measured -- without the extra
+    # API call.
+    env.setdefault("HF_HUB_DISABLE_XET", "1")
 
     children = []
     for k in range(args.shards):
@@ -276,6 +305,9 @@ def main() -> None:
         # A child. Its slice is every Nth file, so shards are the same size
         # whatever order the list arrives in, and its budget is its share.
         k, n = args.shard_index, args.shards
+        # Stagger the openings. Thirty-two processes reaching the Hub in the
+        # same second is what the rate limiter is there to stop.
+        time.sleep(0.4 * k)
         share = args.target_tokens / n
         write_split(args.out / f"c4_train.part{k}.bin", train_files[k::n], share, args,
                     label=f"train {k}/{n}")

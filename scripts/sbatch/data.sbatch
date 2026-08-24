@@ -30,6 +30,8 @@
 # re-fetches nothing, and does nothing at all once the corpus is complete.
 set -euo pipefail
 
+export HF_HUB_DISABLE_XET=1
+
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"
 OUT="${OUT:-$DATA_p330/c4}"
