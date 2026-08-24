@@ -15,6 +15,17 @@ Allocation: **2000 RTX hours and 1000 B200 hours.**
 | `a100` | — | 6 | — | 24 h |
 | `a5000` | 8 | 1 | 8 | 24 h |
 
+Each `rtx` node carries 64 CPUs and 1 TB of memory against its 8 GPUs, so jobs
+ask for 8 cores. SLURM's GRES there is untyped — `gpu:8(S:0-1)` names no model,
+unlike `a100` and `a5000` — so the card can only be identified from the card:
+
+```bash
+srun -p rtx --gres=gpu:1 --time=00:02:00 nvidia-smi --query-gpu=name,memory.total --format=csv
+```
+
+It does not block anything: step 1 measures throughput directly, which is the
+number that matters. The model is for the paper's setup section.
+
 **Every partition caps at 24 hours, and that is the binding constraint.** A full
 9.6B run was estimated at roughly 37 h on the rtx pool, which does not fit.
 Hence the split: long runs (the anchor, the final table) go to `b200`, where

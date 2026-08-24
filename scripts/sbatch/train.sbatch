@@ -6,6 +6,10 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:1
+# 64 CPUs against 8 GPUs on these nodes, so 8 per job is the fair share.
+# Without this SLURM hands out one core and the data loader becomes the
+# bottleneck long before the GPU does.
+#SBATCH --cpus-per-task=8
 #SBATCH -p b200
 #SBATCH --time=24:00:00
 # Long runs default to b200 because every partition caps at 24 hours and a full
@@ -33,6 +37,7 @@ DATA="${DATA:-$DATA_p330/c4}"
 RUNS="${RUNS:-$DATA_p330/runs}"
 
 echo "node        $(hostname)"
+echo "cpus        ${SLURM_CPUS_PER_TASK:-?}"
 echo "gpu         $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || echo unknown)"
 echo "job         ${SLURM_JOB_ID:-none} on ${SLURM_JOB_PARTITION:-unknown}"
 echo "args        $*"

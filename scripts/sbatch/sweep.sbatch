@@ -6,6 +6,10 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:1
+# 64 CPUs against 8 GPUs on these nodes, so 8 per job is the fair share.
+# Without this SLURM hands out one core and the data loader becomes the
+# bottleneck long before the GPU does.
+#SBATCH --cpus-per-task=8
 #SBATCH -p rtx
 #SBATCH --time=08:00:00
 # Sweeps live on rtx: 32 GPUs against b200's 16, and a 1.2B run fits the 24h
