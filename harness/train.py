@@ -135,6 +135,11 @@ def train(
     a resumed run does not replay the batches it already saw.
     """
     torch.manual_seed(cfg.seed)
+    # Applies to the model's own matmuls as well as the optimizer's, which
+    # guards itself in any case. Off by default: see RunConfig.tf32.
+    torch.backends.cuda.matmul.allow_tf32 = cfg.tf32
+    torch.backends.cudnn.allow_tf32 = cfg.tf32
+    torch.set_float32_matmul_precision("high" if cfg.tf32 else "highest")
     out = Path(cfg.out_dir) / cfg.name
     out.mkdir(parents=True, exist_ok=True)
     (out / "manifest.json").write_text(json.dumps(cfg.manifest(), indent=2))

@@ -165,6 +165,26 @@ Things that look right and are not. Every one of these cost real time here.
   in `optimizer.py` a resumed run brings `A` and both bases back on the CPU and
   dies on the first `W @ A`. The tests run on CPU and cannot see it; the first
   run to hit the 24 h wall would have.
+- **What the GPU calls fp32 is TF32, and it destroys the spectrum.** On
+  Ampere and newer, torch performs fp32 matrix operations in TF32 by default --
+  ten bits of mantissa. Measured on an RTX PRO 6000 Blackwell: Cayley's
+  orthogonality error `4.3e-03` against `3.9e-06`, and the singular values of a
+  weight move by a **relative 1.0** over 200 two-sided steps against `2.6e-04`.
+  The property the method is built on is gone, silently, and the CPU suite
+  cannot see it because TF32 does not exist there. `ngd_pion` now turns it off
+  around its own linear algebra -- the retraction, the factorisation, the
+  covariance -- and `scripts/gpu_smoke.py` switches TF32 on deliberately and
+  requires the spectrum to hold anyway. It is left on for the *model*, where it
+  is worth 2.2-2.6x and costs a relative 1e-3 on a gradient that is about half
+  sampling noise.
+- **Time nothing on a GPU without warming it up.** The first call of a kind
+  pays cuBLAS or cuSOLVER's one-off setup, and preflight reported 15 TFLOPS for
+  a matmul that does 184, and made one image look ten times slower at `eigh`
+  than it is. Every timing in `preflight.py` now warms up first.
+- **Measure a residual in a precision the machine will not degrade.** The same
+  preflight check reported Cayley's error as `4.0e-04` when the truth was
+  `3.9e-06`: the retraction was guarded, but `RᵀR` was formed in TF32, so the
+  instrument was reporting its own error. It forms the residual in fp64 now.
 - **Frobenius norm is not spectral norm.** The rotation angle is set by the
   spectral norm; conflating them produced a wrong theory here about the step
   scaling as `sqrt(cond(A))`, which real gradients do not support.

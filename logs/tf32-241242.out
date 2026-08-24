@@ -1,0 +1,69 @@
+
+################################ ngd-pion.sif
+torch 2.7.0a0+79aa17489c.nv25.04  |  NVIDIA RTX PRO 6000 Blackwell Server Edition
+--- as the harness finds them
+    matmul.allow_tf32        True
+    cudnn.allow_tf32         True
+    float32_matmul_precision high
+
+       c   orth err fp32   orth err fp64
+   1e+00         3.9e-03         6.0e-15
+   1e-02         4.8e-04         6.9e-15
+   1e-03         3.1e-04         8.2e-15
+
+now forcing true fp32
+   (cuda.matmul.fp32_precision: Unknown attribute fp32_precision)
+   (cuda.linalg.fp32_precision: module 'torch.backends.cuda' has no attribute 'linalg')
+--- after forcing
+    matmul.allow_tf32        False
+    cudnn.allow_tf32         False
+    float32_matmul_precision highest
+
+       c   orth err fp32
+   1e+00         3.3e-06
+   1e-02         3.1e-06
+   1e-03         8.2e-06
+
+spectrum after 200 two-sided steps at angle 1e-2 (relative, max over 512 values)
+    forced fp32   1.10e-03
+    fp64          2.55e-12
+    tf32 allowed  9.84e-01
+
+eigh, warmed up, mean of 10
+      512     15.2 ms
+     1376     14.9 ms
+
+################################ ngd-pion-2607.sif
+torch 2.13.0a0+9186a08b2c.nv26.07  |  NVIDIA RTX PRO 6000 Blackwell Server Edition
+--- as the harness finds them
+    matmul.allow_tf32        True
+    cudnn.allow_tf32         True
+    float32_matmul_precision high
+    cuda.matmul.fp32_precision   tf32
+
+       c   orth err fp32   orth err fp64
+   1e+00         4.1e-03         5.5e-15
+   1e-02         4.9e-04         7.3e-15
+   1e-03         3.1e-04         8.0e-15
+
+now forcing true fp32
+   (cuda.linalg.fp32_precision: module 'torch.backends.cuda' has no attribute 'linalg')
+--- after forcing
+    matmul.allow_tf32        False
+    cudnn.allow_tf32         False
+    float32_matmul_precision highest
+    cuda.matmul.fp32_precision   ieee
+
+       c   orth err fp32
+   1e+00         4.0e-06
+   1e-02         1.8e-06
+   1e-03         2.9e-06
+
+spectrum after 200 two-sided steps at angle 1e-2 (relative, max over 512 values)
+    forced fp32   2.57e-04
+    fp64          5.79e-13
+    tf32 allowed  1.06e+00
+
+eigh, warmed up, mean of 10
+      512      4.8 ms
+     1376     13.4 ms

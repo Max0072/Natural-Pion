@@ -14,8 +14,15 @@ from __future__ import annotations
 
 import sys
 import time
+from pathlib import Path
 
 import torch
+
+# Run as `python scripts/x.py`, so sys.path[0] is scripts/ and the repository
+# root is not on it. Without this the harness import fails, and in preflight it
+# fails inside a try that reports it as a failed GPU check.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 
 
 def ok(label: str, detail: str = "") -> None:
@@ -48,63 +55,78 @@ def main() -> int:
         fail("arch in build", f"{tag} not among {arches} -- kernels will be JIT'd or fail")
         failures += 1
 
-    try:
-        a = torch.randn(4096, 4096, device=dev)
-        torch.cuda.synchronize()
-        t = time.perf_counter()
-        for _ in range(10):
-            a @ a
-        torch.cuda.synchronize()
-        flops = 10 * 2 * 4096**3 / (time.perf_counter() - t)
-        ok("fp32 matmul", f"{flops/1e12:.0f} TFLOPS")
-    except Exception as exc:  # noqa: BLE001
-        fail("fp32 matmul", str(exc)[:80])
-        failures += 1
-
-    try:
-        b = torch.randn(4096, 4096, device=dev, dtype=torch.bfloat16)
-        torch.cuda.synchronize()
-        t = time.perf_counter()
-        for _ in range(10):
-            b @ b
-        torch.cuda.synchronize()
-        flops = 10 * 2 * 4096**3 / (time.perf_counter() - t)
-        ok("bf16 matmul", f"{flops/1e12:.0f} TFLOPS")
-    except Exception as exc:  # noqa: BLE001
-        fail("bf16 matmul", str(exc)[:80])
-        failures += 1
+    # Every timing below warms up first. Without that the first call of each
+    # kind pays cuBLAS or cuSOLVER's one-off setup and the number reported is
+    # the setup, not the operation -- which is how an earlier run here made one
+    # image look ten times slower at `eigh` than it is.
+    for label, dtype in (("fp32 matmul", torch.float32), ("bf16 matmul", torch.bfloat16)):
+        try:
+            a = torch.randn(4096, 4096, device=dev, dtype=dtype)
+            for _ in range(3):
+                a @ a
+            torch.cuda.synchronize()
+            t = time.perf_counter()
+            for _ in range(10):
+                a @ a
+            torch.cuda.synchronize()
+            flops = 10 * 2 * 4096**3 / (time.perf_counter() - t)
+            ok(label, f"{flops/1e12:.0f} TFLOPS")
+        except Exception as exc:  # noqa: BLE001
+            fail(label, str(exc)[:80])
+            failures += 1
 
     # The two operations the optimizer cannot do without.
     for size, label in ((512, "square layers"), (1376, "ffn down")):
         try:
             m = torch.randn(size, size, device=dev)
             m = m @ m.T / size + torch.eye(size, device=dev)
+            for _ in range(3):
+                w, _ = torch.linalg.eigh(m)
             torch.cuda.synchronize()
             t = time.perf_counter()
-            w, _ = torch.linalg.eigh(m)
+            for _ in range(10):
+                w, _ = torch.linalg.eigh(m)
             torch.cuda.synchronize()
-            ms = (time.perf_counter() - t) * 1e3
+            ms = (time.perf_counter() - t) * 1e2
             if not torch.isfinite(w).all():
                 raise RuntimeError("eigh returned non-finite eigenvalues")
-            ok(f"eigh {size}", f"{ms:.0f} ms  ({label})")
+            ok(f"eigh {size}", f"{ms:.1f} ms  ({label})")
         except Exception as exc:  # noqa: BLE001
             fail(f"eigh {size}", str(exc)[:80])
             failures += 1
 
+    # The retraction as the project performs it, not as a bare solve. The
+    # difference is the point: with this machine's default settings a raw
+    # `linalg.solve` is done in TF32, ten bits of mantissa, and the error is a
+    # thousand times worse. `ngd_pion.linalg.cayley` turns that off for itself,
+    # and this checks the function the optimizer actually calls.
     try:
+        from ngd_pion.linalg import cayley
+
         n = 512
         x = torch.randn(n, n, device=dev)
         x = 0.5 * (x - x.T)
         eye = torch.eye(n, device=dev)
-        r = torch.linalg.solve(eye + 0.5 * x, eye - 0.5 * x)
-        err = (r.T @ r - eye).abs().max().item()
+        # The residual is formed in fp64. Measuring it in fp32 on this machine
+        # means measuring it in TF32, and the instrument then reports its own
+        # error rather than the retraction's: 4e-04 where the truth is 3e-06.
+        def residual(R):
+            d = R.double()
+            return (d.T @ d - eye.double()).abs().max().item()
+
+        r = cayley(x, 1.0)
+        err = residual(r)
+        raw_err = residual(torch.linalg.solve(eye + 0.5 * x, eye - 0.5 * x))
         if err < 1e-3:
-            ok("cayley solve", f"orthogonality error {err:.1e}")
+            ok("cayley", f"orthogonality error {err:.1e}")
         else:
-            fail("cayley solve", f"orthogonality error {err:.1e} is too large")
+            fail("cayley", f"orthogonality error {err:.1e} is too large")
             failures += 1
+        note = "matches" if raw_err < 10 * err else f"{raw_err/err:.0f}x worse"
+        print(f"  info  unguarded solve here is {note} ({raw_err:.1e}) -- "
+              f"tf32 matmul is {'on' if torch.backends.cuda.matmul.allow_tf32 else 'off'}")
     except Exception as exc:  # noqa: BLE001
-        fail("cayley solve", str(exc)[:80])
+        fail("cayley", str(exc)[:80])
         failures += 1
 
     try:

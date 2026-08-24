@@ -28,7 +28,7 @@ import math
 import torch
 
 from .direction import generators
-from .linalg import cayley, skew
+from .linalg import cayley, exact_fp32, skew
 
 __all__ = ["Pion"]
 
@@ -167,6 +167,16 @@ class Pion(torch.optim.Optimizer):
     @torch.no_grad()
     def step(self, closure=None):
         loss = closure() if closure is not None else None
+        # The baseline retracts too, and the comparison is only fair if both
+        # arms get the same arithmetic. On a GPU that means saying so: fp32
+        # matrix operations are TF32 by default, which moved the singular
+        # values of a weight by a relative 1.0 over 200 steps in measurement.
+        with exact_fp32():
+            self._step()
+        return loss
+
+    @torch.no_grad()
+    def _step(self):
         for group in self.param_groups:
             for p in group["params"]:
                 if p.grad is None:
@@ -194,4 +204,3 @@ class Pion(torch.optim.Optimizer):
                     W = left @ W @ right
                 p.copy_(W)
                 state["step"] += 1
-        return loss

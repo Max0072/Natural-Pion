@@ -1,0 +1,42 @@
+node    rtx6004
+NVIDIA RTX PRO 6000 Blackwell Server Edition, 97887 MiB, 580.126.20
+
+################################ ngd-pion.sif
+torch 2.7.0a0+79aa17489c.nv25.04, cuda 12.9
+  ok    device  NVIDIA RTX PRO 6000 Blackwell Server Edition, sm_120, 102 GB
+  ok    arch in build  sm_120
+  ok    fp32 matmul  15 TFLOPS
+  ok    bf16 matmul  26 TFLOPS
+  ok    eigh 512  125 ms  (square layers)
+  ok    eigh 1376  149 ms  (ffn down)
+  FAIL  cayley solve  orthogonality error 3.8e-03 is too large
+  ok    model fwd+bwd  58.2M params, peak 2.1 GB at 8 sequences
+
+1 check(s) failed
+  [preflight exit 1]
+device  NVIDIA RTX PRO 6000 Blackwell Server Edition
+  ok    four steps and a checkpoint
+  ok    resumed from step 4 and finished at 7
+
+ready
+  [gpu_smoke exit 0]
+
+################################ ngd-pion-2607.sif
+torch 2.13.0a0+9186a08b2c.nv26.07, cuda 13.3
+  ok    device  NVIDIA RTX PRO 6000 Blackwell Server Edition, sm_120, 102 GB
+  ok    arch in build  sm_120
+  ok    fp32 matmul  16 TFLOPS
+  ok    bf16 matmul  30 TFLOPS
+  ok    eigh 512  346 ms  (square layers)
+  ok    eigh 1376  14 ms  (ffn down)
+  FAIL  cayley solve  orthogonality error 4.1e-03 is too large
+  ok    model fwd+bwd  58.2M params, peak 2.1 GB at 8 sequences
+
+1 check(s) failed
+  [preflight exit 1]
+device  NVIDIA RTX PRO 6000 Blackwell Server Edition
+  ok    four steps and a checkpoint
+  ok    resumed from step 4 and finished at 7
+
+ready
+  [gpu_smoke exit 0]

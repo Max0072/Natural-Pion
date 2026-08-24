@@ -1,0 +1,12 @@
+torch 2.13.0a0+9186a08b2c.nv26.07, cuda 13.3
+  ok    device  NVIDIA RTX PRO 6000 Blackwell Server Edition, sm_120, 102 GB
+  ok    arch in build  sm_120
+  ok    fp32 matmul  184 TFLOPS
+  ok    bf16 matmul  374 TFLOPS
+  ok    eigh 512  4.9 ms  (square layers)
+  ok    eigh 1376  13.4 ms  (ffn down)
+  ok    cayley  orthogonality error 3.9e-06
+  info  unguarded solve here is 1100x worse (4.3e-03) -- tf32 matmul is on
+  ok    model fwd+bwd  58.2M params, peak 2.1 GB at 8 sequences
+
+ready

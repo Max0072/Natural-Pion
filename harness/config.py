@@ -57,6 +57,25 @@ class RunConfig:
     weight_decay: float = 0.1
     grad_clip: float = 1.0
 
+    # Arithmetic for the *model*. On an Ampere-or-newer card torch runs fp32
+    # matrix operations in TF32 -- ten bits of mantissa -- and on an RTX PRO
+    # 6000 Blackwell that is worth 2.2x to 2.6x on exactly the shapes this
+    # model multiplies, measured. The gradient it produces is then wrong by a
+    # relative 1e-3, against a step that is about 47% sampling noise, and
+    # Megatron runs their own experiments in bf16, which is coarser still. So
+    # it is on.
+    #
+    # It is emphatically **not** on inside the optimizer. TF32 there moves the
+    # singular values of a weight by a relative 1.0 over 200 two-sided steps
+    # (2.6e-04 without), which would silently destroy the one property the
+    # method is built on, and it corrupts the covariance the method inverts.
+    # `ngd_pion` turns it off around its own linear algebra and does not
+    # depend on this field being anything in particular.
+    #
+    # A scientific field regardless, not plumbing: it changes results, so it
+    # is in the hash.
+    tf32: bool = True
+
     # NGD-Pion
     ngd_eps: float = 1e-4
     ngd_beta: float = 0.95

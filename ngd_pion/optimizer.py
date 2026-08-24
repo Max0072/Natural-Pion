@@ -25,7 +25,7 @@ import torch
 from .covariance import CovarianceAccumulator
 from .direction import fisher_apply, generators, natural_gradient, trust_region_alpha
 from .factorization import build_bases
-from .linalg import cayley
+from .linalg import cayley, exact_fp32
 
 __all__ = ["NGDPion"]
 
@@ -181,6 +181,14 @@ class NGDPion(torch.optim.Optimizer):
     @torch.no_grad()
     def step(self, closure=None):
         loss = closure() if closure is not None else None
+        # Every operation below is fp32 linear algebra on a GPU that would
+        # otherwise run it in TF32: the factorisation, the solve, and the
+        # retraction whose exactness the method rests on. See `exact_fp32`.
+        with exact_fp32():
+            self._step(closure_loss=loss)
+        return loss
+
+    def _step(self, closure_loss=None):
         for group in self.param_groups:
             active = [p for p in group["params"] if p.grad is not None]
             for p in active:
@@ -198,7 +206,6 @@ class NGDPion(torch.optim.Optimizer):
             due = [p for p in active if self.state[p]["since_refactor"] >= group["t_fac"]]
             if due:
                 self._refactor(due, group)
-        return loss
 
     def _apply(self, p: torch.Tensor, group: dict) -> None:
         state = self.state[p]
