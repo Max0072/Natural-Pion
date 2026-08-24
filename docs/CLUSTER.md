@@ -6,6 +6,23 @@ directory, and `data_p330` in `$HOME` is a symlink to the same place.
 
 Allocation: **2000 RTX hours and 1000 B200 hours.**
 
+## Where things live
+
+| | |
+|---|---|
+| repository | `$DATA_p330/Natural-Pion` |
+| container | `$DATA_p330/containers/ngd-pion.sif` |
+| corpus | `$DATA_p330/c4/c4_{train,val}.bin` |
+| run outputs | `$DATA_p330/runs/<name>/` |
+| SLURM logs | `logs/`, **in the directory you submit from** |
+
+The repository lives in the project directory rather than `$HOME` because
+`$DATA_p330` is group-readable and `$HOME` is not, and because one
+`--bind "$DATA_p330:$DATA_p330"` then covers code, data, container and results
+at once. The sbatch scripts default `REPO`, `SIF`, `DATA` and `RUNS` to exactly
+these paths, so a submission needs nothing in the environment beyond
+`$DATA_p330` itself, which `~/.bashrc` exports.
+
 ## The partitions
 
 | partition | GPUs/node | nodes | total | walltime |
@@ -14,6 +31,10 @@ Allocation: **2000 RTX hours and 1000 B200 hours.**
 | `b200` | 8 | 2 | **16** | 24 h |
 | `a100` | — | 6 | — | 24 h |
 | `a5000` | 8 | 1 | 8 | 24 h |
+
+Those are the configured totals. What is actually schedulable — one rtx node is
+drained and one node of each GPU pool sits under someone else's reservation —
+is in *What the cluster reports* below.
 
 Each `rtx` node carries 64 CPUs and 1 TB of memory against its 8 GPUs, so jobs
 ask for 8 cores. SLURM's GRES there is untyped — `gpu:8(S:0-1)` names no model,
@@ -48,25 +69,45 @@ checkpoint, with the sampler's position restored so batches are not replayed.
 That makes the 24 h cap survivable, though step 1 still decides which pool each
 run belongs on.
 
-Still to find:
+## What the cluster reports
+
+Measured 2026-08-24. `sbatch --test-only` is the way to re-ask the scheduling
+half of this: it answers where and when a job *would* start without queueing
+anything.
+
+| node | state |
+|---|---|
+| `rtx6003`, `rtx6004` | 64 CPUs, 1030 GB, `gpu:8` — the usable rtx pair |
+| `rtx6005` | drained |
+| `rtx6006` | held by the `migration` reservation |
+| `b201` | 128 CPUs, 2015 GB, `gpu:8`, idle — the usable b200 node |
+| `b202` | held by the `migration` reservation |
+
+`migration` is an indefinite reservation belonging to another user, running to
+2027-12-31 over `b202`, `rtx6006` and four non-GPU nodes. It does **not** block
+us: `--test-only` reports an immediate start on both partitions, onto `b201`
+and `rtx6004` respectively. It does halve the b200 pool, so if a b200 job ever
+queues unexpectedly long, this reservation is the first thing to check.
+
+Scheduler limits are not a constraint here. `MaxArraySize=1001`,
+`MaxJobCount=10000`, and the p330 association sets no `MaxJobs` or
+`MaxSubmitJobs`, so step 5's `--array=0-11%8` passes as written. Both
+partitions cap at `MaxTime=1-00:00:00`. Billing weights are `gres/gpu=1.0`
+against `cpu=0.0625`, so the allocation is spent by GPU-hour and the eight
+cores each job asks for cost almost nothing.
+
+The **login node has network**: huggingface.co and pypi.org answer, and
+`nvcr.io` issues an anonymous pull token, so the NGC image needs no API key.
+
+Whether **compute nodes** have network is still open, and it is a different
+question with a different answer on many clusters:
 
 ```bash
-scontrol show node rtx6003 | grep -Ei "Gres|RealMemory|CPUTot"   # which RTX card
-scontrol show config | grep -Ei "MaxArraySize|MaxSubmitJobs"
-apptainer --version
-df -h "$DATA_p330"
+srun -A p330 -p rtx --time=00:02:00 bash -c 'curl -sI -m 5 https://huggingface.co | head -1'
 ```
 
-And separately — these are different questions, and on many clusters the answer
-differs:
-
-```bash
-curl -sI -m 5 https://huggingface.co | head -1                       # login node
-srun -A p330 --time=00:02:00 --pty bash -c 'curl -sI -m 5 https://huggingface.co | head -1'   # compute node
-```
-
-If compute nodes have no network, C4 and the tokenizer must be staged into
-`$DATA_p330` from the login node first, which reorders steps 2 and 3 below.
+If they do not, C4 and the tokenizer must be staged from the login node, which
+puts step 3 before step 2.
 
 ## Step 0 — preflight
 
@@ -108,16 +149,42 @@ Decide the allocation from these two numbers, not from specifications.
 ## Step 2 — container
 
 ```bash
-apptainer build --fakeroot "$DATA_p330/containers/ngd-pion.sif" container/ngd-pion.def
+export APPTAINER_CACHEDIR=/tmp/apptainer-$USER/cache
+export APPTAINER_TMPDIR=/tmp/apptainer-$USER/tmp
+mkdir -p "$APPTAINER_CACHEDIR" "$APPTAINER_TMPDIR"
+
+apptainer build --ignore-fakeroot-command \
+    "$DATA_p330/containers/ngd-pion.sif" container/ngd-pion.def
 ```
 
-`--fakeroot` is not granted everywhere. If it is refused, build the `.sif` on a
-machine where you have root and copy the single file across — that is the whole
-advantage of the format.
+Three things about that command, each of which was measured rather than
+assumed.
+
+**`--fakeroot` is not granted and is not needed.** `cy26ms1` has no entries in
+`/etc/subuid` or `/etc/subgid`, so the flag in earlier versions of this
+document would have failed. Apptainer 1.5 falls back to a root-mapped user
+namespace by itself — unprivileged namespaces are enabled here and
+`unshare -U -r` succeeds — and `%post` runs in it as uid 0 with working
+outbound network. Verified by building a throwaway alpine image whose `%post`
+installed a package and downloaded from PyPI. The plan-B of building elsewhere
+and copying a `.sif` across is not required.
+
+**`--ignore-fakeroot-command` is required.** Without it apptainer wraps `%post`
+in a `fakeroot` binary that the image does not carry, and the build dies at the
+first line of `%post` with *"a shared library is likely missing in the image"*.
+
+**`APPTAINER_TMPDIR` must be on local disk.** Pointed at `/nvme/scratch`, which
+is NFS, the alpine probe hung in *"Extracting OCI image"* and had not finished
+five minutes later; pointed at `/tmp`, which is local ZFS with 419 GB free, the
+identical build finished in seconds. The NGC image unpacks to tens of
+gigabytes, so this is the difference between a twenty-minute build and an
+afternoon spent hammering a shared filer.
 
 The base is NGC's PyTorch image because Megatron expects it and it ships a
 built TransformerEngine. The lightweight harness needs none of that; sharing
-one image just keeps both paths reproducible from one pinned digest.
+one image just keeps both paths reproducible from one pinned digest. The
+`%post` also installs `pytest` and `scipy`, because step 3 runs the test suite
+inside this image and neither is guaranteed to be in the base.
 
 ## Step 3 — data
 

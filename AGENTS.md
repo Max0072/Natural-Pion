@@ -43,6 +43,13 @@ withdrawn. Which pool each run belongs on is a question for the throughput
 measurement, not for arithmetic. Resubmitting the same command resumes from the
 checkpoint.
 
+Of those, `rtx6005` is drained and `rtx6006` and `b202` are held by another
+user's open-ended reservation, leaving two rtx nodes and one b200 node
+schedulable as of 2026-08-24. It does not block submission — `sbatch
+--test-only` reports an immediate start on both — but it is the first thing to
+check if a b200 job queues for longer than it should. `docs/CLUSTER.md` carries
+the node-by-node detail and the scheduler limits.
+
 **Blocked on the cluster, in order:**
 
 1. Throughput on both partitions. A 60M model does not fill a B200; the peak-FLOPS
@@ -116,6 +123,15 @@ Things that look right and are not. Every one of these cost real time here.
   readers must take the last one.
 - **A truncated run always sits far above a converged target.** That is not a
   miss. `anchor.check` refuses to judge an incomplete run.
+- **Apptainer's temporary directory must be on local disk.** Pointed at
+  `/nvme/scratch`, which is NFS, an image build hangs in "Extracting OCI image"
+  and does not finish; on local `/tmp` the identical build takes seconds.
+  `~/.bashrc` sets `APPTAINER_TMPDIR` and `APPTAINER_CACHEDIR` accordingly.
+- **`--fakeroot` is not granted here, and is not needed.** There are no
+  `/etc/subuid` entries for this account. Apptainer falls back to a root-mapped
+  user namespace on its own, but its `fakeroot` wrapper is missing from the
+  image, so builds need `--ignore-fakeroot-command` or they die at the first
+  line of `%post` with a message about a missing shared library.
 - **Frobenius norm is not spectral norm.** The rotation angle is set by the
   spectral norm; conflating them produced a wrong theory here about the step
   scaling as `sqrt(cond(A))`, which real gradients do not support.
