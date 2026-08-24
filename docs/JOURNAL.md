@@ -403,3 +403,41 @@ rather than folding them into a flag that cannot say which file it means.
 The two manifests already written are left alone — rewriting a record after the
 fact is worse than annotating it — and each b200 run directory now carries a
 `PROVENANCE.md` saying exactly what the marker meant and how it was verified.
+
+---
+
+## 2026-08-24, 22:50 — the fix committed, the running pair left alone
+
+Considered stopping the b200 pair and restarting it to clear the `-dirty`
+stamp, and decided against it. `train.py:212` does rewrite `manifest.json` at
+every start, so it would have worked mechanically — but the pair was at step
+11,400 of 73,242, and a restart resumes from the checkpoint rather than
+starting over. The rewritten manifest would then have named a commit under
+which the first 15.6% of the run was *not* executed, with nothing in the
+directory to say so. That trades a documented error for an invisible one.
+
+Two further reasons. The rtx pair records `7c9783fefa01` with no marker and
+runs the identical configuration, so both sides of the anchor already have a
+clean-provenance witness; the b200 pair is the duplicate. And `scancel` leaves
+the run lock behind — 900 s grace, refreshed every ~2 min — so an immediate
+resubmit would have exited on `RunLock.take` and handed back the node for
+nothing, unless forced past a lock that was not actually stale.
+
+Committed instead:
+
+    57a20da  A journal, so an interrupted session can be picked up
+    76fcf23  A notes file is not a dirty working tree
+
+`git_commit()` now returns `76fcf234d9c4` with no marker. Every run started
+from here — the step 5 sweeps and the nine comparison runs of step 6, which are
+the ones that go in the paper — carries an honest stamp. The two b200 anchors
+keep their footnote in `PROVENANCE.md`.
+
+**A habit this creates.** `docs/JOURNAL.md` is tracked now, so an uncommitted
+journal entry marks the tree dirty — correctly, since the marker no longer
+distinguishes a notes file from a code change once that file is tracked.
+Commit journal entries as they are written, or a run started mid-edit inherits
+a marker that is technically true and practically misleading.
+
+Also noticed and not acted on: `AGENTS.md` and `README.md` both say "121 tests,
+14 s". It is 126 tests, 1 skipped, 21 s in the container as of `76fcf23`.
