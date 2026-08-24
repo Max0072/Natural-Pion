@@ -142,6 +142,33 @@ python -m harness.run --anchor bilateral         # the calibration run
 
 See [`docs/CLUSTER.md`](docs/CLUSTER.md) for the cluster sequence.
 
+## Working on the cluster
+
+**The login node is not for computing.** Anything that touches a GPU, or runs
+for more than a moment, goes through `srun` or `sbatch` — see
+[`docs/CLUSTER.md`](docs/CLUSTER.md). `pytest -q` on the login node is fine: it
+is seconds and CPU-only. Preparing C4 is not. A training run certainly is not.
+Administrators watch for this and will kill the process.
+
+**Work asynchronously.** Jobs live in the SLURM queue and survive anything that
+happens to the interactive session — a dropped connection, a closed tmux, a
+restarted login node. Submit and stop watching; a full run takes hours and
+there is nothing to see while it does.
+
+```bash
+squeue -u $USER          # what is queued or running
+sacct -j <jobid>         # what happened to one that finished
+tail -f logs/<name>.out  # only if you actually need to watch
+```
+
+Do not hold a session open waiting for a run. Submit, report the job id, and
+let the next session read the result from `$DATA_p330/runs`.
+
+**Results outlive sessions, context does not.** Every run writes
+`manifest.json` beside its log with the configuration, its hash and the git
+commit, which is what makes a result readable later by someone who was not
+there when it was submitted.
+
 ## House rules
 
 - **Measure before asserting.** Most of the wrong turns in this project were
