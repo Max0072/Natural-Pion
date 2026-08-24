@@ -1,0 +1,10 @@
+node      rtx6004   partition rtx
+cpu       AMD EPYC 9335 32-Core Processor
+--- aggregate download bandwidth vs number of streams (100 MB each) ---
+     1 streams     5.6 s    17.8 MB/s aggregate
+     2 streams     9.3 s    21.5 MB/s aggregate
+     4 streams     9.8 s    40.7 MB/s aggregate
+     8 streams    19.3 s    41.5 MB/s aggregate
+    16 streams    38.9 s    41.1 MB/s aggregate
+--- tokenisation, one core, from a local file ---
+    708k tok/s on one core   (40000 docs, 19.9M tokens)

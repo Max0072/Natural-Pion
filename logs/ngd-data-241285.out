@@ -1,0 +1,6 @@
+node    rtx6004
+cores   32
+out     /onyx/data/p330/c4
+tokens  1e10 in 32 shards
+2026-08-24T18:00:51+03:00
+[val] /onyx/data/p330/c4/c4_val.bin: 0.010B tokens

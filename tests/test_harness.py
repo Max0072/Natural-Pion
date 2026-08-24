@@ -1,6 +1,7 @@
 """The training harness: model shapes, data, schedule, and one end-to-end run."""
 
 import json
+import math
 from collections import Counter
 from dataclasses import replace
 from pathlib import Path
@@ -329,3 +330,45 @@ def test_no_resume_starts_over(corpus, tmp_path):
     train(cfg, max_steps=2, resume=False)
     rows = [json.loads(line) for line in (out / "log.jsonl").read_text().splitlines()]
     assert not any(r.get("event") == "resume" for r in rows)
+
+
+def test_bf16_autocast_trains_and_leaves_the_weights_in_fp32(corpus, tmp_path):
+    """Their runs are --bf16, so ours must be able to be.
+
+    Autocast covers the forward pass and the loss; the parameters stay fp32,
+    which is the same arrangement as Megatron's fp32 master weights, and the
+    optimizer keeps its own exact arithmetic underneath. This runs on CPU, so
+    it pins the wiring rather than the numerics.
+    """
+    cfg = RunConfig(
+        optimizer="ngd", model=SMALL, batch_sequences=4, micro_batch=4,
+        train_steps=4, ngd_t_fac=2, eval_every=2, eval_batches=1, log_every=1,
+        precision="bf16",
+        data_path=str(corpus / "train.bin"), val_path=str(corpus / "val.bin"),
+        out_dir=str(tmp_path),
+    )
+    out = train(cfg, max_steps=4)
+    rows = [json.loads(line) for line in (out / "log.jsonl").read_text().splitlines()]
+    losses = [r["train_loss"] for r in rows if "train_loss" in r]
+    assert losses and all(math.isfinite(v) for v in losses)
+    assert any("val_loss" in r for r in rows)
+
+    state = torch.load(out / "checkpoint.pt", map_location="cpu", weights_only=False)
+    dtypes = {v.dtype for v in state["model"].values() if torch.is_floating_point(v)}
+    assert dtypes == {torch.float32}, f"parameters must stay fp32, got {dtypes}"
+
+
+def test_precision_is_part_of_a_run_s_identity():
+    """It changes results, so two precisions are two runs, not one."""
+    assert RunConfig(precision="fp32").hash != RunConfig(precision="bf16").hash
+
+
+def test_an_unknown_precision_is_refused(corpus, tmp_path):
+    cfg = RunConfig(
+        optimizer="adamw", model=SMALL, batch_sequences=4, micro_batch=4,
+        train_steps=1, eval_every=99, log_every=1, precision="fp8",
+        data_path=str(corpus / "train.bin"), val_path=str(corpus / "val.bin"),
+        out_dir=str(tmp_path),
+    )
+    with pytest.raises(ValueError, match="precision"):
+        train(cfg, max_steps=1)

@@ -76,6 +76,20 @@ class RunConfig:
     # is in the hash.
     tf32: bool = True
 
+    # Autocast for the forward pass and the loss. `bf16` is what their own
+    # runs use -- `--bf16` in opt_llama_60M_pion.sh -- so it is the setting
+    # that makes the anchor a fair test rather than a faster one, and it is
+    # first in anchor.KNOWN_DIFFERENCES while this is `fp32`.
+    #
+    # Weights and the optimizer stay fp32 regardless: autocast changes what the
+    # operations compute in, not what the parameters are, which is the same
+    # arrangement as Megatron's fp32 master weights. The covariance is fed from
+    # activations that are then bf16, and that is measured to be harmless --
+    # thousands of independent roundings cancel in the average, perturbing `A`
+    # by 4.5e-05, well under the 1e-4 spectral floor. Storing `A` in bf16 would
+    # not be, and `CovarianceAccumulator` refuses to.
+    precision: str = "fp32"          # fp32 | bf16
+
     # NGD-Pion
     ngd_eps: float = 1e-4
     ngd_beta: float = 0.95

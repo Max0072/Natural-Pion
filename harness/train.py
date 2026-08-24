@@ -12,6 +12,7 @@ import json
 import math
 import os
 import time
+from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
 
@@ -78,12 +79,28 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
     return rot, adamw, recorder
 
 
+def _autocast(cfg: RunConfig, device: str):
+    """Autocast for the forward pass, or a no-op context.
+
+    Only the forward pass and the loss. The optimizer step runs outside it,
+    under `no_grad` and with its own exact-fp32 guard, so the retraction and
+    the covariance keep the precision they need whatever this is set to.
+    """
+    if cfg.precision == "fp32":
+        return nullcontext()
+    if cfg.precision != "bf16":
+        raise ValueError(f"precision must be 'fp32' or 'bf16', got {cfg.precision!r}")
+    return torch.autocast("cuda" if str(device).startswith("cuda") else "cpu",
+                          dtype=torch.bfloat16)
+
+
 @torch.no_grad()
-def evaluate(model: Transformer, batches) -> float:
+def evaluate(model: Transformer, batches, cfg: RunConfig, device: str) -> float:
     model.eval()
     total = 0.0
     for x, y in batches:
-        total += float(model(x, y)[1])
+        with _autocast(cfg, device):
+            total += float(model(x, y)[1])
     model.train()
     return total / max(1, len(batches))
 
@@ -200,7 +217,8 @@ def train(
             if recorder is not None:
                 recorder.enabled = micro == 0
             x, y = train_data.batch(cfg.micro_batch, device)
-            _, loss = model(x, y)
+            with _autocast(cfg, device):
+                _, loss = model(x, y)
             (loss / accum).backward()
             loss_sum += loss.detach().item() / accum
 
@@ -234,7 +252,7 @@ def train(
             log.flush()
 
         if (step + 1) % cfg.eval_every == 0 or step == steps - 1:
-            row = {"step": step, "val_loss": evaluate(model, val_batches)}
+            row = {"step": step, "val_loss": evaluate(model, val_batches, cfg, device)}
             log.write(json.dumps(row) + "\n")
             log.flush()
             _save(checkpoint, step, model, rot, adamw, train_data)

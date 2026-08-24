@@ -1,0 +1,11 @@
+node      rtx6004   partition rtx
+cpu       AMD EPYC 9335 32-Core Processor
+cores     16 visible, 16 allocated
+--- download, one stream, 200 MB ---
+    17843546 B/s
+--- corpus build: 16 shards, 200M tokens, to $DATA_p330 ---
+[train 14/16] /onyx/data/p330/probes/speed-241262/c4_train.part14.bin: 0.013B tokens
+[train 13/16] /onyx/data/p330/probes/speed-241262/c4_train.part13.bin: 0.013B tokens
+/onyx/data/p330/probes/speed-241262/c4_train.bin: 0.203B tokens from 16 shards
+--- elapsed 530 s for 203079115 tokens = 382446 tok/s ---
+4.6G	/onyx/data/p330/probes/speed-241262
