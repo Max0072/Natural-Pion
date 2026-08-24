@@ -19,20 +19,23 @@ windows with replacement and has no notion of an epoch, so a corpus smaller
 than the budget does not fail or warn -- it silently shows every token more
 than once, which is exactly the difference the anchor run is meant to detect.
 
-**Speed.** Measured on one core: streaming C4 costs 467k tokens/s and tokenising
-921k, so two thirds of the time is spent getting the bytes rather than turning
-them into numbers, and threading the tokeniser buys almost nothing. 10B tokens
-is nine to seventeen hours that way. `--shards N` instead cuts the corpus by
-**file** -- C4 ships 1024 of them -- and runs N processes over disjoint subsets,
-which scales nearly linearly because the bottleneck is per-process CPU. Give it
-one core per shard and no more shards than cores; the parts are concatenated
-when they finish. Order across shards does not matter: the corpus is a flat
-stream sampled at random windows.
+**Download first, then tokenise.** Streaming the dataset over HTTP reached
+129k tokens/s in one process and only 210k across eight, with the CPUs idle:
+the cost is not bandwidth and not tokenising, it is the round trip on every
+chunk the reader asks for. The same file on local disk tokenises at **785k
+tokens/s on one core**, and the network itself delivers 23 MB/s in one stream
+and 40 MB/s in four. So each shard fetches its files and works from disk, where
+the job is CPU-bound and scales with cores.
 
-This takes hours and is a single stream per shard, so it resumes. Progress is
-recorded beside each `.bin` in a small JSON marker, and re-running the same
-command continues from it. What resuming saves is the tokenisation, not the
-download.
+C4 ships as 1024 files, and `--shards N` gives each process its own slice of
+that list. One core per shard, no more shards than cores. On eight cores 10B
+tokens is roughly forty minutes -- seven of downloading, half an hour of
+tokenising -- against the thirteen to twenty hours the streaming path needed.
+
+It resumes. Each shard records the file it is in, how far into that file it
+read, and how many tokens it has written; re-running the same command picks up
+there. Downloads are cached, so a resumed shard re-reads nothing it already
+has.
 
 Requires `datasets` and `transformers`, which the container installs and this
 repository does not depend on -- nothing else here needs them.
@@ -52,19 +55,35 @@ from pathlib import Path
 import numpy as np
 
 
-def _mark(fh, progress: Path, records: int, tokens: int) -> None:
+def _mark(fh, progress: Path, file_index: int, records_in_file: int, tokens: int) -> None:
     """Make what is written durable, then record how far it goes.
 
     The order is the whole point. The marker must never claim more than the
     file holds, or a resume would trust bytes that were never written; the
     reverse costs nothing, because resuming truncates the file back to the
     marker. The marker itself is replaced atomically for the same reason.
+
+    The position is a file and an offset into it rather than a running count of
+    documents, so resuming skips whole files instead of re-reading them.
     """
     fh.flush()
     os.fsync(fh.fileno())
     tmp = progress.with_name(progress.name + ".tmp")
-    tmp.write_text(json.dumps({"records": records, "tokens": tokens}))
+    tmp.write_text(json.dumps(
+        {"file_index": file_index, "records_in_file": records_in_file, "tokens": tokens}))
     os.replace(tmp, progress)
+
+
+def fetch(dataset: str, filename: str, cache: Path) -> Path:
+    """Bring one dataset file to local disk, or return the copy already there.
+
+    `hf_hub_download` resumes partial transfers and does nothing when the file
+    is present, so a shard that restarts pays for no byte twice.
+    """
+    from huggingface_hub import hf_hub_download
+
+    return Path(hf_hub_download(dataset, filename, repo_type="dataset",
+                                local_dir=str(cache)))
 
 
 def repo_files(dataset: str, subset: str, split: str) -> list[str]:
@@ -86,27 +105,33 @@ def repo_files(dataset: str, subset: str, split: str) -> list[str]:
 
 
 def write_split(path: Path, files: list[str], budget: float, args, label: str) -> int:
-    """Stream `files`, tokenise, append to `path` until `budget` tokens.
+    """Fetch `files` one at a time and tokenise them from local disk.
 
-    Resumable: returns the number of tokens the file holds when it stops.
+    Local is the point. Read over HTTP the same work runs five times slower with
+    the CPU idle, because every chunk the reader asks for costs a round trip.
+
+    Returns the number of tokens the file holds when it stops.
     """
     from datasets import load_dataset
     from transformers import AutoTokenizer
 
     progress = path.with_name(path.name + ".progress.json")
-    records, written = 0, 0
+    first_file, skip_records, written = 0, 0, 0
 
     if args.no_resume:
         path.unlink(missing_ok=True)
         progress.unlink(missing_ok=True)
     elif path.exists() and progress.exists():
         state = json.loads(progress.read_text())
-        records, written = int(state["records"]), int(state["tokens"])
+        first_file = int(state["file_index"])
+        skip_records = int(state["records_in_file"])
+        written = int(state["tokens"])
         # uint16 on disk: two bytes a token. Anything past the marker was
         # written but never confirmed, so it goes.
         with path.open("r+b") as fh:
             fh.truncate(written * 2)
-        print(f"[{label}] resuming at {written/1e6:.1f}M tokens, {records} records in", flush=True)
+        print(f"[{label}] resuming in file {first_file} at {written/1e6:.1f}M tokens",
+              flush=True)
 
     if written >= budget:
         print(f"[{label}] already holds {written/1e9:.3f}B tokens", flush=True)
@@ -116,32 +141,47 @@ def write_split(path: Path, files: list[str], budget: float, args, label: str) -
     eos = tok.eos_token_id
     assert tok.vocab_size < 65536, "uint16 storage assumes a vocabulary under 65536"
 
-    stream = load_dataset(args.dataset, data_files={"train": files}, split="train",
-                          streaming=True)
-    if records:
-        stream = stream.skip(records)
-
+    done = False
     with path.open("ab") as fh:
-        buffer, texts, since_sync = [], [], 0
-        for record in stream:
-            texts.append(record["text"])
-            if len(texts) < args.batch:
-                continue
-            for ids in tok(texts, add_special_tokens=False)["input_ids"]:
-                buffer.extend(ids)
-                buffer.append(eos)
-            np.asarray(buffer, dtype=np.uint16).tofile(fh)
-            written += len(buffer)
-            records += len(texts)
-            buffer, texts = [], []
-            since_sync += 1
-            if since_sync >= args.sync_every:
-                _mark(fh, progress, records, written)
-                since_sync = 0
-                print(f"[{label}] {written/1e6:.1f}M tokens", flush=True)
-            if written >= budget:
+        for index in range(first_file, len(files)):
+            local = fetch(args.dataset, files[index], args.cache_dir)
+            stream = load_dataset("json", data_files=str(local), split="train",
+                                  streaming=True)
+            consumed = skip_records
+            if consumed:
+                stream = stream.skip(consumed)
+            skip_records = 0
+
+            buffer, texts, since_sync = [], [], 0
+            for record in stream:
+                texts.append(record["text"])
+                if len(texts) < args.batch:
+                    continue
+                for ids in tok(texts, add_special_tokens=False)["input_ids"]:
+                    buffer.extend(ids)
+                    buffer.append(eos)
+                np.asarray(buffer, dtype=np.uint16).tofile(fh)
+                written += len(buffer)
+                consumed += len(texts)
+                buffer, texts = [], []
+                since_sync += 1
+                if since_sync >= args.sync_every:
+                    _mark(fh, progress, index, consumed, written)
+                    since_sync = 0
+                    print(f"[{label}] {written/1e6:.1f}M tokens", flush=True)
+                if written >= budget:
+                    done = True
+                    break
+
+            # Stopping inside a file records where inside it; finishing one
+            # records the start of the next, so a resume skips it whole.
+            _mark(fh, progress, index if done else index + 1,
+                  consumed if done else 0, written)
+            if done:
                 break
-        _mark(fh, progress, records, written)
+        else:
+            print(f"[{label}] ran out of files at {written/1e9:.3f}B tokens", flush=True)
+
     print(f"[{label}] {path}: {written/1e9:.3f}B tokens", flush=True)
     return written
 
@@ -186,6 +226,7 @@ def run_shards(args, files: list[str]) -> None:
                "--val-tokens", repr(args.val_tokens), "--tokenizer", args.tokenizer,
                "--dataset", args.dataset, "--subset", args.subset,
                "--batch", str(args.batch), "--sync-every", str(args.sync_every),
+               "--cache-dir", str(args.cache_dir),
                "--shards", str(args.shards), "--shard-index", str(k)]
         if args.no_resume:
             cmd.append("--no-resume")
@@ -215,6 +256,8 @@ def main() -> None:
                     help="batches between durable checkpoints; a crash costs at most this much")
     ap.add_argument("--no-resume", action="store_true",
                     help="rebuild from scratch, discarding any partial corpus")
+    ap.add_argument("--cache-dir", type=Path, default=None,
+                    help="where dataset files are downloaded; defaults to <out>/downloads")
     ap.add_argument("--shards", type=int, default=1,
                     help="parallel worker processes over disjoint C4 files; one core each")
     ap.add_argument("--shard-index", type=int, default=None,
@@ -223,6 +266,9 @@ def main() -> None:
     if args.shards < 1:
         ap.error("--shards must be at least 1")
     args.out.mkdir(parents=True, exist_ok=True)
+    if args.cache_dir is None:
+        args.cache_dir = args.out / "downloads"
+    args.cache_dir.mkdir(parents=True, exist_ok=True)
 
     train_files = repo_files(args.dataset, args.subset, "train")
 
@@ -238,9 +284,16 @@ def main() -> None:
     val_files = repo_files(args.dataset, args.subset, "validation")
     write_split(args.out / "c4_val.bin", val_files, args.val_tokens, args, label="val")
 
-    if args.shards == 1:
-        write_split(args.out / "c4_train.bin", train_files, args.target_tokens, args,
-                    label="train")
+    # A finished corpus is not rebuilt. The shards' own markers cover a build
+    # interrupted partway, but they are removed once the parts are joined, so
+    # without this a re-run of the same command after a successful build --
+    # a requeued job, a repeated line in a script -- would silently start the
+    # whole corpus again.
+    final = args.out / "c4_train.bin"
+    if not args.no_resume and final.exists() and final.stat().st_size // 2 >= args.target_tokens:
+        print(f"{final}: already holds {final.stat().st_size / 2e9:.3f}B tokens")
+    elif args.shards == 1:
+        write_split(final, train_files, args.target_tokens, args, label="train")
     else:
         run_shards(args, train_files)
 
