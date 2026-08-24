@@ -52,6 +52,7 @@ import random
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 import numpy as np
@@ -108,6 +109,39 @@ def fetch(dataset: str, filename: str, cache: Path, attempts: int = 7) -> Path:
             time.sleep(wait)
             delay *= 2
     raise RuntimeError("unreachable")
+
+
+@contextmanager
+def exclusive(out: Path, force: bool = False):
+    """Refuse to run a second build into the same directory.
+
+    Two builds sharing an output directory append to the same part files and
+    interleave them, and nothing downstream would notice: the markers would
+    still agree with the sizes, and the corpus would simply be wrong. It
+    happened here -- a submission that looked cancelled had already reached the
+    queue -- and was caught only because both jobs were still downloading.
+
+    The lock carries the job id so a stale one says who left it.
+    """
+    lock = out / ".build.lock"
+    owner = os.environ.get("SLURM_JOB_ID", f"pid {os.getpid()}")
+    if force:
+        lock.unlink(missing_ok=True)
+    try:
+        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+    except FileExistsError:
+        raise SystemExit(
+            f"{lock} exists: another build is writing to {out} "
+            f"({lock.read_text().strip()}). Two builds in one directory "
+            f"interleave their parts silently. If that build is dead, pass "
+            f"--force or remove the file."
+        ) from None
+    with os.fdopen(fd, "w") as fh:
+        fh.write(f"{owner}\n")
+    try:
+        yield
+    finally:
+        lock.unlink(missing_ok=True)
 
 
 def repo_files(dataset: str, subset: str, split: str) -> list[str]:
@@ -283,6 +317,8 @@ def main() -> None:
     ap.add_argument("--batch", type=int, default=1000)
     ap.add_argument("--sync-every", type=int, default=32,
                     help="batches between durable checkpoints; a crash costs at most this much")
+    ap.add_argument("--force", action="store_true",
+                    help="take the directory lock even if one is already there")
     ap.add_argument("--no-resume", action="store_true",
                     help="rebuild from scratch, discarding any partial corpus")
     ap.add_argument("--cache-dir", type=Path, default=None,
@@ -299,21 +335,29 @@ def main() -> None:
         args.cache_dir = args.out / "downloads"
     args.cache_dir.mkdir(parents=True, exist_ok=True)
 
-    train_files = repo_files(args.dataset, args.subset, "train")
+    listing = args.out / ".files.json"
 
     if args.shard_index is not None:
-        # A child. Its slice is every Nth file, so shards are the same size
-        # whatever order the list arrives in, and its budget is its share.
+        # A child. It reads the file list the parent already fetched: asking
+        # for it again is what cost us the corpus once. Listing this repository
+        # is a recursive walk of eleven hundred files, and thirty-two children
+        # doing it at once exhausted a quota of a thousand API requests per
+        # five minutes, which arrived as a 429 and killed twenty shards.
+        files = json.loads(listing.read_text())["train"]
         k, n = args.shard_index, args.shards
-        # Stagger the openings. Thirty-two processes reaching the Hub in the
-        # same second is what the rate limiter is there to stop.
-        time.sleep(0.4 * k)
         share = args.target_tokens / n
-        write_split(args.out / f"c4_train.part{k}.bin", train_files[k::n], share, args,
+        write_split(args.out / f"c4_train.part{k}.bin", files[k::n], share, args,
                     label=f"train {k}/{n}")
         return
 
-    val_files = repo_files(args.dataset, args.subset, "validation")
+    with exclusive(args.out, args.force):
+        train_files = repo_files(args.dataset, args.subset, "train")
+        val_files = repo_files(args.dataset, args.subset, "validation")
+        listing.write_text(json.dumps({"train": train_files, "val": val_files}))
+        _build(args, train_files, val_files)
+
+
+def _build(args, train_files, val_files) -> None:
     write_split(args.out / "c4_val.bin", val_files, args.val_tokens, args, label="val")
 
     # A finished corpus is not rebuilt. The shards' own markers cover a build
