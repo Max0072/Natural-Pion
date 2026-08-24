@@ -73,7 +73,7 @@ not.
 
 | decision | why |
 |---|---|
-| `S = I` (isotropic backward) | out-side collapses to an orthogonal `eigh`, cond 9 against 7350; `A` becomes the only statistic and **no backward hook is needed**. KL-optimal when a Kronecker factor is fixed (Lin et al. 2026); the input side is empirically the better one to keep (Eschenhagen et al. 2026) |
+| `S = I` | **not** a claim that backward errors are isotropic — the measured `S` is strongly anisotropic and no simple model fits it. Using it is what makes the step worse: `S = I` reduced held-out loss 1.4-1.9x more than the measured `S` on a toy transformer, because a finite-sample covariance is too noisy to invert. Also collapses the out-side to an orthogonal `eigh` and removes the need for a backward hook |
 | Cayley, not their truncated exponential | `R^T R = I + A^4/4` exactly, so the truncation always inflates. More importantly, **ablating their RMS scaling makes it diverge within tens of steps**, so an exact retraction is a *precondition* of the ablation, not a preference |
 | one spectral floor `max(lam, eps*lam_max)`, not a shift | a floor is the identity above itself; a shift perturbs well-determined directions too. 134x more accurate on a wide layer at `eps = 1e-4` |
 | `eps = 1e-4` | **its lower bound is set by the compute dtype, not the problem.** fp32 machine epsilon is 1.2e-7, so `1e-8` is meaningless there — measured 2e-1 error against fp64 |
@@ -122,6 +122,7 @@ Things that look right and are not. Every one of these cost real time here.
 | what `T_fac` | `alpha` is the free readout — it is identically 1 on a fresh basis and falls as the basis drifts. Log it, then choose |
 | do rotation angles stay bounded without RMS | logged per step as `angle`. On a toy transformer they spanned 1e-4 to 3e-2 with a 286x spread across layers |
 | square vs wide layers | the wide `ffn down` is the only matrix per block with a kernel on the in-side and the only one needing `A^{-1/2}`. Expect it to behave differently |
+| does `S = I` still beat the measured `S` at scale | it does on a toy transformer with ~80k tokens estimating `S` at `d_out = 256`. A real run's EMA sees orders of magnitude more, where the estimate may become accurate enough to invert. The run testing this was killed before finishing. **Do not put the claim in the paper until it is checked** |
 
 ## Running things
 

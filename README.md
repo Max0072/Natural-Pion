@@ -100,9 +100,19 @@ for skew `X` at any step size. That is why the spectrum is preserved exactly
 here and only approximately in Pion, whose truncated exponential satisfies
 `RᵀR = I + A⁴/4`.
 
-**Two approximations, both named.** `x ⊥ δ'` — the K-FAC independence
-assumption, not true in a deep network — and `S = I`. Everything downstream of
-those is exact algebra, not a further approximation.
+**The approximations, named.** One is `x ⊥ δ'`, the K-FAC independence
+assumption, which is not true in a deep network.
+
+The other is `S = I`, and it is less of a concession than it looks. The
+measured `S` is strongly anisotropic — no simple model fits it — but *using* it
+makes the step worse: on a toy transformer the direction built with `S = I`
+reduced held-out loss **1.4-1.9x more** than the one built with the measured
+`S`. A covariance estimated from a finite sample is too noisy to invert, and
+isotropising it acts as regularisation rather than simplification. Whether that
+survives the far larger samples of a real run is **untested**; see
+[`AGENTS.md`](AGENTS.md).
+
+Everything downstream of the two is exact algebra, not a further approximation.
 
 **Regularisation is one knob.** Every spectrum that reaches a denominator is
 floored at `max(λ, ε·λ_max)`, and nothing else is damped anywhere.
