@@ -159,7 +159,7 @@ def train(
     torch.set_float32_matmul_precision("high" if cfg.tf32 else "highest")
     out = Path(cfg.out_dir) / cfg.name
     out.mkdir(parents=True, exist_ok=True)
-    (out / "manifest.json").write_text(json.dumps(cfg.manifest(), indent=2))
+    (out / "manifest.json").write_text(json.dumps(cfg.manifest(device), indent=2))
     # Appending rather than truncating keeps a preempted run's history, but it
     # also means a re-run with the same configuration writes into the same
     # file. A start marker separates them so readers can take the last attempt.

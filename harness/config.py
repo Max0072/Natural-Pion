@@ -17,12 +17,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 from dataclasses import asdict, dataclass, field
 
 from .model import ModelConfig
 
-__all__ = ["RunConfig", "git_commit"]
+__all__ = ["RunConfig", "git_commit", "machine"]
 
 
 def git_commit() -> str:
@@ -37,6 +38,27 @@ def git_commit() -> str:
         return out.stdout.strip()[:12] + ("-dirty" if dirty else "")
     except Exception:
         return "unknown"
+
+
+def machine(device: str | None = None) -> dict:
+    """Which card, which host, which torch. Recorded, never hashed."""
+    import platform
+
+    import torch
+
+    info = {
+        "host": platform.node(),
+        "slurm_job": os.environ.get("SLURM_JOB_ID"),
+        "partition": os.environ.get("SLURM_JOB_PARTITION"),
+        "torch": torch.__version__,
+        "cuda": torch.version.cuda,
+        "device": str(device) if device is not None else None,
+    }
+    if device is not None and str(device).startswith("cuda") and torch.cuda.is_available():
+        info["gpu"] = torch.cuda.get_device_name(0)
+        cap = torch.cuda.get_device_capability(0)
+        info["arch"] = f"sm_{cap[0]}{cap[1]}"
+    return info
 
 
 @dataclass(frozen=True)
@@ -144,13 +166,22 @@ class RunConfig:
     def name(self) -> str:
         return f"{self.optimizer}-lr{self.lr:g}-s{self.seed}-{self.hash}"
 
-    def manifest(self) -> dict:
-        """What gets written beside the results so a run can be reconstructed."""
+    def manifest(self, device: str | None = None) -> dict:
+        """What gets written beside the results so a run can be reconstructed.
+
+        The machine is part of that. Two cards do not agree bitwise -- cuBLAS
+        picks different algorithms per architecture, floating-point addition is
+        not associative, and some backward kernels accumulate atomically in no
+        fixed order -- so a comparison whose arms ran on different hardware has
+        a variable in it that nothing in the configuration records. Writing the
+        device down does not prevent that; it makes it answerable afterwards.
+        """
         return {
             "name": self.name,
             "hash": self.hash,
             "git_commit": git_commit(),
             "tokens_per_step": self.tokens_per_step,
             "total_tokens": self.total_tokens,
+            "machine": machine(device),
             "config": asdict(self),
         }
