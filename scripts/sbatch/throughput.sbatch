@@ -15,9 +15,14 @@
 #   sbatch -p b200 scripts/sbatch/throughput.sbatch
 #   OPT=ngd sbatch -p rtx scripts/sbatch/throughput.sbatch
 #
+# Log every 50 steps, as a real run does, not more often. Writing a line costs
+# about 1.5 s against an NFS flush, so at --log-every 4 the window is 2 s of
+# work and 1.5 s of measuring, and this reported 149,697 tokens/s where the
+# anchor runs measure 268,590 by wall clock. The instrument was the difference.
+#
 # Measured 2026-08-24 on rtx with pion and bf16: micro-batch 512 fits at 83.3 GB
-# of 97.9, giving 149,697 tokens/s and a 17.8 h run for 9.6B tokens -- inside
-# the 24 h cap, so a full run needs no requeue.
+# of 97.9, and a 9.6B run takes 9.9 h -- inside the 24 h cap with room to
+# spare, so a full run needs no requeue.
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"
@@ -25,7 +30,7 @@ OPT="${OPT:-pion}"
 W="$DATA_p330/runs/tput-${SLURM_JOB_ID}"
 RUN="apptainer exec --nv --bind $DATA_p330:$DATA_p330 --pwd $REPO $SIF python -m harness.run"
 COMMON="--optimizer $OPT --precision bf16 --data-path $DATA_p330/c4/c4_train.bin \
-        --val-path $DATA_p330/c4/c4_val.bin --eval-every 100000 --log-every 4 --no-resume"
+        --val-path $DATA_p330/c4/c4_val.bin --eval-every 100000 --log-every 50 --no-resume"
 
 echo "node $(hostname)  partition ${SLURM_JOB_PARTITION:-?}  optimizer $OPT"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader

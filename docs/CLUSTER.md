@@ -167,6 +167,12 @@ What it reported on `rtx6003`, 2026-08-24, with the 26.07 image:
   ok    model fwd+bwd  58.2M params, peak 2.1 GB at 8 sequences
 ```
 
+And what step 1 then measured, with `pion` in the anchor's own configuration:
+micro-batch **512 fits** at 83.3 GB of 97.9, so there is no gradient
+accumulation and the covariance sees all 131072 tokens of a step. The rate is
+**268,590 tokens/s**, a step is 0.488 s, and a 9.6B run is **9.9 h** -- inside
+the 24 h cap with room to spare.
+
 Two things to carry forward. The `eigh` at 512 is three times faster on 26.07
 than on 25.04, which is most of why that image was adopted -- most matrices in
 this model are square. And **2.1 GB at 8 sequences** sets the batch arithmetic:

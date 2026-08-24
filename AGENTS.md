@@ -192,6 +192,13 @@ Things that look right and are not. Every one of these cost real time here.
   requires the spectrum to hold anyway. It is left on for the *model*, where it
   is worth 2.2-2.6x and costs a relative 1e-3 on a gradient that is about half
   sampling noise.
+- **Do not measure throughput with the log turned up.** Writing a log line
+  costs about 1.5 s against an NFS flush. At `--log-every 4` and a 0.488 s
+  step, that is 1.5 s of measuring per 2 s of work, and the throughput probe
+  reported 149,697 tokens/s where the anchor runs measure 268,590 by wall
+  clock -- a factor of 1.8, entirely instrument. Measure at the `log_every` a
+  real run uses, and cross-check against wall clock, which cannot lie about
+  itself.
 - **Time nothing on a GPU without warming it up.** The first call of a kind
   pays cuBLAS or cuSOLVER's one-off setup, and preflight reported 15 TFLOPS for
   a matmul that does 184, and made one image look ten times slower at `eigh`
