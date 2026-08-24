@@ -160,8 +160,8 @@ apptainer build --ignore-fakeroot-command \
 Three things about that command, each of which was measured rather than
 assumed.
 
-**`--fakeroot` is not granted and is not needed.** `cy26ms1` has no entries in
-`/etc/subuid` or `/etc/subgid`, so the flag in earlier versions of this
+**`--fakeroot` is not granted and is not needed.** This account has no entries
+in `/etc/subuid` or `/etc/subgid`, so the flag in earlier versions of this
 document would have failed. Apptainer 1.5 falls back to a root-mapped user
 namespace by itself — unprivileged namespaces are enabled here and
 `unshare -U -r` succeeds — and `%post` runs in it as uid 0 with working

@@ -7,6 +7,17 @@ preconditions that rotation by the Fisher operator on the bivector tangent
 space instead. Target venue is ICLR; the deadline is roughly one month from
 2026-08-23.
 
+**This is the working repository, not the published one.** It keeps the
+operational record -- what the cluster actually reports, which build flags were
+needed and why, the traps that cost time -- because that record is what makes
+the work continuable by whoever picks it up, including its author three weeks
+later. What ships with the paper is a curated snapshot: the algorithm, the
+optimizer, the harness, the tests and a short reproduction note. So do not thin
+this repository out to make it presentable, and do not park operational notes
+on a side branch to hide them -- in a public repository every branch is public
+anyway, and the split that works is between this repository and the snapshot,
+not between two branches of it.
+
 ## Read before changing anything
 
 1. **[`ALGORITHM.md`](ALGORITHM.md)** — the specification. Every design decision
