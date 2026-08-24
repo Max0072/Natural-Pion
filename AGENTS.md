@@ -38,7 +38,11 @@ Carlo, the closed-form solve against an explicit Kronecker system, the descent
 lemma, the sign, Cayley's exactness, spectrum preservation. The optimizer, the
 Pion baseline with ablation switches, a LLaMA-60M harness in their
 configuration, the anchor machinery, SLURM scripts, a container definition.
-117 tests.
+121 tests, 14 s in the container on four threads. One is skipped by design --
+`square W has no kernel` -- and **none of them touches a GPU**, which is a
+property of checking the torch path against a numpy oracle rather than an
+oversight, but it does mean anything device-specific has to be checked by
+running something on a card.
 
 **Not done, and this is the whole risk.** Nothing has been trained at scale.
 The only evidence the method helps is a toy least-squares with an exactly
@@ -181,7 +185,7 @@ Things that look right and are not. Every one of these cost real time here.
 ## Running things
 
 ```bash
-pytest -q                                        # 117 tests, seconds
+pytest -q                                        # 121 tests, 14 s
 python -m harness.run --optimizer ngd --lr 1e-3  # one run
 python -m harness.run --anchor bilateral         # the calibration run
 ```
