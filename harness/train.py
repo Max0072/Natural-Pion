@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import platform
 import time
 from contextlib import nullcontext
 from dataclasses import replace
@@ -105,6 +106,52 @@ def evaluate(model: Transformer, batches, cfg: RunConfig, device: str) -> float:
     return total / max(1, len(batches))
 
 
+class RunLock:
+    """One writer per run directory, with a heartbeat so a resume is not blocked.
+
+    A run's directory is named by the configuration hash, so the same
+    configuration on two machines is the same directory -- and two trainers
+    appending to one log and overwriting one checkpoint produce a run that
+    looks finished and is not. Nothing downstream could detect it.
+
+    The lock is refreshed at every checkpoint, roughly every four minutes at
+    this scale, so a lock older than the grace period belonged to something
+    that died. That is deliberately taken over rather than refused: the cluster
+    caps jobs at 24 hours and resubmitting to resume is the intended workflow,
+    which a lock left behind by a SIGKILL would otherwise break.
+    """
+
+    def __init__(self, path: Path, grace: float = 900.0) -> None:
+        self.path = path
+        self.grace = grace
+        self.owner = (f"{platform.node()} pid {os.getpid()} "
+                      f"slurm {os.environ.get('SLURM_JOB_ID', '-')}")
+
+    def take(self, force: bool = False) -> None:
+        if self.path.exists() and not force:
+            age = time.time() - self.path.stat().st_mtime
+            if age < self.grace:
+                raise SystemExit(
+                    f"{self.path} is held by {self.path.read_text().strip()} "
+                    f"({age:.0f}s ago). Two trainers in one run directory "
+                    f"interleave their logs and overwrite each other's "
+                    f"checkpoints. Use a different --out-dir, or --force if "
+                    f"that process is gone."
+                )
+            print(f"taking over a lock {age/60:.0f} min stale, left by "
+                  f"{self.path.read_text().strip()}", flush=True)
+        self.path.write_text(self.owner + "\n")
+
+    def touch(self) -> None:
+        try:
+            self.path.write_text(self.owner + "\n")
+        except OSError:
+            pass
+
+    def release(self) -> None:
+        self.path.unlink(missing_ok=True)
+
+
 def _save(path: Path, step: int, model, rot, adamw, data) -> None:
     """Write the checkpoint, atomically.
 
@@ -142,7 +189,8 @@ def _restore(path: Path, model, rot, adamw, data) -> int:
 
 
 def train(
-    cfg: RunConfig, device: str = "cpu", max_steps: int | None = None, resume: bool = True
+    cfg: RunConfig, device: str = "cpu", max_steps: int | None = None, resume: bool = True,
+    force: bool = False,
 ) -> Path:
     """Train one run, picking up from a checkpoint if one is already there.
 
@@ -159,6 +207,8 @@ def train(
     torch.set_float32_matmul_precision("high" if cfg.tf32 else "highest")
     out = Path(cfg.out_dir) / cfg.name
     out.mkdir(parents=True, exist_ok=True)
+    lock = RunLock(out / ".run.lock")
+    lock.take(force)
     (out / "manifest.json").write_text(json.dumps(cfg.manifest(device), indent=2))
     # Appending rather than truncating keeps a preempted run's history, but it
     # also means a re-run with the same configuration writes into the same
@@ -197,6 +247,7 @@ def train(
         log.flush()
         if first >= steps:
             log.close()
+            lock.release()
             if recorder is not None:
                 recorder.remove()
             return out
@@ -263,8 +314,10 @@ def train(
             log.write(json.dumps(row) + "\n")
             log.flush()
             _save(checkpoint, step, model, rot, adamw, train_data)
+            lock.touch()
 
     log.close()
+    lock.release()
     if recorder is not None:
         recorder.remove()
     return out

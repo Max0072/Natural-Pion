@@ -2,6 +2,8 @@
 
 import json
 import math
+import os
+import time
 from collections import Counter
 from dataclasses import replace
 from pathlib import Path
@@ -372,3 +374,54 @@ def test_an_unknown_precision_is_refused(corpus, tmp_path):
     )
     with pytest.raises(ValueError, match="precision"):
         train(cfg, max_steps=1)
+
+
+def test_a_second_trainer_will_not_share_a_run_directory(corpus, tmp_path):
+    """Same configuration, same directory -- and two writers ruin both.
+
+    A run's directory is its configuration hash, so the same run on two
+    machines lands in one place, appends to one log and overwrites one
+    checkpoint. The result looks finished. Nothing downstream could tell.
+    """
+    from harness.train import RunLock
+
+    cfg = RunConfig(
+        optimizer="adamw", model=SMALL, batch_sequences=4, micro_batch=4,
+        train_steps=2, eval_every=99, log_every=1,
+        data_path=str(corpus / "train.bin"), val_path=str(corpus / "val.bin"),
+        out_dir=str(tmp_path),
+    )
+    out = Path(cfg.out_dir) / cfg.name
+    out.mkdir(parents=True, exist_ok=True)
+    held = RunLock(out / ".run.lock")
+    held.take()
+
+    with pytest.raises(SystemExit, match="held by"):
+        train(cfg, max_steps=2)
+
+    # --force is the way past it, for when the holder is known to be gone.
+    train(cfg, max_steps=2, force=True)
+
+
+def test_a_stale_lock_does_not_block_a_resume(corpus, tmp_path):
+    """The cluster caps jobs at 24 h and resubmitting is how a run continues.
+
+    A lock left behind by a SIGKILL must not stand in the way of that, so one
+    older than the grace period is taken over rather than obeyed.
+    """
+    from harness.train import RunLock
+
+    cfg = RunConfig(
+        optimizer="adamw", model=SMALL, batch_sequences=4, micro_batch=4,
+        train_steps=2, eval_every=99, log_every=1,
+        data_path=str(corpus / "train.bin"), val_path=str(corpus / "val.bin"),
+        out_dir=str(tmp_path),
+    )
+    out = Path(cfg.out_dir) / cfg.name
+    out.mkdir(parents=True, exist_ok=True)
+    lock = out / ".run.lock"
+    RunLock(lock).take()
+    os.utime(lock, (time.time() - 3600, time.time() - 3600))
+
+    train(cfg, max_steps=2)          # takes it over, loudly, rather than refusing
+    assert not lock.exists(), "a finished run releases its lock"
