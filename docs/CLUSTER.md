@@ -133,6 +133,32 @@ the operation that varies between CUDA builds.
 
 Run it on both pools.
 
+What it reported on `rtx6003`, 2026-08-24, with the 26.07 image:
+
+```
+  ok    device  NVIDIA RTX PRO 6000 Blackwell Server Edition, sm_120, 102 GB
+  ok    fp32 matmul  184 TFLOPS          <- tf32; honest fp32 is 74
+  ok    bf16 matmul  374 TFLOPS
+  ok    eigh 512  4.9 ms                 <- 15.4 ms on the 25.04 image
+  ok    eigh 1376  13.4 ms
+  ok    cayley  orthogonality error 3.9e-06
+  info  unguarded solve here is 1100x worse (4.3e-03) -- tf32 matmul is on
+  ok    model fwd+bwd  58.2M params, peak 2.1 GB at 8 sequences
+```
+
+Two things to carry forward. The `eigh` at 512 is three times faster on 26.07
+than on 25.04, which is most of why that image was adopted -- most matrices in
+this model are square. And **2.1 GB at 8 sequences** sets the batch arithmetic:
+the head materialises `vocab x tokens` logits in fp32, 128 KB per token per
+copy, so the whole 512-sequence batch would want something like 70-85 GB
+against the card's 102. `--micro-batch 512` is therefore unlikely; 128 or 256
+is the range, and the covariance sees a half or a quarter of each step's tokens
+accordingly.
+
+Run `scripts/gpu_smoke.py` beside it. It checks what the CPU suite cannot:
+that a run resumes from its checkpoint on a card, and that the spectrum of a
+weight holds still even with TF32 switched on deliberately.
+
 ## Step 1 — measure throughput
 
 Twenty minutes, and it decides how the 3000 hours are spent.
@@ -180,7 +206,7 @@ cmp "$LOCAL" "$SIF.new"
 mv "$SIF.new" "$SIF"
 ```
 
-A finished image is **11.9 GB**, and takes about 25 minutes with a warm cache,
+A finished image is **9.3 GB**, and takes about 25 minutes with a warm cache,
 most of it compression that `-processors 4` deliberately slows down. If it
 comes out at a few hundred megabytes, read the next paragraph.
 
@@ -249,8 +275,9 @@ sweeps and the final table on that single image.
 
 The image records what it was built from. `apptainer inspect` reports
 `org.opencontainers.image.base.digest:
-sha256:d1eac6220dd98ef5870b1a76673cfb6f84451135a6d8a174cb92258a6bf4576d` for the
-build of 2026-08-24, alongside the CUDA, cuDNN and NCCL versions it carries.
+sha256:2140e699b3beaf7f96a0081fd9c9406bc3832b435cdb60dfa2d261f7d2f34a1c` for the
+26.07 build of 2026-08-24, alongside the CUDA, cuDNN and NCCL versions it
+carries.
 The `.def` pins a tag and tags can move; that digest is what makes "rebuild the
 same image" a checkable claim.
 
