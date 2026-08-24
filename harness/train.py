@@ -245,6 +245,13 @@ def train(
                    "tokens_per_sec": round(cfg.tokens_per_step * done_here / max(elapsed, 1e-9)),
                    "tokens_per_sec_window": round(
                        cfg.tokens_per_step * moved / max(span, 1e-9)) if moved else None}
+            if str(device).startswith("cuda"):
+                # Peak since the last log line, not since the run began: what
+                # decides `micro_batch` is what a step needs, and the head
+                # materialises vocab-by-tokens logits, so the answer is not
+                # obvious from the parameter count.
+                row["peak_gb"] = round(torch.cuda.max_memory_allocated() / 1e9, 2)
+                torch.cuda.reset_peak_memory_stats()
             window_time, window_step = now, step
             if isinstance(rot, NGDPion):
                 row.update(summarise(layer_diagnostics(rot, names)))

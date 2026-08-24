@@ -1,0 +1,435 @@
+node    rtx6004
+cores   32
+out     /onyx/data/p330/c4
+tokens  1e10 in 32 shards
+2026-08-24T18:45:52+03:00
+[val] resuming in file 0 at 10.1M tokens
+[val] already holds 0.010B tokens
+[train 3/32] resuming in file 1 at 312.8M tokens
+[train 3/32] already holds 0.313B tokens
+[train 16/32] resuming in file 1 at 312.8M tokens
+[train 16/32] already holds 0.313B tokens
+[train 22/32] resuming in file 1 at 312.6M tokens
+[train 22/32] already holds 0.313B tokens
+[train 26/32] resuming in file 1 at 312.9M tokens
+[train 26/32] already holds 0.313B tokens
+[train 6/32] resuming in file 1 at 312.6M tokens
+[train 6/32] already holds 0.313B tokens
+[train 14/32] resuming in file 1 at 312.8M tokens
+[train 14/32] already holds 0.313B tokens
+[train 25/32] resuming in file 1 at 313.0M tokens
+[train 25/32] already holds 0.313B tokens
+[train 27/32] resuming in file 1 at 312.8M tokens
+[train 27/32] already holds 0.313B tokens
+[train 0/32] resuming in file 1 at 312.6M tokens
+[train 0/32] already holds 0.313B tokens
+[train 4/32] resuming in file 1 at 312.9M tokens
+[train 4/32] already holds 0.313B tokens
+[train 20/32] resuming in file 1 at 312.5M tokens
+[train 20/32] already holds 0.313B tokens
+[train 28/32] resuming in file 1 at 312.5M tokens
+[train 28/32] already holds 0.313B tokens
+[train 19/32] 16.3M tokens
+[train 9/32] 16.1M tokens
+[train 19/32] 32.7M tokens
+[train 9/32] 32.0M tokens
+[train 23/32] 16.4M tokens
+[train 17/32] 16.1M tokens
+[train 2/32] 16.2M tokens
+[train 1/32] 16.1M tokens
+[train 21/32] 16.1M tokens
+[train 7/32] 16.1M tokens
+[train 15/32] 16.2M tokens
+[train 11/32] 16.2M tokens
+[train 10/32] 16.1M tokens
+[train 19/32] 49.0M tokens
+[train 8/32] 16.2M tokens
+[train 9/32] 48.1M tokens
+[train 5/32] 16.2M tokens
+[train 23/32] 32.7M tokens
+[train 18/32] 16.4M tokens
+[train 12/32] 16.4M tokens
+[train 13/32] 16.2M tokens
+[train 29/32] 16.1M tokens
+[train 30/32] 16.3M tokens
+[train 17/32] 32.3M tokens
+[train 2/32] 32.4M tokens
+[train 24/32] 16.0M tokens
+[train 31/32] 16.3M tokens
+[train 1/32] 32.2M tokens
+[train 21/32] 32.2M tokens
+[train 7/32] 32.1M tokens
+[train 15/32] 32.2M tokens
+[train 11/32] 32.4M tokens
+[train 10/32] 32.3M tokens
+[train 8/32] 32.3M tokens
+[train 19/32] 65.2M tokens
+[train 5/32] 32.3M tokens
+[train 9/32] 64.3M tokens
+[train 23/32] 48.9M tokens
+[train 18/32] 32.4M tokens
+[train 12/32] 32.7M tokens
+[train 29/32] 32.5M tokens
+[train 13/32] 32.6M tokens
+[train 30/32] 32.0M tokens
+[train 17/32] 48.5M tokens
+[train 24/32] 32.0M tokens
+[train 2/32] 48.8M tokens
+[train 31/32] 32.7M tokens
+[train 1/32] 48.4M tokens
+[train 21/32] 48.4M tokens
+[train 7/32] 48.1M tokens
+[train 15/32] 48.6M tokens
+[train 11/32] 48.9M tokens
+[train 10/32] 48.3M tokens
+[train 8/32] 48.3M tokens
+[train 5/32] 48.5M tokens
+[train 19/32] 81.3M tokens
+[train 9/32] 80.5M tokens
+[train 23/32] 65.1M tokens
+[train 18/32] 48.7M tokens
+[train 12/32] 48.9M tokens
+[train 29/32] 48.7M tokens
+[train 13/32] 49.0M tokens
+[train 30/32] 48.4M tokens
+[train 17/32] 64.8M tokens
+[train 24/32] 48.0M tokens
+[train 2/32] 64.7M tokens
+[train 31/32] 48.9M tokens
+[train 1/32] 64.3M tokens
+[train 21/32] 64.5M tokens
+[train 7/32] 64.2M tokens
+[train 15/32] 64.8M tokens
+[train 11/32] 65.2M tokens
+[train 10/32] 64.6M tokens
+[train 8/32] 64.3M tokens
+[train 5/32] 64.4M tokens
+[train 9/32] 96.5M tokens
+[train 19/32] 97.5M tokens
+[train 23/32] 81.4M tokens
+[train 18/32] 65.0M tokens
+[train 12/32] 65.0M tokens
+[train 29/32] 64.7M tokens
+[train 13/32] 64.9M tokens
+[train 30/32] 64.6M tokens
+[train 24/32] 64.1M tokens
+[train 17/32] 81.0M tokens
+[train 31/32] 65.1M tokens
+[train 2/32] 81.4M tokens
+[train 1/32] 80.5M tokens
+[train 21/32] 80.7M tokens
+[train 7/32] 80.5M tokens
+[train 11/32] 81.3M tokens
+[train 15/32] 81.0M tokens
+[train 8/32] 80.2M tokens
+[train 5/32] 80.4M tokens
+[train 10/32] 80.9M tokens
+[train 19/32] 113.6M tokens
+[train 9/32] 112.7M tokens
+[train 23/32] 97.4M tokens
+[train 18/32] 81.1M tokens
+[train 12/32] 81.2M tokens
+[train 29/32] 80.9M tokens
+[train 13/32] 81.1M tokens
+[train 24/32] 80.4M tokens
+[train 30/32] 80.6M tokens
+[train 17/32] 97.4M tokens
+[train 2/32] 97.2M tokens
+[train 31/32] 81.5M tokens
+[train 1/32] 96.7M tokens
+[train 21/32] 97.1M tokens
+[train 7/32] 96.3M tokens
+[train 11/32] 97.4M tokens
+[train 15/32] 97.0M tokens
+[train 5/32] 96.7M tokens
+[train 8/32] 96.5M tokens
+[train 10/32] 97.4M tokens
+[train 19/32] 129.8M tokens
+[train 9/32] 129.0M tokens
+[train 23/32] 113.7M tokens
+[train 18/32] 97.3M tokens
+[train 12/32] 97.4M tokens
+[train 29/32] 96.8M tokens
+[train 13/32] 97.2M tokens
+[train 24/32] 96.6M tokens
+[train 17/32] 113.6M tokens
+[train 30/32] 97.0M tokens
+[train 31/32] 97.6M tokens
+[train 2/32] 113.8M tokens
+[train 1/32] 112.4M tokens
+[train 21/32] 113.2M tokens
+[train 7/32] 112.3M tokens
+[train 11/32] 113.5M tokens
+[train 15/32] 113.0M tokens
+[train 5/32] 112.7M tokens
+[train 8/32] 112.6M tokens
+[train 10/32] 113.5M tokens
+[train 19/32] 145.9M tokens
+[train 9/32] 145.0M tokens
+[train 23/32] 130.1M tokens
+[train 18/32] 113.2M tokens
+[train 12/32] 113.8M tokens
+[train 29/32] 113.1M tokens
+[train 24/32] 112.6M tokens
+[train 13/32] 113.5M tokens
+[train 17/32] 129.8M tokens
+[train 30/32] 113.1M tokens
+[train 31/32] 113.9M tokens
+[train 2/32] 130.1M tokens
+[train 1/32] 128.8M tokens
+[train 21/32] 129.3M tokens
+[train 7/32] 128.8M tokens
+[train 11/32] 129.4M tokens
+[train 15/32] 129.1M tokens
+[train 5/32] 129.0M tokens
+[train 8/32] 129.0M tokens
+[train 10/32] 129.7M tokens
+[train 9/32] 161.3M tokens
+[train 19/32] 162.1M tokens
+[train 23/32] 146.2M tokens
+[train 18/32] 129.3M tokens
+[train 12/32] 130.3M tokens
+[train 29/32] 129.4M tokens
+[train 24/32] 128.8M tokens
+[train 13/32] 129.9M tokens
+[train 17/32] 146.0M tokens
+[train 30/32] 129.2M tokens
+[train 31/32] 129.9M tokens
+[train 2/32] 146.2M tokens
+[train 21/32] 145.3M tokens
+[train 1/32] 145.0M tokens
+[train 7/32] 145.1M tokens
+[train 11/32] 145.6M tokens
+[train 15/32] 145.2M tokens
+[train 5/32] 145.1M tokens
+[train 8/32] 145.2M tokens
+[train 10/32] 146.0M tokens
+[train 9/32] 177.4M tokens
+[train 19/32] 178.3M tokens
+[train 23/32] 162.5M tokens
+[train 18/32] 145.5M tokens
+[train 12/32] 146.6M tokens
+[train 29/32] 145.6M tokens
+[train 24/32] 145.2M tokens
+[train 13/32] 146.1M tokens
+[train 30/32] 145.3M tokens
+[train 17/32] 162.5M tokens
+[train 31/32] 145.9M tokens
+[train 2/32] 162.2M tokens
+[train 21/32] 161.5M tokens
+[train 1/32] 161.1M tokens
+[train 7/32] 161.2M tokens
+[train 11/32] 162.0M tokens
+[train 15/32] 161.4M tokens
+[train 5/32] 161.3M tokens
+[train 8/32] 161.3M tokens
+[train 10/32] 161.9M tokens
+[train 23/32] 178.5M tokens
+[train 18/32] 161.6M tokens
+[train 12/32] 162.7M tokens
+[train 29/32] 161.6M tokens
+[train 24/32] 161.2M tokens
+[train 13/32] 162.2M tokens
+[train 17/32] 178.7M tokens
+[train 30/32] 161.5M tokens
+[train 31/32] 162.0M tokens
+[train 2/32] 178.3M tokens
+[train 21/32] 177.8M tokens
+[train 1/32] 177.3M tokens
+[train 7/32] 177.6M tokens
+[train 19/32] 196.6M tokens
+[train 11/32] 178.5M tokens
+[train 15/32] 177.6M tokens
+[train 5/32] 177.4M tokens
+[train 9/32] 195.7M tokens
+[train 8/32] 177.5M tokens
+[train 10/32] 178.1M tokens
+[train 18/32] 177.7M tokens
+[train 12/32] 178.8M tokens
+[train 29/32] 177.9M tokens
+[train 24/32] 177.3M tokens
+[train 13/32] 178.4M tokens
+[train 30/32] 177.6M tokens
+[train 31/32] 178.0M tokens
+[train 19/32] 212.8M tokens
+[train 9/32] 211.8M tokens
+[train 23/32] 196.9M tokens
+[train 19/32] 228.9M tokens
+[train 9/32] 228.2M tokens
+[train 17/32] 196.9M tokens
+[train 23/32] 213.3M tokens
+[train 21/32] 196.0M tokens
+[train 19/32] 245.0M tokens
+[train 9/32] 244.5M tokens
+[train 7/32] 196.0M tokens
+[train 17/32] 213.0M tokens
+[train 23/32] 229.4M tokens
+[train 21/32] 212.4M tokens
+[train 30/32] 196.0M tokens
+[train 19/32] 261.3M tokens
+[train 1/32] 195.6M tokens
+[train 9/32] 260.7M tokens
+[train 7/32] 212.3M tokens
+[train 17/32] 229.2M tokens
+[train 23/32] 245.6M tokens
+[train 8/32] 195.6M tokens
+[train 21/32] 228.5M tokens
+[train 13/32] 196.6M tokens
+[train 5/32] 196.1M tokens
+[train 12/32] 196.9M tokens
+[train 15/32] 195.6M tokens
+[train 30/32] 212.1M tokens
+[train 19/32] 277.5M tokens
+[train 29/32] 196.0M tokens
+[train 11/32] 196.6M tokens
+[train 1/32] 212.0M tokens
+[train 10/32] 196.3M tokens
+[train 9/32] 276.9M tokens
+[train 18/32] 195.6M tokens
+[train 7/32] 228.3M tokens
+[train 17/32] 245.4M tokens
+[train 23/32] 261.6M tokens
+[train 8/32] 212.0M tokens
+[train 2/32] 196.5M tokens
+[train 21/32] 244.9M tokens
+[train 5/32] 212.2M tokens
+[train 13/32] 212.7M tokens
+[train 31/32] 196.3M tokens
+[train 24/32] 195.7M tokens
+[train 12/32] 213.1M tokens
+[train 30/32] 228.1M tokens
+[train 15/32] 211.9M tokens
+[train 11/32] 212.8M tokens
+[train 29/32] 212.4M tokens
+[train 19/32] 293.7M tokens
+[train 10/32] 212.4M tokens
+[train 1/32] 228.4M tokens
+[train 9/32] 293.1M tokens
+[train 18/32] 211.5M tokens
+[train 7/32] 244.2M tokens
+[train 17/32] 261.7M tokens
+[train 23/32] 277.7M tokens
+[train 8/32] 228.3M tokens
+[train 2/32] 212.7M tokens
+[train 21/32] 260.7M tokens
+[train 5/32] 228.3M tokens
+[train 13/32] 228.7M tokens
+[train 24/32] 211.9M tokens
+[train 31/32] 212.6M tokens
+[train 12/32] 229.3M tokens
+[train 15/32] 227.9M tokens
+[train 30/32] 244.3M tokens
+[train 11/32] 228.8M tokens
+[train 29/32] 228.7M tokens
+[train 10/32] 228.7M tokens
+[train 19/32] 309.6M tokens
+[train 1/32] 244.8M tokens
+[train 9/32] 309.1M tokens
+[train 18/32] 227.8M tokens
+[train 19/32] /onyx/data/p330/c4/c4_train.part19.bin: 0.313B tokens
+[train 7/32] 260.6M tokens
+[train 9/32] /onyx/data/p330/c4/c4_train.part9.bin: 0.313B tokens
+[train 17/32] 277.8M tokens
+[train 23/32] 293.7M tokens
+[train 8/32] 244.4M tokens
+[train 21/32] 277.1M tokens
+[train 2/32] 229.0M tokens
+[train 5/32] 244.6M tokens
+[train 13/32] 244.9M tokens
+[train 31/32] 228.4M tokens
+[train 24/32] 228.5M tokens
+[train 12/32] 245.3M tokens
+[train 15/32] 243.8M tokens
+[train 30/32] 260.5M tokens
+[train 11/32] 244.9M tokens
+[train 1/32] 260.8M tokens
+[train 10/32] 244.9M tokens
+[train 29/32] 244.8M tokens
+[train 18/32] 243.9M tokens
+[train 7/32] 277.1M tokens
+[train 23/32] 309.9M tokens
+[train 17/32] 294.3M tokens
+[train 21/32] 293.6M tokens
+[train 8/32] 260.7M tokens
+[train 23/32] /onyx/data/p330/c4/c4_train.part23.bin: 0.313B tokens
+[train 2/32] 245.2M tokens
+[train 5/32] 260.8M tokens
+[train 13/32] 261.1M tokens
+[train 24/32] 245.0M tokens
+[train 31/32] 244.7M tokens
+[train 12/32] 261.4M tokens
+[train 15/32] 259.8M tokens
+[train 30/32] 276.3M tokens
+[train 11/32] 261.0M tokens
+[train 10/32] 260.9M tokens
+[train 1/32] 277.1M tokens
+[train 29/32] 261.1M tokens
+[train 18/32] 259.9M tokens
+[train 7/32] 293.2M tokens
+[train 17/32] 310.5M tokens
+[train 21/32] 309.6M tokens
+[train 17/32] /onyx/data/p330/c4/c4_train.part17.bin: 0.313B tokens
+[train 8/32] 277.2M tokens
+[train 2/32] 261.2M tokens
+[train 5/32] 276.9M tokens
+[train 24/32] 261.1M tokens
+[train 13/32] 277.5M tokens
+[train 31/32] 261.0M tokens
+[train 21/32] /onyx/data/p330/c4/c4_train.part21.bin: 0.313B tokens
+[train 12/32] 278.0M tokens
+[train 15/32] 276.2M tokens
+[train 30/32] 292.7M tokens
+[train 11/32] 277.3M tokens
+[train 10/32] 276.8M tokens
+[train 1/32] 293.4M tokens
+[train 29/32] 277.6M tokens
+[train 18/32] 276.1M tokens
+[train 7/32] 309.4M tokens
+[train 7/32] /onyx/data/p330/c4/c4_train.part7.bin: 0.313B tokens
+[train 8/32] 293.7M tokens
+[train 2/32] 277.3M tokens
+[train 5/32] 293.0M tokens
+[train 24/32] 277.3M tokens
+[train 31/32] 276.7M tokens
+[train 13/32] 293.8M tokens
+[train 12/32] 293.9M tokens
+[train 15/32] 292.3M tokens
+[train 30/32] 308.9M tokens
+[train 11/32] 293.5M tokens
+[train 10/32] 293.0M tokens
+[train 1/32] 309.5M tokens
+[train 29/32] 293.5M tokens
+[train 30/32] /onyx/data/p330/c4/c4_train.part30.bin: 0.313B tokens
+[train 18/32] 292.5M tokens
+[train 1/32] /onyx/data/p330/c4/c4_train.part1.bin: 0.313B tokens
+[train 8/32] 309.8M tokens
+[train 24/32] 293.3M tokens
+[train 5/32] 309.5M tokens
+[train 2/32] 293.4M tokens
+[train 31/32] 292.9M tokens
+[train 13/32] 310.2M tokens
+[train 8/32] /onyx/data/p330/c4/c4_train.part8.bin: 0.313B tokens
+[train 12/32] 310.1M tokens
+[train 5/32] /onyx/data/p330/c4/c4_train.part5.bin: 0.313B tokens
+[train 13/32] /onyx/data/p330/c4/c4_train.part13.bin: 0.313B tokens
+[train 15/32] 308.5M tokens
+[train 12/32] /onyx/data/p330/c4/c4_train.part12.bin: 0.313B tokens
+[train 11/32] 309.5M tokens
+[train 10/32] 309.1M tokens
+[train 29/32] 309.7M tokens
+[train 11/32] /onyx/data/p330/c4/c4_train.part11.bin: 0.313B tokens
+[train 15/32] /onyx/data/p330/c4/c4_train.part15.bin: 0.313B tokens
+[train 10/32] /onyx/data/p330/c4/c4_train.part10.bin: 0.313B tokens
+[train 18/32] 308.7M tokens
+[train 29/32] /onyx/data/p330/c4/c4_train.part29.bin: 0.313B tokens
+[train 18/32] /onyx/data/p330/c4/c4_train.part18.bin: 0.313B tokens
+[train 24/32] 309.4M tokens
+[train 2/32] 309.9M tokens
+[train 31/32] 309.2M tokens
+[train 24/32] /onyx/data/p330/c4/c4_train.part24.bin: 0.313B tokens
+[train 2/32] /onyx/data/p330/c4/c4_train.part2.bin: 0.313B tokens
+[train 31/32] /onyx/data/p330/c4/c4_train.part31.bin: 0.313B tokens
+/onyx/data/p330/c4/c4_train.bin: 10.008B tokens from 32 shards
+2026-08-24T18:59:02+03:00
+-rw-r--r-- 1 cy26ms1 p330 20015547418 Aug 24 18:58 /onyx/data/p330/c4/c4_train.bin
+-rw-r--r-- 1 cy26ms1 p330    20198986 Aug 24 18:46 /onyx/data/p330/c4/c4_val.bin
