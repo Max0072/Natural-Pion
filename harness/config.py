@@ -23,21 +23,54 @@ from dataclasses import asdict, dataclass, field
 
 from .model import ModelConfig
 
-__all__ = ["RunConfig", "git_commit", "machine"]
+__all__ = ["RunConfig", "git_commit", "machine", "untracked_modules"]
 
 
 def git_commit() -> str:
-    """The working tree's commit, or a marker when it is not a repository."""
+    """The working tree's commit, or a marker when it is not a repository.
+
+    `-dirty` means a **tracked** file differs from the commit -- the code that
+    ran is not the code the hash names, which is the only thing this marker is
+    for. Untracked files are deliberately excluded. They used to count, and the
+    consequence was that a notes file created beside the repository stamped two
+    anchor runs `-dirty` while the code they executed was clean; a marker that
+    fires on things which cannot change a result stops meaning anything exactly
+    when it needs to.
+
+    The exception is an untracked *module*, which a run can import and which
+    would therefore be invisible here. `untracked_modules` reports those
+    separately rather than folding them into a flag that says nothing about
+    which file it means.
+    """
     try:
         out = subprocess.run(
             ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True
         )
         dirty = subprocess.run(
-            ["git", "status", "--porcelain"], capture_output=True, text=True, check=True
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            capture_output=True, text=True, check=True,
         ).stdout.strip()
         return out.stdout.strip()[:12] + ("-dirty" if dirty else "")
     except Exception:
         return "unknown"
+
+
+def untracked_modules() -> list[str]:
+    """Untracked `.py` files, which `git_commit` does not count as dirty.
+
+    An untracked module is the one kind of untracked file a run can actually
+    execute, so it belongs in the manifest even though it does not belong in
+    `-dirty`. Normally empty; a non-empty list is worth reading before trusting
+    the commit hash beside it.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard"],
+            capture_output=True, text=True, check=True,
+        ).stdout.split()
+        return sorted(f for f in out if f.endswith(".py"))
+    except Exception:
+        return []
 
 
 def machine(device: str | None = None) -> dict:
@@ -180,6 +213,7 @@ class RunConfig:
             "name": self.name,
             "hash": self.hash,
             "git_commit": git_commit(),
+            "untracked_modules": untracked_modules(),
             "tokens_per_step": self.tokens_per_step,
             "total_tokens": self.total_tokens,
             "machine": machine(device),
