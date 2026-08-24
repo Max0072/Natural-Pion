@@ -26,11 +26,21 @@ srun -p rtx --gres=gpu:1 --time=00:02:00 nvidia-smi --query-gpu=name,memory.tota
 It does not block anything: step 1 measures throughput directly, which is the
 number that matters. The model is for the paper's setup section.
 
-**Every partition caps at 24 hours, and that is the binding constraint.** A full
-9.6B run was estimated at roughly 37 h on the rtx pool, which does not fit.
-Hence the split: long runs (the anchor, the final table) go to `b200`, where
-the estimate is 5-9 h; sweeps and ablations at 1.2B go to `rtx`, which has
-twice the cards and where a short run fits several times over.
+`rtx` carries **NVIDIA RTX PRO 6000 Blackwell Server Edition**, 96 GB, compute
+capability 12.0 — the same architecture generation as the B200, not the
+Ada-generation card an earlier estimate here assumed. **That estimate (~37 h for
+a full run on rtx) was built on the wrong card and should not be used.**
+
+**Every partition caps at 24 hours, and that is the binding constraint.** Which
+pool each run belongs on therefore depends on measured throughput, not on any
+figure in this document. The current defaults — long runs to `b200`, sweeps to
+`rtx` — are a placeholder to be revisited after step 1. If a full run fits in 24
+h on `rtx`, prefer it: 32 cards against 16.
+
+96 GB also means gradient accumulation may be unnecessary. The whole
+512-sequence batch is roughly 15-25 GB for a 58M model, so `--micro-batch 512`
+is worth trying: it removes accumulation and lets the covariance see all 131k
+tokens of a step.
 
 A requeued job **resumes automatically**: the run directory is named by the
 configuration hash, so resubmitting the same command continues from the last
@@ -154,10 +164,12 @@ Per full 9.6B run, `6ND` is about `3.35e18` FLOPs.
 
 | | per 9.6B run | per 1.2B run |
 |---|---|---|
-| RTX, ~25 TFLOPS effective | ~37 h | ~4.6 h |
-| B200, if it reaches ~200 TFLOPS effective | ~4.6 h | ~0.6 h |
+| at ~25 TFLOPS effective | ~37 h | ~4.6 h |
+| at ~200 TFLOPS effective | ~4.6 h | ~0.6 h |
 
-Those effective rates are guesses until step 1 replaces them.
+**These are placeholders, not estimates for either card.** Both pools are
+Blackwell, and a 60M model fills neither, so the achieved rate is a question
+about utilisation rather than peak throughput. Step 1 replaces this table.
 
 | phase | runs | length | rough cost |
 |---|---|---|---|

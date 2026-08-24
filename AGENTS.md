@@ -36,9 +36,12 @@ was a kill criterion — failing it would have stopped the project — and passi
 it means very little.
 
 **Cluster shape.** `rtx` has 4 nodes of 8 GPUs, `b200` has 2 of 8, and **every
-partition caps at 24 hours**. A full 9.6B run does not fit in that on `rtx`, so
-long runs default to `b200` and sweeps to `rtx`, which has twice the cards.
-Resubmitting the same command resumes from the checkpoint.
+partition caps at 24 hours**. Both pools are Blackwell — `rtx` carries RTX PRO
+6000 Blackwell cards with 96 GB — so an earlier estimate here that assumed an
+Ada-generation card and put a full run at 37 h on `rtx` was wrong and has been
+withdrawn. Which pool each run belongs on is a question for the throughput
+measurement, not for arithmetic. Resubmitting the same command resumes from the
+checkpoint.
 
 **Blocked on the cluster, in order:**
 

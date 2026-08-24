@@ -76,7 +76,12 @@ class RunConfig:
     eval_every: int = 500
     eval_batches: int = 20
     log_every: int = 50
-    micro_batch: int = 32           # gradient accumulation chunk
+    # Gradient accumulation chunk. Excluded from the hash: it changes speed and
+    # memory, not the result. The rtx nodes carry RTX PRO 6000 Blackwell cards
+    # with 96 GB, where the whole 512-sequence batch plausibly fits in one go --
+    # try `--micro-batch 512` there, which removes accumulation entirely and
+    # lets the covariance see all 131k tokens of a step rather than a slice.
+    micro_batch: int = 128
     out_dir: str = "runs"
 
     _EXCLUDED = ("data_path", "val_path", "eval_every", "eval_batches",
