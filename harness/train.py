@@ -87,7 +87,42 @@ def evaluate(model: Transformer, batches) -> float:
     return total / max(1, len(batches))
 
 
-def train(cfg: RunConfig, device: str = "cpu", max_steps: int | None = None) -> Path:
+def _save(path: Path, step: int, model, rot, adamw, data) -> None:
+    torch.save(
+        {
+            "step": step,
+            "model": model.state_dict(),
+            "rot": rot.state_dict() if rot is not None else None,
+            "adamw": adamw.state_dict(),
+            "data_rng": data.rng_state,
+            "torch_rng": torch.get_rng_state(),
+        },
+        path,
+    )
+
+
+def _restore(path: Path, model, rot, adamw, data) -> int:
+    """Reload a checkpoint, returning the step to continue from."""
+    state = torch.load(path, map_location="cpu", weights_only=False)
+    model.load_state_dict(state["model"])
+    if rot is not None and state["rot"] is not None:
+        rot.load_state_dict(state["rot"])
+    adamw.load_state_dict(state["adamw"])
+    data.rng_state = state["data_rng"]
+    torch.set_rng_state(state["torch_rng"])
+    return state["step"] + 1
+
+
+def train(
+    cfg: RunConfig, device: str = "cpu", max_steps: int | None = None, resume: bool = True
+) -> Path:
+    """Train one run, picking up from a checkpoint if one is already there.
+
+    Resuming by default is what the cluster wants: every partition caps at 24
+    hours, a full 9.6B run may not fit inside that, and a requeued job should
+    continue rather than start over. The sampler's position is restored too, so
+    a resumed run does not replay the batches it already saw.
+    """
     torch.manual_seed(cfg.seed)
     out = Path(cfg.out_dir) / cfg.name
     out.mkdir(parents=True, exist_ok=True)
@@ -112,7 +147,19 @@ def train(cfg: RunConfig, device: str = "cpu", max_steps: int | None = None) -> 
     accum = max(1, cfg.batch_sequences // cfg.micro_batch)
     started = time.time()
 
-    for step in range(steps):
+    first = 0
+    checkpoint = out / "checkpoint.pt"
+    if resume and checkpoint.exists():
+        first = _restore(checkpoint, model, rot, adamw, train_data)
+        log.write(json.dumps({"event": "resume", "from_step": first}) + "\n")
+        log.flush()
+        if first >= steps:
+            log.close()
+            if recorder is not None:
+                recorder.remove()
+            return out
+
+    for step in range(first, steps):
         lr = lr_at(step, cfg)
         for opt in (rot, adamw):
             if opt is None:
@@ -154,7 +201,7 @@ def train(cfg: RunConfig, device: str = "cpu", max_steps: int | None = None) -> 
             row = {"step": step, "val_loss": evaluate(model, val_batches)}
             log.write(json.dumps(row) + "\n")
             log.flush()
-            torch.save({"model": model.state_dict(), "step": step}, out / "checkpoint.pt")
+            _save(checkpoint, step, model, rot, adamw, train_data)
 
     log.close()
     if recorder is not None:

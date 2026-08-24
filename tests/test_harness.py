@@ -279,3 +279,53 @@ def test_training_writes_a_start_marker(corpus, tmp_path):
     train(cfg, max_steps=2)
     rows = [json.loads(line) for line in (out / "log.jsonl").read_text().splitlines()]
     assert sum(r.get("event") == "start" for r in rows) == 2
+
+
+def test_a_run_resumes_from_its_checkpoint(corpus, tmp_path):
+    """Every partition caps at 24h and a full run may not fit, so a requeued
+    job has to continue rather than start over."""
+    cfg = RunConfig(
+        optimizer="ngd", model=SMALL, batch_sequences=4, micro_batch=4,
+        train_steps=8, ngd_t_fac=2, eval_every=2, eval_batches=1, log_every=1,
+        data_path=str(corpus / "train.bin"), val_path=str(corpus / "val.bin"),
+        out_dir=str(tmp_path),
+    )
+    out = train(cfg, max_steps=4)
+    first = torch.load(out / "checkpoint.pt", map_location="cpu", weights_only=False)
+    assert first["step"] == 3
+    assert first["rot"] is not None, "the rotational optimizer's state must be kept"
+
+    train(cfg, max_steps=8)
+    second = torch.load(out / "checkpoint.pt", map_location="cpu", weights_only=False)
+    assert second["step"] == 7
+
+    rows = [json.loads(line) for line in (out / "log.jsonl").read_text().splitlines()]
+    assert any(r.get("event") == "resume" and r["from_step"] == 4 for r in rows)
+    steps = [r["step"] for r in rows if "train_loss" in r]
+    assert max(steps) == 7 and 0 in steps
+
+
+def test_resume_is_a_no_op_when_already_finished(corpus, tmp_path):
+    cfg = RunConfig(
+        optimizer="adamw", model=SMALL, batch_sequences=4, micro_batch=4,
+        train_steps=3, eval_every=1, eval_batches=1, log_every=1,
+        data_path=str(corpus / "train.bin"), val_path=str(corpus / "val.bin"),
+        out_dir=str(tmp_path),
+    )
+    out = train(cfg, max_steps=3)
+    before = (out / "log.jsonl").read_text().count("train_loss")
+    train(cfg, max_steps=3)
+    assert (out / "log.jsonl").read_text().count("train_loss") == before
+
+
+def test_no_resume_starts_over(corpus, tmp_path):
+    cfg = RunConfig(
+        optimizer="adamw", model=SMALL, batch_sequences=4, micro_batch=4,
+        train_steps=4, eval_every=2, eval_batches=1, log_every=1,
+        data_path=str(corpus / "train.bin"), val_path=str(corpus / "val.bin"),
+        out_dir=str(tmp_path),
+    )
+    out = train(cfg, max_steps=2)
+    train(cfg, max_steps=2, resume=False)
+    rows = [json.loads(line) for line in (out / "log.jsonl").read_text().splitlines()]
+    assert not any(r.get("event") == "resume" for r in rows)

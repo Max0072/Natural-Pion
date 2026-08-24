@@ -6,12 +6,19 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:1
+#SBATCH -p b200
 #SBATCH --time=24:00:00
-# --partition is deliberately absent: fill it from `sinfo` and pass it on the
-# command line, so the same script serves both the RTX and B200 pools.
+# Long runs default to b200 because every partition caps at 24 hours and a full
+# 9.6B run does not fit inside that on the rtx pool. Override with -p for a
+# short run: `-p rtx` has 32 GPUs against b200's 16, so it is the better place
+# for anything that fits.
 #
-#   sbatch -p <partition> scripts/sbatch/train.sbatch --optimizer ngd --lr 1e-3
-#   sbatch -p <partition> scripts/sbatch/train.sbatch --anchor bilateral
+#   sbatch scripts/sbatch/train.sbatch --anchor bilateral
+#   sbatch -p rtx scripts/sbatch/train.sbatch --optimizer ngd --lr 1e-3 --train-steps 9155
+#
+# A requeued job resumes from its checkpoint automatically -- the run directory
+# is named by the configuration hash, so resubmitting the same command picks up
+# where it stopped, sampler position included. Pass --no-resume to start over.
 #
 # One run, one GPU, no distributed anything. A 60M model fits on a single card,
 # so N cards are worth far more as N concurrent experiments than as one faster

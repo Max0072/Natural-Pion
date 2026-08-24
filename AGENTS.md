@@ -35,6 +35,11 @@ reachable target, where natural gradient wins almost tautologically. That test
 was a kill criterion — failing it would have stopped the project — and passing
 it means very little.
 
+**Cluster shape.** `rtx` has 4 nodes of 8 GPUs, `b200` has 2 of 8, and **every
+partition caps at 24 hours**. A full 9.6B run does not fit in that on `rtx`, so
+long runs default to `b200` and sweeps to `rtx`, which has twice the cards.
+Resubmitting the same command resumes from the checkpoint.
+
 **Blocked on the cluster, in order:**
 
 1. Throughput on both partitions. A 60M model does not fill a B200; the peak-FLOPS

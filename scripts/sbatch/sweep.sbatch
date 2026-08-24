@@ -6,13 +6,16 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:1
+#SBATCH -p rtx
 #SBATCH --time=08:00:00
+# Sweeps live on rtx: 32 GPUs against b200's 16, and a 1.2B run fits the 24h
+# cap several times over.
 # A learning-rate sweep as a job array. Every optimizer has its own optimum --
 # on the toy problem they spanned 4.6e-3 to 2.2e+1 -- so comparing at one
 # shared rate measures which is better at that rate, not which is better. This
 # is the most common way an optimizer comparison goes wrong.
 #
-#   sbatch -p <partition> --array=0-11%4 scripts/sbatch/sweep.sbatch
+#   sbatch --array=0-11%8 scripts/sbatch/sweep.sbatch
 #
 # `%4` caps concurrency; raise it to whatever the queue allows.
 

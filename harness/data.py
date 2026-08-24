@@ -62,6 +62,15 @@ class TokenCorpus:
         targets = chunk[:, 1:].to(device, non_blocking=True)
         return inputs, targets
 
+    @property
+    def rng_state(self) -> dict:
+        """The sampler's position, so a resumed run does not replay batches."""
+        return self.rng.bit_generator.state
+
+    @rng_state.setter
+    def rng_state(self, state: dict) -> None:
+        self.rng.bit_generator.state = state
+
     def fixed_batches(self, size: int, count: int, seed: int, device="cpu") -> list:
         """A held-out set that does not move between evaluations."""
         rng = np.random.default_rng(seed)

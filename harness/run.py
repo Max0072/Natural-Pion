@@ -49,6 +49,10 @@ def main() -> None:
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--max-steps", type=int, default=None, help="cut the run short, for smoke tests")
     ap.add_argument(
+        "--no-resume", action="store_true",
+        help="start over even if a checkpoint is present",
+    )
+    ap.add_argument(
         "--anchor", choices=sorted(TARGETS),
         help="run their published configuration and compare against their figure",
     )
@@ -59,7 +63,8 @@ def main() -> None:
                             data_path=args.data_path, val_path=args.val_path,
                             micro_batch=args.micro_batch)
         print(f"anchor: {args.anchor}, target {TARGETS[args.anchor]}, name {cfg.name}")
-        out = train(cfg, device=args.device, max_steps=args.max_steps)
+        out = train(cfg, device=args.device, max_steps=args.max_steps,
+                    resume=not args.no_resume)
         result = check(out / "log.jsonl", args.anchor, expected_steps=cfg.train_steps)
         (out / "anchor.json").write_text(json.dumps(result, indent=2))
         print(json.dumps(result, indent=2))
@@ -81,7 +86,8 @@ def main() -> None:
     }
     cfg = replace(base, **overrides)
     print(json.dumps(cfg.manifest()["config"] | {"name": cfg.name}, indent=2, default=str))
-    out = train(cfg, device=args.device, max_steps=args.max_steps)
+    out = train(cfg, device=args.device, max_steps=args.max_steps,
+                resume=not args.no_resume)
     print(f"\nwrote {out}")
 
 

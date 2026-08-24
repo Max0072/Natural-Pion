@@ -6,17 +6,31 @@ directory, and `data_p330` in `$HOME` is a symlink to the same place.
 
 Allocation: **2000 RTX hours and 1000 B200 hours.**
 
-## What is still unknown
+## The partitions
 
-Everything below assumes these; find them before planning anything.
+| partition | GPUs/node | nodes | total | walltime |
+|---|---|---|---|---|
+| `rtx` | 8 | 4 | **32** | 24 h |
+| `b200` | 8 | 2 | **16** | 24 h |
+| `a100` | — | 6 | — | 24 h |
+| `a5000` | 8 | 1 | 8 | 24 h |
+
+**Every partition caps at 24 hours, and that is the binding constraint.** A full
+9.6B run was estimated at roughly 37 h on the rtx pool, which does not fit.
+Hence the split: long runs (the anchor, the final table) go to `b200`, where
+the estimate is 5-9 h; sweeps and ablations at 1.2B go to `rtx`, which has
+twice the cards and where a short run fits several times over.
+
+A requeued job **resumes automatically**: the run directory is named by the
+configuration hash, so resubmitting the same command continues from the last
+checkpoint, with the sampler's position restored so batches are not replayed.
+That makes the 24 h cap survivable, though step 1 still decides which pool each
+run belongs on.
+
+Still to find:
 
 ```bash
-sinfo -o "%20P %8a %12l %6D %24G %N"
-```
-
-That single command gives partition names, walltime limits and GPU types. Then:
-
-```bash
+scontrol show node rtx6003 | grep -Ei "Gres|RealMemory|CPUTot"   # which RTX card
 scontrol show config | grep -Ei "MaxArraySize|MaxSubmitJobs"
 apptainer --version
 df -h "$DATA_p330"
@@ -38,8 +52,8 @@ If compute nodes have no network, C4 and the tokenizer must be staged into
 Twenty minutes, and it decides how the 3000 hours are spent.
 
 ```bash
-sbatch -A p330 -p <rtx-partition>  scripts/sbatch/train.sbatch --optimizer ngd --max-steps 200
-sbatch -A p330 -p <b200-partition> scripts/sbatch/train.sbatch --optimizer ngd --max-steps 200
+sbatch -p rtx  scripts/sbatch/train.sbatch --optimizer ngd --max-steps 200
+sbatch -p b200 scripts/sbatch/train.sbatch --optimizer ngd --max-steps 200
 ```
 
 Read `tokens_per_sec` from the last line of each run's `log.jsonl`.
@@ -87,9 +101,12 @@ Run this on a login node if compute nodes have no network.
 `AGENTS.md` for why.
 
 ```bash
-sbatch -A p330 -p <partition> scripts/sbatch/train.sbatch --anchor bilateral
-sbatch -A p330 -p <partition> scripts/sbatch/train.sbatch --anchor alternate
+sbatch scripts/sbatch/train.sbatch --anchor bilateral    # defaults to b200
+sbatch scripts/sbatch/train.sbatch --anchor alternate
 ```
+
+Each is a full 9.6B run. If one does not fit inside 24 h, resubmit the same
+command after the job ends and it continues from its checkpoint.
 
 Targets are 3.3575 and 3.3654. The verdict is written to `anchor.json` in each
 run directory. Reproducing the 0.0079 **gap** matters more than either level.
@@ -104,7 +121,7 @@ to 2.2e+1. Comparing at one shared rate measures which is better *at that rate*
 reviewer asks.
 
 ```bash
-sbatch -A p330 -p <partition> --array=0-11%4 scripts/sbatch/sweep.sbatch
+sbatch --array=0-11%8 scripts/sbatch/sweep.sbatch        # defaults to rtx
 ```
 
 Twelve runs at 1x Chinchilla (1.2B tokens, 9155 steps), an eighth of the
