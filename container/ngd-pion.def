@@ -1,5 +1,10 @@
 Bootstrap: docker
 From: nvcr.io/nvidia/pytorch:25.04-py3
+# The tag must carry CUDA 12.8 or later: the rtx pool is sm_120 (RTX PRO 6000
+# Blackwell) and older builds have no kernels for it. 25.03 already ships CUDA
+# 12.8.1, so anything from there on should do -- but confirm it rather than
+# trusting the number, with `scripts/preflight.py`, which runs the operations
+# this project actually depends on instead of comparing versions.
 
 # NGC's PyTorch image is the base because Megatron-LM expects it: it ships a
 # built TransformerEngine, which the anchor run needs and which is painful to
@@ -15,22 +20,26 @@ From: nvcr.io/nvidia/pytorch:25.04-py3
 #     apptainer exec --nv --bind $SCRATCH:$SCRATCH ngd-pion.sif \
 #         python -m harness.run --optimizer ngd --lr 1e-3
 
-%files
-    . /opt/ngd-pion
+# The code is deliberately NOT baked in. Jobs bind-mount the repository and run
+# from it, so a copy inside the image would only shadow the checkout you are
+# editing and leave you debugging a stale version. The image carries
+# dependencies; the repository carries the code.
 
 %post
     pip install --no-cache-dir --upgrade pip
     pip install --no-cache-dir datasets transformers sentencepiece
-    pip install --no-cache-dir -e /opt/ngd-pion
-    python -c "import torch; print('torch', torch.__version__)"
+    python - <<'EOF'
+import torch
+print("torch", torch.__version__, "cuda", torch.version.cuda)
+print("arches", torch.cuda.get_arch_list())
+EOF
 
 %environment
     export PYTHONNOUSERSITE=1
-    export PYTHONPATH=/opt/ngd-pion:$PYTHONPATH
     export OMP_NUM_THREADS=8
 
 %test
-    python -c "import ngd_pion, harness; print('import ok')"
+    python -c "import torch, numpy, scipy; print('deps ok')"
 
 %labels
     Description NGD-Pion: curvature-preconditioned spectrum-preserving optimizer

@@ -23,8 +23,10 @@
 #
 # `%4` caps concurrency; raise it to whatever the queue allows.
 
+# NOTE: SLURM opens the -o/-e paths before this script runs, so `logs/` has to
+# exist in the submission directory already. `mkdir -p logs` once, before the
+# first sbatch, or the job dies with no output explaining why.
 set -euo pipefail
-mkdir -p logs
 
 REPO="${REPO:-$HOME/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"

@@ -68,7 +68,25 @@ srun -A p330 --time=00:02:00 --pty bash -c 'curl -sI -m 5 https://huggingface.co
 If compute nodes have no network, C4 and the tokenizer must be staged into
 `$DATA_p330` from the login node first, which reorders steps 2 and 3 below.
 
-## Step 1 — measure throughput, before anything else
+## Step 0 — preflight
+
+```bash
+mkdir -p logs      # SLURM opens the -o/-e paths before the job script runs
+srun -p rtx --gres=gpu:1 --cpus-per-task=8 --time=00:10:00 \
+    apptainer exec --nv --bind "$PWD:$PWD" --pwd "$PWD" \
+    "$DATA_p330/containers/ngd-pion.sif" python scripts/preflight.py
+```
+
+Checks the operations this project depends on rather than comparing version
+numbers: that `sm_120` is in the torch build, that `linalg.eigh` runs on 512 and
+1376 matrices and returns finite eigenvalues, that the Cayley solve comes back
+orthogonal, and that the model does a forward and backward. `eigh` on the GPU is
+the one to watch — it runs for every layer at every refactor, and it is exactly
+the operation that varies between CUDA builds.
+
+Run it on both pools.
+
+## Step 1 — measure throughput
 
 Twenty minutes, and it decides how the 3000 hours are spent.
 
