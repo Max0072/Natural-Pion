@@ -159,17 +159,39 @@ export APPTAINER_CACHEDIR=/nvme/scratch/$USER/apptainer/cache   # persistent
 export APPTAINER_TMPDIR=/tmp/apptainer-$USER/tmp                # local disk
 mkdir -p "$APPTAINER_CACHEDIR" "$APPTAINER_TMPDIR"
 
+SIF="$DATA_p330/containers/ngd-pion.sif"
+LOCAL=/tmp/apptainer-$USER/ngd-pion.sif
+
+# 1. build on local disk, with mksquashfs held under the login cgroup's cap
 apptainer build --ignore-fakeroot-command \
     --mksquashfs-args "-mem 3G -processors 4" \
-    /tmp/apptainer-$USER/ngd-pion.sif container/ngd-pion.def
+    "$LOCAL" container/ngd-pion.def
 
-apptainer inspect /tmp/apptainer-$USER/ngd-pion.sif          # it must open
-cp /tmp/apptainer-$USER/ngd-pion.sif "$DATA_p330/containers/"
-apptainer inspect "$DATA_p330/containers/ngd-pion.sif"       # and so must the copy
+# 2. open it. the exit code above proves nothing
+apptainer inspect "$LOCAL"
+apptainer exec "$LOCAL" python -c "import torch, numpy, scipy, datasets, transformers, pytest"
+
+# 3. stage the copy beside the canonical path, never onto it
+cp "$LOCAL" "$SIF.new"
+apptainer inspect "$SIF.new"
+cmp "$LOCAL" "$SIF.new"
+
+# 4. publish by rename, which is atomic within a filesystem
+mv "$SIF.new" "$SIF"
 ```
 
-A finished image is **11.9 GB**. If it comes out at a few hundred megabytes,
-read the next paragraph.
+A finished image is **11.9 GB**, and takes about 25 minutes with a warm cache,
+most of it compression that `-processors 4` deliberately slows down. If it
+comes out at a few hundred megabytes, read the next paragraph.
+
+The shape of that recipe is the part worth keeping. Build somewhere private,
+prove the artifact opens, stage it beside its destination, prove the copy opens
+too, and only then put it where jobs will find it -- by a rename, so that no
+moment exists in which the canonical path holds half an image. `$SIF` is the
+default in both sbatch scripts and is visible to the whole p330 group, so a
+broken image there does not fail cleanly: jobs start, die somewhere unrelated,
+and the hour goes into looking in the wrong place. The same argument makes the
+checkpoint write in `harness/train.py` a write-and-rename.
 
 Four things about that command, each of which was measured rather than
 assumed.
