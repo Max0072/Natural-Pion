@@ -65,6 +65,12 @@ class CovarianceAccumulator:
             self._matrix.mul_(self.beta).add_(gram, alpha=1.0 - self.beta)
         self.count += flat.shape[0]
 
+    def to(self, device) -> "CovarianceAccumulator":
+        """Move the accumulated matrix. Needed after a checkpoint reload."""
+        if self._matrix is not None:
+            self._matrix = self._matrix.to(device)
+        return self
+
     def state_dict(self) -> dict:
         return {"matrix": self._matrix, "count": self.count, "beta": self.beta}
 

@@ -122,6 +122,38 @@ class NGDPion(torch.optim.Optimizer):
         acc.load_state_dict({"matrix": A.to(acc.dtype), "count": acc.count, "beta": acc.beta})
         self.state[param].pop("bases", None)
 
+    def load_state_dict(self, state_dict) -> None:
+        """Reload, then put this optimizer's own state back on the right device.
+
+        `torch.optim.Optimizer.load_state_dict` relocates the tensors it can
+        find: values that are tensors, and tensors nested in dicts, lists and
+        tuples. This optimizer's state holds neither. It holds a
+        `CovarianceAccumulator` and a pair of `Basis` dataclasses, and torch
+        does not descend into either. A checkpoint loaded with
+        `map_location="cpu"` -- which is what a resumed run does -- therefore
+        brings `A` and both bases back on the CPU while the weights sit on the
+        GPU, and the first `W @ A` of the resumed step fails on mismatched
+        devices.
+
+        A CPU test suite cannot observe this, which is why it is fixed here
+        rather than left to be found by the first run that hits the 24 h wall.
+        """
+        super().load_state_dict(state_dict)
+        for group in self.param_groups:
+            for p in group["params"]:
+                state = self.state.get(p)
+                if not state:
+                    continue
+                cov = state.get("cov")
+                if cov is not None:
+                    cov.to(p.device)
+                bases = state.get("bases")
+                if bases is not None:
+                    state["bases"] = tuple(
+                        type(b)(b.P.to(p.device), b.lam.to(p.device), b.orthogonal)
+                        for b in bases
+                    )
+
     # --- §4: refactorisation, batched over equal shapes ---------------------
 
     def _refactor(self, params: list[torch.Tensor], group: dict) -> None:
@@ -133,7 +165,9 @@ class NGDPion(torch.optim.Optimizer):
 
         for members in by_shape.values():
             W = torch.stack([p.detach().to(dt) for p in members])
-            A = torch.stack([self.state[p]["cov"].matrix.to(dt) for p in members])
+            A = torch.stack(
+                [self.state[p]["cov"].matrix.to(device=p.device, dtype=dt) for p in members]
+            )
             basis_in, basis_out = build_bases(W, A, group["eps"])
             for i, p in enumerate(members):
                 self.state[p]["bases"] = (
@@ -177,7 +211,7 @@ class NGDPion(torch.optim.Optimizer):
         X_in = natural_gradient(G_in, basis_in)
         X_out = natural_gradient(G_out, basis_out)
 
-        A = state["cov"].matrix.to(dt)
+        A = state["cov"].matrix.to(device=p.device, dtype=dt)
         eye_out = torch.eye(W.shape[0], dtype=dt, device=W.device)
         quad = (G_in * X_in).sum() + (G_out * X_out).sum()
         curv = (X_in * fisher_apply(A, W.T @ W, X_in)).sum() + (

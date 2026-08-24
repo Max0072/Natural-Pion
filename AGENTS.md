@@ -144,6 +144,13 @@ Things that look right and are not. Every one of these cost real time here.
   user namespace on its own, but its `fakeroot` wrapper is missing from the
   image, so builds need `--ignore-fakeroot-command` or they die at the first
   line of `%post` with a message about a missing shared library.
+- **Torch does not move this optimizer's state onto the GPU when it loads.**
+  `Optimizer.load_state_dict` relocates tensors it finds directly or nested in
+  dicts, lists and tuples. `NGDPion` keeps a `CovarianceAccumulator` and two
+  `Basis` dataclasses, and torch descends into neither, so without the override
+  in `optimizer.py` a resumed run brings `A` and both bases back on the CPU and
+  dies on the first `W @ A`. The tests run on CPU and cannot see it; the first
+  run to hit the 24 h wall would have.
 - **Frobenius norm is not spectral norm.** The rotation angle is set by the
   spectral norm; conflating them produced a wrong theory here about the step
   scaling as `sqrt(cond(A))`, which real gradients do not support.
