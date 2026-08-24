@@ -149,8 +149,8 @@ Decide the allocation from these two numbers, not from specifications.
 ## Step 2 — container
 
 ```bash
-export APPTAINER_CACHEDIR=/tmp/apptainer-$USER/cache
-export APPTAINER_TMPDIR=/tmp/apptainer-$USER/tmp
+export APPTAINER_CACHEDIR=/nvme/scratch/$USER/apptainer/cache   # persistent
+export APPTAINER_TMPDIR=/tmp/apptainer-$USER/tmp                # local disk
 mkdir -p "$APPTAINER_CACHEDIR" "$APPTAINER_TMPDIR"
 
 apptainer build --ignore-fakeroot-command \
@@ -173,12 +173,33 @@ and copying a `.sif` across is not required.
 in a `fakeroot` binary that the image does not carry, and the build dies at the
 first line of `%post` with *"a shared library is likely missing in the image"*.
 
+The two directories want opposite things, which is why they are split. The
+cache holds the base image's 61 layers, 12.1 GB compressed, and it is worth
+keeping: with a warm cache a rebuild costs minutes rather than another
+download, so it lives on scratch, which survives. The temporary directory is
+where those layers are unpacked into tens of gigabytes of small files, and that
+is the one that must not be on NFS.
+
 **`APPTAINER_TMPDIR` must be on local disk.** Pointed at `/nvme/scratch`, which
 is NFS, the alpine probe hung in *"Extracting OCI image"* and had not finished
 five minutes later; pointed at `/tmp`, which is local ZFS with 419 GB free, the
 identical build finished in seconds. The NGC image unpacks to tens of
 gigabytes, so this is the difference between a twenty-minute build and an
 afternoon spent hammering a shared filer.
+
+Rebuild as rarely as possible, and never in the middle of a series. The code
+is bind-mounted rather than baked in, so editing the optimizer, the harness or
+the tests needs no rebuild at all; only a dependency change does, and a new
+pure-Python package can usually skip even that
+(`pip install --target "$DATA_p330/pylibs"`, then `PYTHONPATH`). The reason to
+care is not convenience: a different torch or CUDA build between two arms of a
+comparison is a confound, and the whole point of the comparison is that one
+thing differs. Build once, then run the throughput measurement, the anchor, the
+sweeps and the final table on that single image.
+
+The amd64 base resolves to `sha256:36c950490fed05b87814bd831929ec7dbdd8282d9c21a2f6691836fbeb6054e2`
+as of 2026-08-24. The `.def` pins a tag, and a tag can move; the digest is what
+makes "rebuild the same image" a checkable claim.
 
 The base is NGC's PyTorch image because Megatron expects it and it ships a
 built TransformerEngine. The lightweight harness needs none of that; sharing
