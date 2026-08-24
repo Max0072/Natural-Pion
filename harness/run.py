@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from dataclasses import fields, replace
 from typing import get_type_hints
 
@@ -59,9 +60,17 @@ def main() -> None:
     args = ap.parse_args()
 
     if args.anchor:
-        cfg = anchor_config(args.anchor, seed=args.seed, out_dir=args.out_dir,
-                            data_path=args.data_path, val_path=args.val_path,
-                            micro_batch=args.micro_batch)
+        # Only what the anchor is allowed to vary: where it reads and writes,
+        # the seed, the accumulation chunk -- and precision, but *only* when
+        # asked for explicitly, because their configuration is bf16 and a
+        # default silently overriding that would make the run measure our
+        # arithmetic rather than their number.
+        overrides = dict(seed=args.seed, out_dir=args.out_dir,
+                         data_path=args.data_path, val_path=args.val_path,
+                         micro_batch=args.micro_batch)
+        if any(a.startswith("--precision") for a in sys.argv[1:]):
+            overrides["precision"] = args.precision
+        cfg = anchor_config(args.anchor, **overrides)
         print(f"anchor: {args.anchor}, target {TARGETS[args.anchor]}, name {cfg.name}")
         out = train(cfg, device=args.device, max_steps=args.max_steps,
                     resume=not args.no_resume)

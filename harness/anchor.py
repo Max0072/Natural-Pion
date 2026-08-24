@@ -49,11 +49,11 @@ TOLERANCE = 0.02
 #: Reasons the number could miss even with correct code. A miss should be
 #: diagnosed against this list before anything is called a bug.
 KNOWN_DIFFERENCES = (
-    "precision: their script runs --bf16 under Megatron, with fp32 master "
-    "weights in the optimizer wrapper; this harness trains in fp32 throughout, "
-    "with TF32 matmuls. Read off opt_llama_60M_pion.sh, not assumed. This is "
-    "the first thing to suspect if the level misses, and the least likely to "
-    "move the bilateral-to-alternate gap",
+    "precision: matched, not assumed -- their script runs --bf16 and so does "
+    "anchor_config. What remains unmatched is where the master weights sit: "
+    "Megatron's optimizer wrapper keeps its own fp32 copies and clips against "
+    "them, while this harness holds fp32 parameters and autocasts the forward "
+    "pass",
     "flat token stream: windows may span documents, where Megatron's indexed "
     "dataset respects document boundaries",
     "a C4 subset in our own order, not their full stream",
@@ -74,8 +74,7 @@ def anchor_config(update_side: str = "bilateral", **overrides) -> RunConfig:
     """
     if update_side not in TARGETS:
         raise ValueError(f"update_side must be one of {sorted(TARGETS)}, got {update_side!r}")
-    return replace(
-        RunConfig(),
+    settings = dict(
         optimizer="pion",
         lr=1e-3,
         lr_min=1e-5,
@@ -89,8 +88,15 @@ def anchor_config(update_side: str = "bilateral", **overrides) -> RunConfig:
         pion_momentum="lie",        # Lie+Lie: the variant the numbers come from
         pion_retraction="trunc",    # their degree-2 truncated exponential
         pion_alternate=update_side == "alternate",
-        **overrides,
+        # Their script says --bf16. Running the anchor in fp32 would compare
+        # our arithmetic against their number, which is a different experiment
+        # from the one this is for.
+        precision="bf16",
     )
+    # Anything named by the caller wins, so an override is an override rather
+    # than a collision.
+    settings.update(overrides)
+    return replace(RunConfig(), **settings)
 
 
 def _last_attempt(log_path: str | Path) -> list[dict]:

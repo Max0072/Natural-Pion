@@ -1,0 +1,11 @@
+node rtx6004  partition rtx
+NVIDIA RTX PRO 6000 Blackwell Server Edition, 97887 MiB
+--- micro-batch 512 ---
+--- micro-batch 256 ---
+--- micro-batch 128 ---
+--- 200 steps at micro-batch 512 ---
+
+wrote /onyx/data/p330/runs/tput-241297/full/pion-lr0.001-s0-51458a70e2
+    tokens/s (window, median of 50): 149,697
+    peak GB: 83.31
+    a 9.6B run: 17.8 h
