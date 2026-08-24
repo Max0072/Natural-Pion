@@ -12,9 +12,30 @@ Allocation: **2000 RTX hours and 1000 B200 hours.**
 |---|---|
 | repository | `$DATA_p330/Natural-Pion` |
 | container | `$DATA_p330/containers/ngd-pion.sif` |
-| corpus | `$DATA_p330/c4/c4_{train,val}.bin` |
+| corpus | `$DATA_p330/c4/c4_{train,val}.bin` -- and `c4/downloads/`, the source files, kept so a rebuild fetches nothing |
 | run outputs | `$DATA_p330/runs/<name>/` |
-| SLURM logs | `logs/`, **in the directory you submit from** |
+| SLURM logs | `logs/`, **in the directory you submit from**, and not in git |
+| retired files | `$DATA_p330/attic/<date>/`, with `attic/register.tsv` saying where each came from |
+
+Nothing here is deleted. `scripts/retire.sh <path>...` moves things to the
+attic instead, which within one filesystem is a rename and so costs neither
+time nor space, and the register makes a directory of anonymous files
+answerable. `rm` is for what the attic itself outgrows.
+
+The submission scripts, in the order `CLUSTER.md` uses them:
+
+| | |
+|---|---|
+| `scripts/sbatch/preflight.sbatch` | step 0 -- the operations, then resume-on-a-card and spectrum-under-TF32 |
+| `scripts/sbatch/data.sbatch` | step 3 -- the corpus, sharded across cores |
+| `scripts/sbatch/throughput.sbatch` | step 1 -- tokens/s and which micro-batch fits |
+| `scripts/sbatch/resume.sbatch` | what a SIGKILL costs, before spending eighteen hours |
+| `scripts/sbatch/train.sbatch` | one run, including the anchor |
+| `scripts/sbatch/sweep.sbatch` | step 5 -- learning rates, as a job array |
+
+`scripts/probes/` holds the one-off measurements the documents quote -- the
+TF32 arithmetic and what honest fp32 costs -- so a reader can re-run the number
+rather than take it.
 
 The repository lives in the project directory rather than `$HOME` because
 `$DATA_p330` is group-readable and `$HOME` is not, and because one

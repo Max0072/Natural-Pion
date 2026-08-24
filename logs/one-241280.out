@@ -1,6 +1,0 @@
-[train] 97.1M tokens
-[train] 129.5M tokens
-[train] 161.9M tokens
-[train] /onyx/data/p330/probes/one-241280/c4_train.bin: 0.200B tokens
---- single shard: 200284051 tokens in 184 s = 1088500 tok/s ---
-616M	/onyx/data/p330/probes/one-241280/dl

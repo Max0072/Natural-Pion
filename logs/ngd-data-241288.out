@@ -1,7 +1,0 @@
-node    rtx6004
-cores   32
-out     /onyx/data/p330/c4
-tokens  1e10 in 32 shards
-2026-08-24T18:36:45+03:00
-[val] resuming in file 0 at 10.1M tokens
-[val] already holds 0.010B tokens

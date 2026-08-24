@@ -1,6 +1,0 @@
-=== curl ===
-    319515329 bytes  24105268 B/s
-=== hf_hub_download, default (xet enabled) ===
-    319515329 bytes  23196464 B/s
-=== hf_hub_download, HF_HUB_DISABLE_XET=1 ===
-    319515329 bytes  23771756 B/s
