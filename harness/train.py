@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -88,6 +89,15 @@ def evaluate(model: Transformer, batches) -> float:
 
 
 def _save(path: Path, step: int, model, rot, adamw, data) -> None:
+    """Write the checkpoint, atomically.
+
+    A job killed while `torch.save` is writing -- the 24 h wall, a preemption,
+    a node failure -- leaves a truncated file where the resume path expects a
+    checkpoint, and the run then has to start over from nothing. Writing beside
+    it and renaming avoids that: `os.replace` is atomic within a filesystem, so
+    whatever checkpoint exists is a complete one.
+    """
+    tmp = path.with_name(path.name + ".tmp")
     torch.save(
         {
             "step": step,
@@ -97,8 +107,9 @@ def _save(path: Path, step: int, model, rot, adamw, data) -> None:
             "data_rng": data.rng_state,
             "torch_rng": torch.get_rng_state(),
         },
-        path,
+        tmp,
     )
+    os.replace(tmp, path)
 
 
 def _restore(path: Path, model, rot, adamw, data) -> int:
@@ -168,6 +179,7 @@ def train(
                 recorder.remove()
             return out
 
+    window_time, window_step = time.time(), first
     for step in range(first, steps):
         lr = lr_at(step, cfg)
         for opt in (rot, adamw):
@@ -194,13 +206,23 @@ def train(
                 opt.step()
 
         if step % cfg.log_every == 0 or step == steps - 1:
-            elapsed = time.time() - started
+            now = time.time()
+            elapsed = now - started
+            # Throughput decides which partition a run belongs on: a 60M model
+            # does not fill a B200, so the peak-FLOPS ratio against an RTX card
+            # is not the ratio that matters. Two numbers, because the average
+            # over a whole attempt carries its startup and warm-up with it and
+            # reads low on a short run -- and step 1 is a 200-step run whose
+            # answer allocates three thousand GPU-hours. `window` is the rate
+            # since the previous logged row; take that one.
+            done_here = step - first + 1
+            span, moved = now - window_time, step - window_step
             row = {"step": step, "lr": lr, "train_loss": loss_sum,
                    "wall": round(elapsed, 1),
-                   # throughput decides which partition a run belongs on: a 60M
-                   # model does not fill a B200, so the peak-FLOPS ratio against
-                   # an RTX card is not the ratio that matters
-                   "tokens_per_sec": round(cfg.tokens_per_step * (step + 1) / max(elapsed, 1e-9))}
+                   "tokens_per_sec": round(cfg.tokens_per_step * done_here / max(elapsed, 1e-9)),
+                   "tokens_per_sec_window": round(
+                       cfg.tokens_per_step * moved / max(span, 1e-9)) if moved else None}
+            window_time, window_step = now, step
             if isinstance(rot, NGDPion):
                 row.update(summarise(layer_diagnostics(rot, names)))
             log.write(json.dumps(row) + "\n")
