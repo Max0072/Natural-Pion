@@ -16,6 +16,16 @@ for alternate, both with Lie+Lie momentum. Note this is not the configuration
 their 60M shell script runs -- that script sets `alternate` and
 `transported_ambient_ambient`. The anchor has to follow the number, not the
 script, or a miss says nothing.
+
+Their `opt_llama_60M_pion.sh` has since been read rather than inferred, and it
+confirms the shape this harness copies: 8 layers, hidden 512, ffn 1376, 8
+heads, kv 64, RMSNorm, seq 256, rotary base 10000, init 0.02, T5 tokenizer,
+lr 1e-3 to 1e-5 cosine with no warmup, weight decay 0.1, clip 1.0, global batch
+512, 9.6B tokens, `--pion-degree 2`, `--pion-scaling rms`, `--pion-rms 0.2`. It
+also confirms the two defaults above.
+
+What it adds is `--bf16`: their runs are mixed precision under Megatron, and
+this harness is fp32. That difference is now first in `KNOWN_DIFFERENCES`.
 """
 
 from __future__ import annotations
@@ -39,6 +49,11 @@ TOLERANCE = 0.02
 #: Reasons the number could miss even with correct code. A miss should be
 #: diagnosed against this list before anything is called a bug.
 KNOWN_DIFFERENCES = (
+    "precision: their script runs --bf16 under Megatron, with fp32 master "
+    "weights in the optimizer wrapper; this harness trains in fp32 throughout, "
+    "with TF32 matmuls. Read off opt_llama_60M_pion.sh, not assumed. This is "
+    "the first thing to suspect if the level misses, and the least likely to "
+    "move the bilateral-to-alternate gap",
     "flat token stream: windows may span documents, where Megatron's indexed "
     "dataset respects document boundaries",
     "a C4 subset in our own order, not their full stream",

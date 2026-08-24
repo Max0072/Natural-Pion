@@ -96,6 +96,21 @@ If it misses, `anchor.KNOWN_DIFFERENCES` lists the harness differences to rule
 out before calling anything a bug. A miss inside ~0.05 is more likely the flat
 token stream or the C4 subset than a defect.
 
+**Their script has now been read, not inferred.** `opt_llama_60M_pion.sh`
+confirms every shape and schedule this harness copies, and both defaults the
+anchor deliberately departs from. It also says `--bf16`: their runs are mixed
+precision under Megatron with fp32 master weights in the optimizer, while this
+harness trains in fp32 with TF32 matmuls. That is a real difference in the
+comparison and is now first in `KNOWN_DIFFERENCES` -- the first suspect if the
+*level* misses, and the least likely to move the bilateral-to-alternate *gap*,
+which is why the gap is the sharper test.
+
+Left open, and worth an hour before the paper rather than before the anchor:
+whether their own rotations hold the spectrum numerically. They retract with a
+degree-2 truncated exponential on weights that Megatron keeps in fp32, on cards
+where fp32 matmul means TF32 unless disabled. This project measured what that
+does to a Cayley step; nobody has measured what it does to theirs.
+
 ## Decisions already made — do not reopen without evidence
 
 Each of these was measured. Reversing one is fine; reversing it on intuition is
