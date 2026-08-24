@@ -137,8 +137,18 @@ Things that look right and are not. Every one of these cost real time here.
   miss. `anchor.check` refuses to judge an incomplete run.
 - **Apptainer's temporary directory must be on local disk.** Pointed at
   `/nvme/scratch`, which is NFS, an image build hangs in "Extracting OCI image"
-  and does not finish; on local `/tmp` the identical build takes seconds.
-  `~/.bashrc` sets `APPTAINER_TMPDIR` and `APPTAINER_CACHEDIR` accordingly.
+  and does not finish; on local `/tmp` the identical build takes seconds. Both
+  halves were measured twice, the second time after the OOM below was found, so
+  the two are separate faults and not one misread.
+- **A failed apptainer build looks exactly like a successful one.**
+  `mksquashfs` sizes its caches from *physical* memory -- 94 GB on the login
+  node -- while a login session is capped by cgroup at 8 GB, so on a large
+  image it is OOM-killed. Its superblock is written last, so what remains is a
+  SIF holding real compressed data with no valid header, and apptainer prints
+  `Build complete` and exits 0 over it. Build with
+  `--mksquashfs-args "-mem 3G -processors 4"`, and open the image before
+  believing in it. A small probe image stays under the cap and proves nothing
+  about a large one.
 - **`--fakeroot` is not granted here, and is not needed.** There are no
   `/etc/subuid` entries for this account. Apptainer falls back to a root-mapped
   user namespace on its own, but its `fakeroot` wrapper is missing from the
@@ -165,6 +175,7 @@ Things that look right and are not. Every one of these cost real time here.
 | what `T_fac` | `alpha` is the free readout — it is identically 1 on a fresh basis and falls as the basis drifts. Log it, then choose |
 | do rotation angles stay bounded without RMS | logged per step as `angle`. On a toy transformer they spanned 1e-4 to 3e-2 with a 286x spread across layers |
 | square vs wide layers | the wide `ffn down` is the only matrix per block with a kernel on the in-side and the only one needing `A^{-1/2}`. Expect it to behave differently |
+| does `datasets` 2.2.1 still stream `allenai/c4` | the image resolved `datasets` to 2.2.1, four years older than the `transformers` beside it, because pip backtracked against the base image's pins. Old versions expect dataset loading scripts that the Hub has since replaced with parquet. Settle it with the 1e7-token probe run of `prepare_data.py` before the real corpus build; if it fails, pin `datasets` in the `.def` and rebuild |
 | does `S = I` still beat the measured `S` at scale | it does on a toy transformer with ~80k tokens estimating `S` at `d_out = 256`. A real run's EMA sees orders of magnitude more, where the estimate may become accurate enough to invert. The run testing this was killed before finishing. **Do not put the claim in the paper until it is checked** |
 
 ## Running things

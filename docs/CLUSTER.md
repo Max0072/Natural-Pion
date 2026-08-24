@@ -96,18 +96,24 @@ partitions cap at `MaxTime=1-00:00:00`. Billing weights are `gres/gpu=1.0`
 against `cpu=0.0625`, so the allocation is spent by GPU-hour and the eight
 cores each job asks for cost almost nothing.
 
-The **login node has network**: huggingface.co and pypi.org answer, and
-`nvcr.io` issues an anonymous pull token, so the NGC image needs no API key.
+**The account reaches two partitions, not the whole machine.** `sbatch
+--test-only` under `-A p330` is accepted on `rtx` and `b200` and refused on
+`cpu`, `milan`, `genoa`, `a100`, `gpu` and `a5000` with *"Invalid account or
+account/partition combination"*. That matters for work with no GPU in it --
+tokenising the corpus is hours of single-threaded CPU -- which currently has to
+occupy a GPU node or be run on the login node. Asking for `cpu` or `genoa`
+access is worth doing; it is not a blocker, since a job on `rtx` without
+`--gres` allocates no GPU and bills only CPU.
 
-Whether **compute nodes** have network is still open, and it is a different
-question with a different answer on many clusters:
+**Both the login node and the compute nodes have network.** huggingface.co,
+pypi.org and files.pythonhosted.org answer from `rtx6003` as well as from the
+login node, and `nvcr.io` issues an anonymous pull token, so the NGC image
+needs no API key and `%post` can install packages from a job. Data preparation
+does not have to happen on the login node.
 
-```bash
-srun -A p330 -p rtx --time=00:02:00 bash -c 'curl -sI -m 5 https://huggingface.co | head -1'
-```
-
-If they do not, C4 and the tokenizer must be staged from the login node, which
-puts step 3 before step 2.
+**A compute node's root filesystem is tmpfs** -- `/` shows 504 GB of tmpfs on
+`rtx6003`. Anything written to `/tmp` there is in RAM and counts against the
+job's memory, not against disk.
 
 ## Step 0 — preflight
 
@@ -154,11 +160,33 @@ export APPTAINER_TMPDIR=/tmp/apptainer-$USER/tmp                # local disk
 mkdir -p "$APPTAINER_CACHEDIR" "$APPTAINER_TMPDIR"
 
 apptainer build --ignore-fakeroot-command \
-    "$DATA_p330/containers/ngd-pion.sif" container/ngd-pion.def
+    --mksquashfs-args "-mem 3G -processors 4" \
+    /tmp/apptainer-$USER/ngd-pion.sif container/ngd-pion.def
+
+apptainer inspect /tmp/apptainer-$USER/ngd-pion.sif          # it must open
+cp /tmp/apptainer-$USER/ngd-pion.sif "$DATA_p330/containers/"
+apptainer inspect "$DATA_p330/containers/ngd-pion.sif"       # and so must the copy
 ```
 
-Three things about that command, each of which was measured rather than
+A finished image is **11.9 GB**. If it comes out at a few hundred megabytes,
+read the next paragraph.
+
+Four things about that command, each of which was measured rather than
 assumed.
+
+**Bound `mksquashfs`'s memory, or the build fails and says it succeeded.** It
+sizes its caches from the machine's *physical* memory -- 94 GB on the login
+node, so roughly 23 GB -- while a login session is capped by cgroup at 8 GB.
+It grew to 7.8 GB and was OOM-killed. The squashfs superblock is written last,
+so what survived was 187 MB of real compressed data with no valid header, and
+apptainer wrapped that in a SIF, printed `Build complete` and exited 0. Twice.
+`--mksquashfs-args "-mem 3G -processors 4"` keeps it inside the cap. Small
+images stay under it on their own, which is exactly why a throwaway alpine
+probe gives no warning at all.
+
+**Verify the artifact. Exit 0 is not evidence.** Open the image and run
+something inside it, and do it again after copying it anywhere. Both of the
+failed builds above reported success.
 
 **`--fakeroot` is not granted and is not needed.** This account has no entries
 in `/etc/subuid` or `/etc/subgid`, so the flag in earlier versions of this
@@ -197,9 +225,12 @@ comparison is a confound, and the whole point of the comparison is that one
 thing differs. Build once, then run the throughput measurement, the anchor, the
 sweeps and the final table on that single image.
 
-The amd64 base resolves to `sha256:36c950490fed05b87814bd831929ec7dbdd8282d9c21a2f6691836fbeb6054e2`
-as of 2026-08-24. The `.def` pins a tag, and a tag can move; the digest is what
-makes "rebuild the same image" a checkable claim.
+The image records what it was built from. `apptainer inspect` reports
+`org.opencontainers.image.base.digest:
+sha256:d1eac6220dd98ef5870b1a76673cfb6f84451135a6d8a174cb92258a6bf4576d` for the
+build of 2026-08-24, alongside the CUDA, cuDNN and NCCL versions it carries.
+The `.def` pins a tag and tags can move; that digest is what makes "rebuild the
+same image" a checkable claim.
 
 The base is NGC's PyTorch image because Megatron expects it and it ships a
 built TransformerEngine. The lightweight harness needs none of that; sharing
