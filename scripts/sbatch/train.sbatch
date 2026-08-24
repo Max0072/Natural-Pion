@@ -33,7 +33,7 @@
 # first sbatch, or the job dies with no output explaining why.
 set -euo pipefail
 
-REPO="${REPO:-$HOME/Natural-Pion}"
+REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"
 DATA="${DATA:-$DATA_p330/c4}"
 RUNS="${RUNS:-$DATA_p330/runs}"
