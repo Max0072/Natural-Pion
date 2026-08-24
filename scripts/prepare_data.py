@@ -8,14 +8,21 @@ one here: the comparison is only meaningful on the same data.
 Output is one little-endian uint16 array per split. The T5 vocabulary is 32100
 entries, so uint16 is exact and halves the file against uint32.
 
-Only a slice is needed. Their schedule is 37500 steps at 131072 tokens, i.e.
-4.9B tokens, so `--target-tokens 5e9` is enough for a single pass; the paper
-says 9.6B for the same experiments and that conflict is unresolved.
+The budget is **9.6B tokens** -- 73242 steps at 131072 -- which is what the
+paper reports and what `RunConfig` runs. An earlier reading of their shell
+script gave 37500 steps, i.e. 4.9B; that came from a defect in their released
+code, not from a second configuration, and it should not reappear here. The
+default target is 10B, which gives a single pass with a margin.
+
+Size the corpus to the budget deliberately: `TokenCorpus` samples random
+windows with replacement and has no notion of an epoch, so a corpus smaller
+than the budget does not fail or warn -- it silently shows every token more
+than once, which is exactly the difference the anchor run is meant to detect.
 
 Requires `datasets` and `transformers`, which the container installs and this
 repository does not depend on -- nothing else here needs them.
 
-    python scripts/prepare_data.py --out data --target-tokens 5e9
+    python scripts/prepare_data.py --out data --target-tokens 1e10
 """
 
 from __future__ import annotations
@@ -29,7 +36,7 @@ import numpy as np
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out", type=Path, default=Path("data"))
-    ap.add_argument("--target-tokens", type=float, default=5e9)
+    ap.add_argument("--target-tokens", type=float, default=1e10)
     ap.add_argument("--val-tokens", type=float, default=1e7)
     ap.add_argument("--tokenizer", default="t5-base")
     ap.add_argument("--dataset", default="allenai/c4")

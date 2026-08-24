@@ -47,10 +47,16 @@ class TokenCorpus:
     def __len__(self) -> int:
         return len(self.tokens)
 
-    @property
-    def epochs_for(self) -> float:
-        """How many passes over the corpus a token budget implies."""
-        return float(len(self.tokens))
+    def epochs_for(self, tokens: int) -> float:
+        """How many passes over the corpus a token budget implies.
+
+        Above 1 the run sees some tokens more than once. Nothing here prevents
+        that -- windows are sampled with replacement and there is no notion of
+        an epoch -- so an undersized corpus produces no error and no warning.
+        `train` logs this ratio at the start of a run so the fact is visible
+        somewhere rather than nowhere.
+        """
+        return tokens / len(self.tokens)
 
     def batch(self, size: int, device: str | torch.device = "cpu"):
         """One batch of `(inputs, targets)`, each `(size, seq_len)`."""

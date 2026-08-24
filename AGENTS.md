@@ -97,6 +97,7 @@ not.
 | non-orthogonal (Gaussian, std 0.02) init | Pion freezes the spectrum permanently, and a non-trivial spectrum is wanted for expressiveness. Costs only 4.3x on the in-side factorisation; accuracy and step norm are unaffected |
 | fixed `T_fac`, not adaptive | a data-dependent refactor schedule diverges across hardware and destroys reproducibility |
 | `alpha_max = 1` | the trust-region ratio reads out basis staleness; capping at 1 keeps it one-sided, so a stale basis can only shorten the step |
+| 9.6B tokens, not 4.9B | 73242 steps at 131072. The 37500-step reading of their shell script came from a **defect in their released code**, not from a second configuration; the paper's figure is the right one and `RunConfig.train_steps` follows it. `prepare_data.py` used to state the wrong number and default to a 5B corpus, which would have gone unnoticed: `TokenCorpus` samples with replacement and has no epoch, so an undersized corpus repeats tokens silently instead of failing |
 | no momentum, no RMS scaling in NGD-Pion | deliberate, and both are testable hypotheses rather than oversights. The comparison is against **ablated** Pion, so this is not a confound |
 
 ## Traps

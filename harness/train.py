@@ -147,6 +147,15 @@ def train(
     accum = max(1, cfg.batch_sequences // cfg.micro_batch)
     started = time.time()
 
+    # A corpus smaller than the budget is not an error here and never will be:
+    # windows are sampled with replacement and there is no epoch, so the run
+    # would quietly show the same tokens twice. Log the ratio instead, where a
+    # reader can see it.
+    passes = train_data.epochs_for(steps * cfg.tokens_per_step)
+    log.write(json.dumps({"event": "corpus", "tokens": len(train_data),
+                          "passes": round(passes, 3)}) + "\n")
+    log.flush()
+
     first = 0
     checkpoint = out / "checkpoint.pt"
     if resume and checkpoint.exists():
