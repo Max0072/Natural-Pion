@@ -23,7 +23,7 @@ SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"
 SIDE="${SIDE:-bilateral}"
 KILL_AFTER="${KILL_AFTER:-540}"     # past the first checkpoint at step 500
 W="$DATA_p330/runs/resumecheck-$SLURM_JOB_ID"
-RUN="apptainer exec --nv --bind $DATA_p330:$DATA_p330 --pwd $REPO $SIF python -m harness.run"
+RUN="apptainer exec --env PYTHONUNBUFFERED=1 --nv --bind $DATA_p330:$DATA_p330 --pwd $REPO $SIF python -m harness.run"
 ARGS="--anchor $SIDE --micro-batch 512 --out-dir $W \
       --data-path $DATA_p330/c4/c4_train.bin --val-path $DATA_p330/c4/c4_val.bin"
 

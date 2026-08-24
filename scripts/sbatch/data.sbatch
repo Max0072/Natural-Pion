@@ -44,7 +44,7 @@ echo "out     $OUT"
 echo "tokens  $TOKENS in $SHARDS shards"
 date -Is
 
-apptainer exec \
+apptainer exec --env PYTHONUNBUFFERED=1 \
     --bind "$DATA_p330:$DATA_p330" \
     --pwd "$REPO" \
     "$SIF" \

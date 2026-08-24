@@ -28,7 +28,7 @@ REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"
 OPT="${OPT:-pion}"
 W="$DATA_p330/runs/tput-${SLURM_JOB_ID}"
-RUN="apptainer exec --nv --bind $DATA_p330:$DATA_p330 --pwd $REPO $SIF python -m harness.run"
+RUN="apptainer exec --env PYTHONUNBUFFERED=1 --nv --bind $DATA_p330:$DATA_p330 --pwd $REPO $SIF python -m harness.run"
 COMMON="--optimizer $OPT --precision bf16 --data-path $DATA_p330/c4/c4_train.bin \
         --val-path $DATA_p330/c4/c4_val.bin --eval-every 100000 --log-every 50 --no-resume"
 

@@ -48,7 +48,7 @@ STEPS=9155
 
 echo "task ${SLURM_ARRAY_TASK_ID}: ${OPT} lr=${LR} steps=${STEPS}"
 
-apptainer exec --nv \
+apptainer exec --env PYTHONUNBUFFERED=1 --nv \
     --bind "$REPO:$REPO" --bind "$DATA_p330:$DATA_p330" \
     --pwd "$REPO" \
     "$SIF" \
