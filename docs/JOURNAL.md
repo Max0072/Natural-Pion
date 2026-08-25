@@ -579,3 +579,87 @@ close and the one that can move the gap.
 Level: 1, 2 and 4 are the real contributors; 3 is noise; 5 is unknown until
 their script is read. Gap: still only 6, with `_scale` normalising the
 two-sided update while `alternate` applies one side as the named mechanism.
+
+---
+
+## 2026-08-25 — their code read. Three real differences found, two entries closed
+
+Cloned `github.com/Sphere-AI-Lab/pion` to `$DATA_p330/reference/pion` (40 MB,
+outside our tree). The optimizer is
+`megatron-lm/megatron/core/optimizer/pion.py`. What it says:
+
+### 1. The gap hypothesis is confirmed, line for line
+
+`_scale_update_matrix_rms` takes `update_side` and normalises **the side it is
+about to apply**:
+
+    if update_side == "in":    base = p_data @ A_in
+    elif update_side == "out": base = A_out @ p_data
+    else:                      base = p_data @ A_in + A_out @ p_data
+
+and `_effective_update_side` resolves `alternate` to `"in"`/`"out"` *before*
+scaling — `"in" if step % 2 == 1 else "out"`, which is our phase exactly.
+
+`pion_baseline._scale` always builds `W @ g_in + g_out @ W`. So under
+`alternate` we calibrate against a two-sided step and take a one-sided one.
+This is a defect in our transcription, not a Megatron difference, and it is the
+named cause of a bilateral-to-alternate gap 4.5x too wide.
+
+### 2. We apply a second moment; they do not
+
+`--pion-use-second-momentum` is `action="store_true", default=None`, and
+`_use_second_momentum` falls through to `False` when it is absent.
+`opt_llama_60M_pion.sh` only passes it when `USE_SECOND_MOMENTUM` is set in the
+environment, so their default run normalises the Lie momentum by its first
+moment alone.
+
+`pion_baseline.__init__` has `beta2: float | None = 0.95`, and `train.py`
+constructs `Pion(...)` without passing betas, so **we divide by
+`sqrt(v) + 1e-8`** where they do not. That is an Adam-shaped change to the
+generator, and it acts on both arms — a level difference, not a gap one.
+
+Worse, `beta1` and `beta2` are **not fields of `RunConfig` at all**. They
+cannot be set, they are not in the configuration hash, and they are not in the
+manifest — against `config.py`'s own opening rule that every field which can
+change a result lives there. Two runs differing in `beta2` would produce the
+same hash and share a directory.
+
+### 3. They rotate Q per head; we rotate it whole
+
+`pion_qkv_split_granularity` defaults to `"head"`
+(`pion_split_qkv_per_head=True`), and the 60M script does not override it. In
+that branch Q is sliced into `q_per_group // head_dim` blocks of
+`head_dim x in_dim` — for this model, **8 blocks of 64x512, each rotated
+independently, each with its own RMS scaling** — while K and V are rotated
+whole. They also split the fused FC1 into up and gate, which we already have as
+separate matrices.
+
+So the entry "separate Q, K, V rather than a fused QKV matrix" had it
+backwards. The fused-versus-separate part is not the difference; the
+granularity is. We rotate one square 512x512 Q where they rotate eight wide
+64x512 blocks — a different geometry, with a kernel on the in-side that a
+square matrix does not have.
+
+### Closed: two entries that are not differences
+
+**Weight decay.** Their `Pion` takes `weight_decay`, stores it in `defaults`,
+and **never reads it again** — no decay term appears anywhere in the update.
+Rotated weights are undecayed in their implementation exactly as in ours. The
+entry should come out of `KNOWN_DIFFERENCES`.
+
+**Lie momentum under alternate.** `_lie_lie_generators` advances *both* buffers
+every step regardless of `update_side`, which is what `_smooth_lie` does. Not a
+difference. The worry recorded earlier was unfounded.
+
+### Where this leaves the six
+
+| # | was | now |
+|---|---|---|
+| 1 | flat token stream | stands; cheaper to fix than thought (EOS already in corpus) |
+| 2 | our C4 subset | stands |
+| 3 | master weights / clipping | demoted — we clip globally, our fp32 params are the master |
+| 4 | separate vs fused QKV | **restated**: per-head vs whole-matrix rotation of Q |
+| 5 | weight decay reach | **closed** — no difference |
+| 6 | our transcription | **confirmed**, and now two named defects, not one |
+
+Level: 1, 2, 4 and the second moment. Gap: the scaling side, alone.
