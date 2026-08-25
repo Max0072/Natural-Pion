@@ -721,3 +721,54 @@ GPU-hours, 1% of that allocation. What to look for, in order of what it settles:
    different offsets would not.
 3. Whether the second-moment and per-head changes moved bilateral at all, which
    the old bilateral number (3.3997) makes readable.
+
+---
+
+## 2026-08-25, 09:45 — the anchor re-run is in flight
+
+`245312` bilateral and `245313` alternate, both on `b201`, submitted from a
+clean `main` at `6e738bf19b1a` and pushed, so the manifest hash resolves to a
+commit anyone can fetch. `b201` was `IDLE`, so neither queued.
+
+| job | side | directory |
+|---|---|---|
+| 245312 | bilateral | `runs/b200/pion-lr0.001-s0-1795e6ddb3` |
+| 245313 | alternate | `runs/b200/pion-lr0.001-s0-65f5f2acdb` |
+
+Manifests confirm what the fixes were supposed to change: `pion_second_moment
+false`, `pion_split_q_per_head true`, `pion_alternate` false and true
+respectively, `beta1/beta2` present as fields at all. Both start at loss
+10.49246 — the same initialisation and the same first batch, which is what two
+runs differing only in update side should do. Peak memory 82.47 GB against
+83.31 before, consistent with dropping the second-moment buffers.
+
+### Checks run before submitting, and one scare
+
+The one worth recording: on the login node the sampler took **10 s per batch**,
+which would have turned a 4.9 h run into 200 h. It is not a regression. The
+*old* uniform-with-replacement sampler measured 9-20 s per batch on the same
+machine, while sequential reads were instant — this is a cold NFS read under
+the login node's 8 GB cgroup cap, not the permutation. On a compute node the
+20 GB corpus fits in page cache, and the evidence is already on disk: the four
+completed anchors sustained 280k tokens/s with the *cumulative* counter at 271k
+by step 2600, so there was never a slow start to explain away.
+
+Measuring the old path on the same machine, rather than reasoning about why the
+new one might be slow, is what settled it in two minutes.
+
+The rest: 39,092,866 windows and 76,353 steps to an epoch against 73,242
+needed, so the run never crosses an epoch boundary and every window is seen
+once; targets are the inputs shifted by one; every id inside the vocabulary;
+peak sampler RSS 0.90 GB. One optimizer step on the real model puts the weight
+displacement exactly on the RMS target — `wq` 1.024e-01 against
+`lr*rms*sqrt(mn) = 0.1024`, `down` 1.679e-01 against 0.1679 — and bilateral and
+alternate now move by the *same* amount, which is the scaling fix doing its job:
+before it, the alternate arm was normalised against a step twice the size of the
+one it took. Per-head spectra hold to 1e-6.
+
+### The criterion, restated before the numbers arrive
+
+1. Gap within **0.005** of their 0.0079.
+2. Both levels still high, and high by a **common** amount.
+3. Bilateral readable against its old 3.3997 to see what the second-moment and
+   per-head changes did on their own.
