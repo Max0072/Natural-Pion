@@ -207,11 +207,23 @@ class RunConfig:
     eval_batches: int = 20
     log_every: int = 50
     # Gradient accumulation chunk. Excluded from the hash: it changes speed and
-    # memory, not the result. The rtx nodes carry RTX PRO 6000 Blackwell cards
-    # with 96 GB, where the whole 512-sequence batch plausibly fits in one go --
-    # try `--micro-batch 512` there, which removes accumulation entirely and
-    # lets the covariance see all 131k tokens of a step rather than a slice.
-    micro_batch: int = 128
+    # memory, not the result.
+    #
+    # 512 removes accumulation entirely -- one micro-batch is the whole step --
+    # and lets the covariance see all 131k tokens of a step rather than a slice.
+    # Measured on an RTX PRO 6000 Blackwell (96 GB) in job 246613, on warm page
+    # cache: pion 0.460 s/step and ngd-pion 0.722 at 512, against 0.869 and
+    # 0.673 at 256. So 512 is the right default for Pion by a wide margin, and
+    # for NGD-Pion the two are close enough that seeing the full step's tokens
+    # decides it.
+    #
+    # It fits only with PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True, which
+    # every GPU sbatch script in scripts/sbatch now sets. Without that flag
+    # ngd-pion OOMs at 512 -- not for lack of room (385 MB of optimizer state
+    # against 14.6 GB of headroom) but because the unbatched `_apply` leaves the
+    # allocator unable to serve 7-30 MB contiguous blocks. Run outside those
+    # scripts and you must set it yourself.
+    micro_batch: int = 512
     out_dir: str = "runs"
 
     _EXCLUDED = ("data_path", "val_path", "eval_every", "eval_batches",

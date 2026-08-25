@@ -1484,3 +1484,43 @@ Newton-Schulz, the batched `_apply` and the contracted curvature are all still
 worth doing, and all of them now belong where the plan always put them: after
 validation, in the phase where trading accuracy is on the table. None of them
 is needed to start.
+
+---
+
+## 2026-08-25 — settled: micro-batch 512 with `expandable_segments`
+
+Decided. `RunConfig.micro_batch` defaults to 512, and every GPU sbatch script
+sets `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`, `preflight` included so
+the environment it validates is the one runs use.
+
+The numbers behind it, all on warm page cache, job 246613:
+
+| s/step | mb 256 | mb 512 |
+|---|---|---|
+| `pion` | 0.869 | **0.460** |
+| `ngd-pion` | 0.673 | **0.722** |
+
+For Pion 512 wins outright. For NGD-Pion the two are close, and what settles it
+is that at 512 there is no accumulation, so the covariance sees all 131 072
+tokens of a step rather than a 65 536-token slice — `observe` fires once per
+step either way.
+
+The flag is for the memory, not the speed: `ngd-pion` OOMs at 512 without it and
+fits with it, tested back to back in job 246607. Not for lack of room — 385 MB
+of optimizer state against 14.6 GB of headroom — but because the unbatched
+`_apply` leaves the allocator unable to serve 7-30 MB contiguous blocks.
+Anything run outside `scripts/sbatch` has to set the flag itself, and the
+comment on `micro_batch` says so.
+
+The run name does not change: `micro_batch` is excluded from the hash, and
+`ngd-pion-lr0.001-s0-b9ed2b7807` is the same before and after. Which is the
+exclusion working as intended — the depth changes speed and memory, not the
+result.
+
+### What a comparison now costs
+
+`ngd-pion` 14.7 h, `pion_ablated` about 9.4 h, both inside the 24 h cap with
+evaluation, so no requeue. A pair is about 24 h; a four-point learning-rate
+sweep across both arms about 97 h, under 5% of the 2000 rtx-hour allocation.
+
+Suite at 159 passing, 1 skipped. Speed work is done for the validation phase.

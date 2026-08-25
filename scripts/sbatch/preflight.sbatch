@@ -17,7 +17,7 @@
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"
-RUN="apptainer exec --nv --bind $DATA_p330:$DATA_p330 --pwd $REPO $SIF python"
+RUN="apptainer exec --env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True --nv --bind $DATA_p330:$DATA_p330 --pwd $REPO $SIF python"
 
 echo "node $(hostname)  partition ${SLURM_JOB_PARTITION:-?}"
 $RUN scripts/preflight.py
