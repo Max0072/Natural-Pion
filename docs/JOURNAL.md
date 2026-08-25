@@ -1329,3 +1329,55 @@ next decision is whether to spend a little more on the memory profile — a
 batched `_apply` is mathematically identical and would likely restore
 micro-batch 512, removing the requeue and returning `observe` to one call per
 step — or to start validating now and leave it.
+
+---
+
+## 2026-08-25 — 246607: I compared the wrong two things
+
+The reported factor was NGD-Pion costing 2.3x Pion. Most of that was not the
+optimizer.
+
+| | micro-batch | s/step |
+|---|---|---|
+| Pion | 512 | 0.463 |
+| Pion | 256 | **0.869** |
+| `ngd-pion` | 256 | 1.076 |
+
+**The model alone is 1.88x slower at micro-batch 256 than at 512.** Measured at
+the same depth, NGD-Pion costs `1.076 / 0.869 = 1.24x` — **+24%**, which is
+better than the +50% I had predicted from stage timings and then disowned.
+
+So the earlier post-mortem was itself wrong in its main claim. I said the 1.5x
+prediction failed because `observe` was omitted and because micro-benchmarks
+underestimate. The real cause was cruder: I compared a run at micro-batch 256
+against a run at micro-batch 512 and attributed the whole difference to the
+optimizer. `observe` and micro-benchmark optimism are real and still unmeasured,
+but they are second-order next to comparing two different things.
+
+This is the same error as the false negative gap earlier in this project, where
+the anchor comparison was read across mismatched step counts (52 600 against
+56 500). Same shape, second occurrence: **before attributing a difference to the
+variable under test, check that nothing else differs.** Cheap to check, and both
+times it inverted the conclusion.
+
+## 246607: micro-batch 512 fits, for free
+
+```
+expandable_segments off  ->  CUDA out of memory
+expandable_segments on   ->  fits
+```
+
+Fragmentation, as the budget implied — 385 MB of persistent optimizer state
+against about 14.6 GB of headroom under Pion's 83.3 GB peak. The many small
+transient allocations in the unbatched `_apply` leave a pool that cannot serve
+the 7-30 MB contiguous blocks the 1376x1376 work needs.
+
+`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` is a one-line environment
+change with no effect on numerics. The other three remedies on the list —
+caching `torch.eye`, the contracted curvature, the batched `_apply` — are not
+needed for *this* purpose. They remain worth doing for speed, later, in the
+phase where accuracy trades are on the table.
+
+`observe_cost.py` crashed on this run: `Transformer.forward` returns
+`(logits, loss)` and the probe used the return value as logits. Fixed; the
+decomposition is still unmeasured.
