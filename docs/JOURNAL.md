@@ -977,3 +977,47 @@ completed anchors remain reproducible.
 was the test being wrong rather than the code: decoupled decay is proportional
 to the learning rate, so at `lr=0` nothing decays and a broken split would have
 passed.
+
+---
+
+## 2026-08-25, 16:35 — tidying, and what was deliberately left alone
+
+`runs/` went from 8.1 GB to 3.0 GB. Nothing was deleted; `scripts/retire.sh`
+moved everything to `attic/2026-08-25/` with `register.tsv` recording where each
+thing came from. Within one filesystem that is a rename, so it cost nothing and
+is reversible.
+
+**Retired.** `runs/tput-241323/` and its three logs — the NGD throughput probe
+that hit its 40-minute limit before finishing the 200-step measurement; its one
+useful reading (1,788 tokens/s at micro-batch 256, OOM at 512) is in this
+journal already, and it carried a stale `.run.lock`. Two zero-byte
+`resumecheck-241301.leg*` files from the resume test that was cut off. And the
+**four round-1 anchor checkpoints**, renamed first so the attic is readable
+without consulting the register:
+
+    checkpoint-rtx-bilateral-7c9783fe.pt     checkpoint-b200-bilateral-3bade817.pt
+    checkpoint-rtx-alternate-7c9783fe.pt     checkpoint-b200-alternate-3bade817.pt
+
+The reason those weights are dead and not merely old: the code that produced
+them has three defects we have since named and fixed — the scaling side under
+`alternate`, an unwanted second moment, and Q rotated whole. Nobody should draw
+a conclusion from those weights. Their **results** stay in place: every
+`anchor.json`, `log.jsonl`, `manifest.json` and `PROVENANCE.md` is untouched,
+and those are the record.
+
+**Kept.** The two round-2 checkpoints (`1795e6ddb3`, `65f5f2acdb`, code
+`6e738bf`), because their Pion is correct and only the AdamW half was wrong, and
+because one of them is the weight-level reference used today for the rotation
+measurement. The two round-3 runs are in flight. `logs/` — 54 files, 215 KB, the
+operational record `AGENTS.md` says not to thin out, and two of them are being
+written right now. `reference/pion`, needed for the control. `c4/downloads`,
+19 GB of source shards kept on purpose so a rebuild fetches nothing.
+
+**Space was never the reason.** 974 GB free of 1 TB, 5% used. This was for
+legibility, and the restraint above is the point: on a shared filesystem with no
+pressure, the case for removing something has to be that it misleads, not that
+it is large.
+
+One detail that checks itself: round-2 checkpoints are 821 MB where round-1's
+are 1044 MB. The 223 MB difference is exactly the second-moment buffers the
+`pion_second_moment` fix removed — the change is visible in the file size.
