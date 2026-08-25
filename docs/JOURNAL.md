@@ -1598,3 +1598,41 @@ not about a 60M transformer.
 Which is now cheap to settle. `ngd-pion` runs at 0.722 s/step, so 500 steps is
 six minutes, and `harness.instrument` already logs `angle_min` and `angle_max`.
 No NGD run has ever produced them at scale.
+
+---
+
+## 2026-08-25 — 246662/246663: the smoke test earned its keep on the first try
+
+Two 500-step runs, `ngd-pion` and `pion_ablated`, launched through
+`scripts/sbatch/train.sbatch` exactly as the overnight runs would be. Both died
+in twelve seconds:
+
+```
+torch.OutOfMemoryError: Tried to allocate 15.67 GiB
+```
+
+15.67 GiB is `512 x 256 x 32100` logits in **fp32**. In bf16 it is 8.4.
+
+`RunConfig.precision` defaulted to `fp32`, and nothing that had ever run used
+that default: `anchor_config` sets `bf16`, and `throughput`, `memprobe` and
+`grid` all passed `--precision bf16` on the command line. `train.sbatch` passes
+no precision at all, and no full run had ever gone through it — every number in
+this journal came from a probe script that set the flag itself.
+
+So the configuration we were about to run overnight was one nothing had
+measured, in a precision nothing had measured, and it could not have completed
+even the first step. The fifteen minutes of smoke test cost less than finding
+this at breakfast.
+
+Fixed by making the default `bf16`, which is what their published script uses
+(`--bf16` in `opt_llama_60M_pion.sh`) and what everything here already ran. The
+comment on the field explained the old default by saying precision was "first
+in `anchor.KNOWN_DIFFERENCES` while this is `fp32`" — but precision stopped
+being a known difference when `anchor_config` started setting bf16, and the
+default was left behind. Stale comments outlive the thing they describe.
+
+`precision` is a scientific field and in the hash, so an fp32 run would at
+least have landed in its own directory rather than contaminating one. Small
+mercy, and not the one that mattered here.
+
+Suite at 167 passing, 1 skipped.

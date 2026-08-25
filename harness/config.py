@@ -131,10 +131,19 @@ class RunConfig:
     # is in the hash.
     tf32: bool = True
 
-    # Autocast for the forward pass and the loss. `bf16` is what their own
-    # runs use -- `--bf16` in opt_llama_60M_pion.sh -- so it is the setting
-    # that makes the anchor a fair test rather than a faster one, and it is
-    # first in anchor.KNOWN_DIFFERENCES while this is `fp32`.
+    # Autocast for the forward pass and the loss. `bf16` is what their own runs
+    # use -- `--bf16` in opt_llama_60M_pion.sh -- so it is the setting that
+    # makes the anchor a fair test rather than a faster one.
+    #
+    # It defaults to bf16 because everything that actually runs is bf16:
+    # `anchor_config` sets it, and every throughput measurement on record
+    # passed `--precision bf16` explicitly. The default said `fp32` for a while
+    # after precision stopped being a known difference from their setup, and
+    # the mismatch was invisible until jobs 246662/246663 -- a plain
+    # `train.sbatch` invocation with no `--precision` -- died allocating a
+    # 15.67 GiB logit tensor, which is 512x256x32100 in fp32 against 8.4 GiB in
+    # bf16. Nothing had launched a full run through that path before, so no
+    # measurement caught it.
     #
     # Weights and the optimizer stay fp32 regardless: autocast changes what the
     # operations compute in, not what the parameters are, which is the same
@@ -143,7 +152,7 @@ class RunConfig:
     # thousands of independent roundings cancel in the average, perturbing `A`
     # by 4.5e-05, well under the 1e-4 spectral floor. Storing `A` in bf16 would
     # not be, and `CovarianceAccumulator` refuses to.
-    precision: str = "fp32"          # fp32 | bf16
+    precision: str = "bf16"          # fp32 | bf16
 
     # NGD-Pion
     ngd_eps: float = 1e-4
