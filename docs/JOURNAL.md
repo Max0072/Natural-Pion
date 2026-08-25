@@ -522,3 +522,60 @@ and a much more defensible position than either number alone.
 
 Until then, step 5 does not start. `AGENTS.md`: *nothing this harness produces
 means anything until this lands.*
+
+---
+
+## 2026-08-25 — the six differences, read from the code rather than listed
+
+Went through `KNOWN_DIFFERENCES` against the source. Two entries were weaker
+than the list implies, one is more interesting than the list implies, and the
+list's framing of the sixth was wrong.
+
+**1. Flat token stream.** `prepare_data.py:220` appends `eos` after every
+document, so the boundaries **are in the corpus**. What ignores them is
+`TokenCorpus.batch`, which draws uniform random starts. So matching Megatron
+here needs no corpus rebuild: one CPU pass over the 20 GB `c4_train.bin`
+recording EOS positions gives a document index, and the sampler can then pack
+from documents. Cheaper than the entry implies, and worth reconsidering — the
+earlier note that we would simply never adopt their sampling was too quick.
+
+**2. Our C4 subset.** 197 of 1024 `en` train shards fetched, 10.0B tokens
+written against a corpus of roughly 156B. Their run draws its 9.6B from the
+whole stream. And `TokenCorpus` samples windows **with replacement** and has no
+epoch, so coverage is random rather than a shuffled pass: some windows repeat,
+some never appear.
+
+**3. Master weights and clipping — the weakest entry.** We do clip:
+`train.py:277`, `clip_grad_norm_(model.parameters(), 1.0)`, one global norm
+over every parameter, before the step. Megatron clips its fp32 master
+gradients; our parameters *are* fp32 and autocast only changes what the forward
+computes in, so the two are the same arrangement described twice. This entry
+should be demoted.
+
+**4. Separate Q, K, V — more than bookkeeping, for this project.** `model.py:88`
+carries `wq`, `wk`, `wv` as three 512x512 matrices; Megatron fuses them into one
+512x1536. Pion rotates *each weight matrix*, so fused means one pair of
+rotations preserving one spectrum where we have three independent pairs
+preserving three. That is a difference in the geometry the method acts on, not
+a difference in layout. It moves the level; no mechanism is identified by which
+it would inflate the bilateral-to-alternate gap.
+
+**5. Weight decay — ours is principled, theirs is unread.** `build_optimizers`
+gives AdamW only `rest` (embedding, head, norm gains) with
+`weight_decay=0.1`; the Pion-owned 2-D weights receive **no decay at all**.
+That is deliberate and load-bearing: decay shrinks singular values, and Pion's
+premise is that singular values never move. Whether their Megatron
+configuration also exempts the rotated weights is not known here and is worth
+reading off their script — if theirs decays them, their spectra drift and ours
+do not.
+
+**6. The transcription — and it is not Megatron's doing.** Their Pion optimizer
+is a standalone piece of code. Nothing about Megatron prevents matching it line
+for line, which is exactly why this is the one difference that is cheap to
+close and the one that can move the gap.
+
+### What this reorders
+
+Level: 1, 2 and 4 are the real contributors; 3 is noise; 5 is unknown until
+their script is read. Gap: still only 6, with `_scale` normalising the
+two-sided update while `alternate` applies one side as the named mechanism.
