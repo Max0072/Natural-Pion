@@ -1681,3 +1681,81 @@ optimizer rather than at anything being wrong with the optimizer.
 So tonight's `ngd-pion` run is **one point of a sweep that has not been run**,
 not "the" NGD-Pion result. Whatever it produces should be read that way, and
 the `angle_min`/`angle_max` it logs are the thing to look at first.
+
+---
+
+## 2026-08-25 — first learning-rate probes, and a hypothesis cleanly killed
+
+Five 1000-step runs at micro-batch 512, `runs/smoke/`.
+
+| `eta` | warmup | val@999 | `angle@0` | `angle@999` | `alpha_min@999` |
+|---|---|---|---|---|---|
+| 1e-3 | 0 | 5.4504 | 0.0057 | 0.037 | 0.378 |
+| **3e-3** | 0 | **5.0686** | 0.0170 | 0.137 | 0.154 |
+| 0.5 | 200 | 5.8628 | 0.0142 | 0.016 | 0.014 |
+| 1.0 | 200 | 7.8608 | 0.0283 | 0.000 | 0.020 |
+| 1.0 | 0 | 7.6109 | 5.6613 | 0.000 | 0.032 |
+
+### `eta = 3e-3` beats the inherited `1e-3` by 0.38
+
+```
+10.49 -> 5.98 -> 5.55 -> 5.49 -> 5.36 -> 5.32 -> 5.30 -> 5.25 -> 5.18 -> 5.12 -> 5.08
+```
+
+Monotone, no rebound. Against `1e-3`'s 5.4504, this is the first evidence that
+Pion's tuned learning rate is wrong for NGD-Pion, and wrong in the direction of
+being too *small*.
+
+### The cold-Fisher hypothesis is dead, and the warmup run is what killed it
+
+The proposal was that `eta = 1` fails because the first steps are taken against
+a covariance estimated from a single micro-batch — `condA_max` is `4.8e6` at
+step 0 against `2.2e4` by step 50, and the method inverts that matrix. The
+mechanism was plausible and specific: ablating Pion's RMS scaling removed the
+only thing pinning step length, and `alpha` cannot substitute because §6 makes
+it identically 1 on a fresh basis.
+
+Warmup discriminates it, and the answer is no.
+
+```
+eta 1.0, warmup 200:  6.67 -> 15.48 -> 26.73 -> 21.02 -> 14.38 -> 8.35 -> ...
+eta 1.0, no warmup:   8.44 ->  7.62 ->  7.75 ->  7.71 ->  7.30 -> 8.00 -> ...
+```
+
+It is **worse** with warmup, 7.86 against 7.61, and it blows up to 26.7 at steps
+200-300 — exactly where the 200-step warmup ends and full `eta` arrives. By then
+the covariance has had two hundred EMA updates at `beta = 0.95`, ten times its
+own horizon. The Fisher is as warm as it gets and the run still detonates the
+moment the step reaches full size.
+
+Warmup did not prevent the catastrophe, it postponed it. So the problem is the
+magnitude of `eta`, not the state of `A` when the first step is taken.
+
+### `eta = 0.5` does not blow up but does not converge either
+
+Stuck between 5.87 and 6.20 for 800 steps, val 5.8628 — worse than `1e-3`. Its
+`condA_max` reaches `4.1e8` by step 999, against `7e6` at the working step
+sizes. Possible feedback: a large rotation moves the activation distribution,
+which degrades `A`, whose inverse then amplifies more noise. Hypothesis, not
+diagnosis, but the number is striking.
+
+### Correcting something I had been asserting
+
+I had been using `ALGORITHM.md`'s 0.1 rad — the angle above which its
+trust-region grid stops being accurate — as a ceiling on admissible `eta`. The
+best run has `angle@999 = 0.137`, above that line, and it is the smoothest
+curve of the five. The 0.1 rad figure bounds where the *quadratic model* is
+accurate; it does not bound where the optimizer works. My inference from it
+about the usable range of `eta` was unfounded.
+
+### Open
+
+* `angle_max` is **exactly** `0.00000` from step 700 onward in both `eta = 1`
+  runs, while `alpha_max` is 1.0 and the loss is finite. It accompanies the
+  collapsed regime specifically. Either a real degeneracy — `G_in = W^T G -
+  G^T W` vanishes when `W^T G` is symmetric, which would mean the gradient has
+  no rotational component left — or an underflow. Unexplained.
+* **`pion_ablated` has only ever run at `1e-3`.** Its toy optimum was `2.2e+01`.
+  Comparing the arms while one of them has never been given its own regime
+  measures nothing, and at `1e-3` they are tied to 0.016, which is what that
+  looks like.
