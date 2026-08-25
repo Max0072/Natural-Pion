@@ -7,9 +7,43 @@ choose precision, this module never converts.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 import torch
 
-__all__ = ["skew", "floor_eigenvalues", "floor_spectrum", "cayley", "is_identity"]
+__all__ = ["skew", "floor_eigenvalues", "floor_spectrum", "cayley", "is_identity",
+           "exact_fp32"]
+
+
+@contextmanager
+def exact_fp32():
+    """Make fp32 mean fp32 for the duration, then put the settings back.
+
+    On an Ampere-or-newer card torch performs fp32 matrix operations in TF32
+    by default -- eight bits of exponent, **ten** of mantissa -- and that
+    includes the solve inside `cayley`. Measured on an RTX PRO 6000 Blackwell,
+    the orthogonality error of the retraction goes from `3e-06` to `4e-03`, and
+    the consequence is not cosmetic: over 200 two-sided steps at an angle of
+    1e-2 the singular values of `W` move by a **relative 1.0** with TF32 and by
+    `2.6e-04` without. A full run is 73242 steps.
+
+    Preserving the spectrum exactly is the whole reason this method uses Cayley
+    rather than a truncated exponential, so the guarantee has to be defended
+    where it is produced rather than assumed from the caller's environment. A
+    CPU test suite cannot see any of this, because TF32 does not exist there.
+    """
+    matmul = torch.backends.cuda.matmul.allow_tf32
+    cudnn = torch.backends.cudnn.allow_tf32
+    precision = torch.get_float32_matmul_precision()
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = False
+    torch.set_float32_matmul_precision("highest")
+    try:
+        yield
+    finally:
+        torch.backends.cuda.matmul.allow_tf32 = matmul
+        torch.backends.cudnn.allow_tf32 = cudnn
+        torch.set_float32_matmul_precision(precision)
 
 
 def skew(M: torch.Tensor) -> torch.Tensor:
@@ -54,7 +88,17 @@ def cayley(X: torch.Tensor, c: float | torch.Tensor) -> torch.Tensor:
     lose rank. Unlike a truncated exponential it also cannot inflate -- its
     spectral norm is exactly 1 at every step size, which is what keeps the
     singular values of `W` fixed rather than merely nearly fixed.
+
+    That last sentence is only true if fp32 means fp32, so this guards itself
+    rather than trusting the caller: with TF32 left on, the solve below carries
+    ten bits of mantissa and the spectrum moves by a relative 1.0 over 200
+    steps. See `exact_fp32`.
     """
+    with exact_fp32():
+        return _cayley(X, c)
+
+
+def _cayley(X: torch.Tensor, c: float | torch.Tensor) -> torch.Tensor:
     n = X.shape[-1]
     eye = torch.eye(n, dtype=X.dtype, device=X.device).expand_as(X)
     half = 0.5 * (c if isinstance(c, torch.Tensor) else torch.as_tensor(c, dtype=X.dtype, device=X.device))

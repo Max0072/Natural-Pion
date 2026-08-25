@@ -6,6 +6,44 @@ directory, and `data_p330` in `$HOME` is a symlink to the same place.
 
 Allocation: **2000 RTX hours and 1000 B200 hours.**
 
+## Where things live
+
+| | |
+|---|---|
+| repository | `$DATA_p330/Natural-Pion` |
+| container | `$DATA_p330/containers/ngd-pion.sif` |
+| corpus | `$DATA_p330/c4/c4_{train,val}.bin` -- and `c4/downloads/`, the source files, kept so a rebuild fetches nothing |
+| run outputs | `$DATA_p330/runs/<name>/` |
+| SLURM logs | `logs/`, **in the directory you submit from**, and not in git |
+| retired files | `$DATA_p330/attic/<date>/`, with `attic/register.tsv` saying where each came from |
+
+Nothing here is deleted. `scripts/retire.sh <path>...` moves things to the
+attic instead, which within one filesystem is a rename and so costs neither
+time nor space, and the register makes a directory of anonymous files
+answerable. `rm` is for what the attic itself outgrows.
+
+The submission scripts, in the order `CLUSTER.md` uses them:
+
+| | |
+|---|---|
+| `scripts/sbatch/preflight.sbatch` | step 0 -- the operations, then resume-on-a-card and spectrum-under-TF32 |
+| `scripts/sbatch/data.sbatch` | step 3 -- the corpus, sharded across cores |
+| `scripts/sbatch/throughput.sbatch` | step 1 -- tokens/s and which micro-batch fits |
+| `scripts/sbatch/resume.sbatch` | what a SIGKILL costs, before spending eighteen hours |
+| `scripts/sbatch/train.sbatch` | one run, including the anchor |
+| `scripts/sbatch/sweep.sbatch` | step 5 -- learning rates, as a job array |
+
+`scripts/probes/` holds the one-off measurements the documents quote -- the
+TF32 arithmetic and what honest fp32 costs -- so a reader can re-run the number
+rather than take it.
+
+The repository lives in the project directory rather than `$HOME` because
+`$DATA_p330` is group-readable and `$HOME` is not, and because one
+`--bind "$DATA_p330:$DATA_p330"` then covers code, data, container and results
+at once. The sbatch scripts default `REPO`, `SIF`, `DATA` and `RUNS` to exactly
+these paths, so a submission needs nothing in the environment beyond
+`$DATA_p330` itself, which `~/.bashrc` exports.
+
 ## The partitions
 
 | partition | GPUs/node | nodes | total | walltime |
@@ -14,6 +52,10 @@ Allocation: **2000 RTX hours and 1000 B200 hours.**
 | `b200` | 8 | 2 | **16** | 24 h |
 | `a100` | — | 6 | — | 24 h |
 | `a5000` | 8 | 1 | 8 | 24 h |
+
+Those are the configured totals. What is actually schedulable — one rtx node is
+drained and one node of each GPU pool sits under someone else's reservation —
+is in *What the cluster reports* below.
 
 Each `rtx` node carries 64 CPUs and 1 TB of memory against its 8 GPUs, so jobs
 ask for 8 cores. SLURM's GRES there is untyped — `gpu:8(S:0-1)` names no model,
@@ -48,25 +90,51 @@ checkpoint, with the sampler's position restored so batches are not replayed.
 That makes the 24 h cap survivable, though step 1 still decides which pool each
 run belongs on.
 
-Still to find:
+## What the cluster reports
 
-```bash
-scontrol show node rtx6003 | grep -Ei "Gres|RealMemory|CPUTot"   # which RTX card
-scontrol show config | grep -Ei "MaxArraySize|MaxSubmitJobs"
-apptainer --version
-df -h "$DATA_p330"
-```
+Measured 2026-08-24. `sbatch --test-only` is the way to re-ask the scheduling
+half of this: it answers where and when a job *would* start without queueing
+anything.
 
-And separately — these are different questions, and on many clusters the answer
-differs:
+| node | state |
+|---|---|
+| `rtx6003`, `rtx6004` | 64 CPUs, 1030 GB, `gpu:8` — the usable rtx pair |
+| `rtx6005` | drained |
+| `rtx6006` | held by the `migration` reservation |
+| `b201` | 128 CPUs, 2015 GB, `gpu:8`, idle — the usable b200 node |
+| `b202` | held by the `migration` reservation |
 
-```bash
-curl -sI -m 5 https://huggingface.co | head -1                       # login node
-srun -A p330 --time=00:02:00 --pty bash -c 'curl -sI -m 5 https://huggingface.co | head -1'   # compute node
-```
+`migration` is an indefinite reservation belonging to another user, running to
+2027-12-31 over `b202`, `rtx6006` and four non-GPU nodes. It does **not** block
+us: `--test-only` reports an immediate start on both partitions, onto `b201`
+and `rtx6004` respectively. It does halve the b200 pool, so if a b200 job ever
+queues unexpectedly long, this reservation is the first thing to check.
 
-If compute nodes have no network, C4 and the tokenizer must be staged into
-`$DATA_p330` from the login node first, which reorders steps 2 and 3 below.
+Scheduler limits are not a constraint here. `MaxArraySize=1001`,
+`MaxJobCount=10000`, and the p330 association sets no `MaxJobs` or
+`MaxSubmitJobs`, so step 5's `--array=0-11%8` passes as written. Both
+partitions cap at `MaxTime=1-00:00:00`. Billing weights are `gres/gpu=1.0`
+against `cpu=0.0625`, so the allocation is spent by GPU-hour and the eight
+cores each job asks for cost almost nothing.
+
+**The account reaches two partitions, not the whole machine.** `sbatch
+--test-only` under `-A p330` is accepted on `rtx` and `b200` and refused on
+`cpu`, `milan`, `genoa`, `a100`, `gpu` and `a5000` with *"Invalid account or
+account/partition combination"*. That matters for work with no GPU in it --
+tokenising the corpus is hours of single-threaded CPU -- which currently has to
+occupy a GPU node or be run on the login node. Asking for `cpu` or `genoa`
+access is worth doing; it is not a blocker, since a job on `rtx` without
+`--gres` allocates no GPU and bills only CPU.
+
+**Both the login node and the compute nodes have network.** huggingface.co,
+pypi.org and files.pythonhosted.org answer from `rtx6003` as well as from the
+login node, and `nvcr.io` issues an anonymous pull token, so the NGC image
+needs no API key and `%post` can install packages from a job. Data preparation
+does not have to happen on the login node.
+
+**A compute node's root filesystem is tmpfs** -- `/` shows 504 GB of tmpfs on
+`rtx6003`. Anything written to `/tmp` there is in RAM and counts against the
+job's memory, not against disk.
 
 ## Step 0 — preflight
 
@@ -85,6 +153,38 @@ the one to watch — it runs for every layer at every refactor, and it is exactl
 the operation that varies between CUDA builds.
 
 Run it on both pools.
+
+What it reported on `rtx6003`, 2026-08-24, with the 26.07 image:
+
+```
+  ok    device  NVIDIA RTX PRO 6000 Blackwell Server Edition, sm_120, 102 GB
+  ok    fp32 matmul  184 TFLOPS          <- tf32; honest fp32 is 74
+  ok    bf16 matmul  374 TFLOPS
+  ok    eigh 512  4.9 ms                 <- 15.4 ms on the 25.04 image
+  ok    eigh 1376  13.4 ms
+  ok    cayley  orthogonality error 3.9e-06
+  info  unguarded solve here is 1100x worse (4.3e-03) -- tf32 matmul is on
+  ok    model fwd+bwd  58.2M params, peak 2.1 GB at 8 sequences
+```
+
+And what step 1 then measured, with `pion` in the anchor's own configuration:
+micro-batch **512 fits** at 83.3 GB of 97.9, so there is no gradient
+accumulation and the covariance sees all 131072 tokens of a step. The rate is
+**268,590 tokens/s**, a step is 0.488 s, and a 9.6B run is **9.9 h** -- inside
+the 24 h cap with room to spare.
+
+Two things to carry forward. The `eigh` at 512 is three times faster on 26.07
+than on 25.04, which is most of why that image was adopted -- most matrices in
+this model are square. And **2.1 GB at 8 sequences** sets the batch arithmetic:
+the head materialises `vocab x tokens` logits in fp32, 128 KB per token per
+copy, so the whole 512-sequence batch would want something like 70-85 GB
+against the card's 102. `--micro-batch 512` is therefore unlikely; 128 or 256
+is the range, and the covariance sees a half or a quarter of each step's tokens
+accordingly.
+
+Run `scripts/gpu_smoke.py` beside it. It checks what the CPU suite cannot:
+that a run resumes from its checkpoint on a card, and that the spectrum of a
+weight holds still even with TF32 switched on deliberately.
 
 ## Step 1 — measure throughput
 
@@ -108,16 +208,111 @@ Decide the allocation from these two numbers, not from specifications.
 ## Step 2 — container
 
 ```bash
-apptainer build --fakeroot "$DATA_p330/containers/ngd-pion.sif" container/ngd-pion.def
+export APPTAINER_CACHEDIR=/nvme/scratch/$USER/apptainer/cache   # persistent
+export APPTAINER_TMPDIR=/tmp/apptainer-$USER/tmp                # local disk
+mkdir -p "$APPTAINER_CACHEDIR" "$APPTAINER_TMPDIR"
+
+SIF="$DATA_p330/containers/ngd-pion.sif"
+LOCAL=/tmp/apptainer-$USER/ngd-pion.sif
+
+# 1. build on local disk, with mksquashfs held under the login cgroup's cap
+apptainer build --ignore-fakeroot-command \
+    --mksquashfs-args "-mem 3G -processors 4" \
+    "$LOCAL" container/ngd-pion.def
+
+# 2. open it. the exit code above proves nothing
+apptainer inspect "$LOCAL"
+apptainer exec "$LOCAL" python -c "import torch, numpy, scipy, datasets, transformers, pytest"
+
+# 3. stage the copy beside the canonical path, never onto it
+cp "$LOCAL" "$SIF.new"
+apptainer inspect "$SIF.new"
+cmp "$LOCAL" "$SIF.new"
+
+# 4. publish by rename, which is atomic within a filesystem
+mv "$SIF.new" "$SIF"
 ```
 
-`--fakeroot` is not granted everywhere. If it is refused, build the `.sif` on a
-machine where you have root and copy the single file across — that is the whole
-advantage of the format.
+A finished image is **9.3 GB**, and takes about 25 minutes with a warm cache,
+most of it compression that `-processors 4` deliberately slows down. If it
+comes out at a few hundred megabytes, read the next paragraph.
+
+The shape of that recipe is the part worth keeping. Build somewhere private,
+prove the artifact opens, stage it beside its destination, prove the copy opens
+too, and only then put it where jobs will find it -- by a rename, so that no
+moment exists in which the canonical path holds half an image. `$SIF` is the
+default in both sbatch scripts and is visible to the whole p330 group, so a
+broken image there does not fail cleanly: jobs start, die somewhere unrelated,
+and the hour goes into looking in the wrong place. The same argument makes the
+checkpoint write in `harness/train.py` a write-and-rename.
+
+Four things about that command, each of which was measured rather than
+assumed.
+
+**Bound `mksquashfs`'s memory, or the build fails and says it succeeded.** It
+sizes its caches from the machine's *physical* memory -- 94 GB on the login
+node, so roughly 23 GB -- while a login session is capped by cgroup at 8 GB.
+It grew to 7.8 GB and was OOM-killed. The squashfs superblock is written last,
+so what survived was 187 MB of real compressed data with no valid header, and
+apptainer wrapped that in a SIF, printed `Build complete` and exited 0. Twice.
+`--mksquashfs-args "-mem 3G -processors 4"` keeps it inside the cap. Small
+images stay under it on their own, which is exactly why a throwaway alpine
+probe gives no warning at all.
+
+**Verify the artifact. Exit 0 is not evidence.** Open the image and run
+something inside it, and do it again after copying it anywhere. Both of the
+failed builds above reported success.
+
+**`--fakeroot` is not granted and is not needed.** This account has no entries
+in `/etc/subuid` or `/etc/subgid`, so the flag in earlier versions of this
+document would have failed. Apptainer 1.5 falls back to a root-mapped user
+namespace by itself — unprivileged namespaces are enabled here and
+`unshare -U -r` succeeds — and `%post` runs in it as uid 0 with working
+outbound network. Verified by building a throwaway alpine image whose `%post`
+installed a package and downloaded from PyPI. The plan-B of building elsewhere
+and copying a `.sif` across is not required.
+
+**`--ignore-fakeroot-command` is required.** Without it apptainer wraps `%post`
+in a `fakeroot` binary that the image does not carry, and the build dies at the
+first line of `%post` with *"a shared library is likely missing in the image"*.
+
+The two directories want opposite things, which is why they are split. The
+cache holds the base image's 61 layers, 12.1 GB compressed, and it is worth
+keeping: with a warm cache a rebuild costs minutes rather than another
+download, so it lives on scratch, which survives. The temporary directory is
+where those layers are unpacked into tens of gigabytes of small files, and that
+is the one that must not be on NFS.
+
+**`APPTAINER_TMPDIR` must be on local disk.** Pointed at `/nvme/scratch`, which
+is NFS, the alpine probe hung in *"Extracting OCI image"* and had not finished
+five minutes later; pointed at `/tmp`, which is local ZFS with 419 GB free, the
+identical build finished in seconds. The NGC image unpacks to tens of
+gigabytes, so this is the difference between a twenty-minute build and an
+afternoon spent hammering a shared filer.
+
+Rebuild as rarely as possible, and never in the middle of a series. The code
+is bind-mounted rather than baked in, so editing the optimizer, the harness or
+the tests needs no rebuild at all; only a dependency change does, and a new
+pure-Python package can usually skip even that
+(`pip install --target "$DATA_p330/pylibs"`, then `PYTHONPATH`). The reason to
+care is not convenience: a different torch or CUDA build between two arms of a
+comparison is a confound, and the whole point of the comparison is that one
+thing differs. Build once, then run the throughput measurement, the anchor, the
+sweeps and the final table on that single image.
+
+The image records what it was built from. `apptainer inspect` reports
+`org.opencontainers.image.base.digest:
+sha256:2140e699b3beaf7f96a0081fd9c9406bc3832b435cdb60dfa2d261f7d2f34a1c` for the
+26.07 build of 2026-08-24, alongside the CUDA, cuDNN and NCCL versions it
+carries.
+The `.def` pins a tag and tags can move; that digest is what makes "rebuild the
+same image" a checkable claim.
 
 The base is NGC's PyTorch image because Megatron expects it and it ships a
 built TransformerEngine. The lightweight harness needs none of that; sharing
-one image just keeps both paths reproducible from one pinned digest.
+one image just keeps both paths reproducible from one pinned digest. The
+`%post` also installs `pytest` and `scipy`, because step 3 runs the test suite
+inside this image and neither is guaranteed to be in the base.
 
 ## Step 3 — data
 

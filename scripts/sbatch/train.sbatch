@@ -33,10 +33,18 @@
 # first sbatch, or the job dies with no output explaining why.
 set -euo pipefail
 
-REPO="${REPO:-$HOME/Natural-Pion}"
+REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"
 DATA="${DATA:-$DATA_p330/c4}"
 RUNS="${RUNS:-$DATA_p330/runs}"
+
+# -J names the project, so every log file is ngd-pion-<id>.out whatever is
+# actually running -- which reads as though the optimizer were always ngd. The
+# run's real identity is its directory, named by the configuration hash. Rename
+# the job after the fact so the queue and the log file say what they are.
+if [ -n "${SLURM_JOB_ID:-}" ]; then
+    scontrol update "jobid=$SLURM_JOB_ID" "name=$(echo "$*" | tr ' ' '-' | cut -c1-40)" 2>/dev/null || true
+fi
 
 echo "node        $(hostname)"
 echo "cpus        ${SLURM_CPUS_PER_TASK:-?}"
@@ -44,7 +52,7 @@ echo "gpu         $(nvidia-smi --query-gpu=name,memory.total --format=csv,nohead
 echo "job         ${SLURM_JOB_ID:-none} on ${SLURM_JOB_PARTITION:-unknown}"
 echo "args        $*"
 
-apptainer exec --nv \
+apptainer exec --env PYTHONUNBUFFERED=1 --nv \
     --bind "$REPO:$REPO" --bind "$DATA_p330:$DATA_p330" \
     --pwd "$REPO" \
     "$SIF" \

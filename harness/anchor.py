@@ -16,6 +16,28 @@ for alternate, both with Lie+Lie momentum. Note this is not the configuration
 their 60M shell script runs -- that script sets `alternate` and
 `transported_ambient_ambient`. The anchor has to follow the number, not the
 script, or a miss says nothing.
+
+Their `opt_llama_60M_pion.sh` has since been read rather than inferred, and it
+confirms the shape this harness copies: 8 layers, hidden 512, ffn 1376, 8
+heads, kv 64, RMSNorm, seq 256, rotary base 10000, init 0.02, T5 tokenizer,
+lr 1e-3 to 1e-5 cosine with no warmup, weight decay 0.1, clip 1.0, global batch
+512, 9.6B tokens, `--pion-degree 2`, `--pion-scaling rms`, `--pion-rms 0.2`. It
+also confirms the two defaults above.
+
+What it adds is `--bf16`, which `anchor_config` now sets, and
+`--use-same-init-for-output-layers`, which makes O and down initialise at the
+same 0.02 as everything else rather than at Megatron's default
+`0.02/sqrt(2*layers)` -- this harness initialises uniformly at `init_std`, so
+that one matches without having been aimed at.
+
+Their optimizer has since been read too, not only their script, and it moved
+three things. `_scale_update_matrix_rms` takes an `update_side` and normalises
+the side being applied, which `pion_baseline` now does; their default leaves
+the second moment off, which `pion_second_moment` now defaults to; and their
+`pion_qkv_split_granularity` defaults to per-head Q, which
+`pion_split_q_per_head` now reproduces. Two entries left `KNOWN_DIFFERENCES`
+outright: their Pion never applies weight decay to a rotated weight, and their
+sample windows cross document boundaries exactly as ours do.
 """
 
 from __future__ import annotations
@@ -39,13 +61,20 @@ TOLERANCE = 0.02
 #: Reasons the number could miss even with correct code. A miss should be
 #: diagnosed against this list before anything is called a bug.
 KNOWN_DIFFERENCES = (
-    "flat token stream: windows may span documents, where Megatron's indexed "
-    "dataset respects document boundaries",
-    "a C4 subset in our own order, not their full stream",
-    "separate Q, K, V projections rather than Megatron's fused QKV matrix",
-    "Megatron's optimizer wrapper: where gradient clipping and fp32 master "
-    "weights sit relative to the step",
-    "which parameters weight decay reaches",
+    "a 10B-token C4 subset -- 197 of the 1024 `en` shards, in our own order -- "
+    "against their full stream. The sampling discipline matches now (windows "
+    "partition the stream and a permutation orders them, once per epoch), but "
+    "the text behind it does not",
+    "where the master weights sit: Megatron's optimizer wrapper keeps its own "
+    "fp32 copies, while this harness holds fp32 parameters and autocasts the "
+    "forward pass. Both clip one global norm over every parameter before the "
+    "step, so this is largely the same arrangement described twice, and it is "
+    "the least likely entry here to move a number",
+    "layout: Megatron fuses QKV and fuses up with gate, where this harness "
+    "keeps five separate matrices. Their optimizer slices the fused parameters "
+    "apart again before rotating -- Q per head, K and V whole, up and gate "
+    "apart -- so with `pion_split_q_per_head` the geometry matches and only the "
+    "storage layout differs",
 )
 
 
@@ -59,8 +88,7 @@ def anchor_config(update_side: str = "bilateral", **overrides) -> RunConfig:
     """
     if update_side not in TARGETS:
         raise ValueError(f"update_side must be one of {sorted(TARGETS)}, got {update_side!r}")
-    return replace(
-        RunConfig(),
+    settings = dict(
         optimizer="pion",
         lr=1e-3,
         lr_min=1e-5,
@@ -74,8 +102,15 @@ def anchor_config(update_side: str = "bilateral", **overrides) -> RunConfig:
         pion_momentum="lie",        # Lie+Lie: the variant the numbers come from
         pion_retraction="trunc",    # their degree-2 truncated exponential
         pion_alternate=update_side == "alternate",
-        **overrides,
+        # Their script says --bf16. Running the anchor in fp32 would compare
+        # our arithmetic against their number, which is a different experiment
+        # from the one this is for.
+        precision="bf16",
     )
+    # Anything named by the caller wins, so an override is an override rather
+    # than a collision.
+    settings.update(overrides)
+    return replace(RunConfig(), **settings)
 
 
 def _last_attempt(log_path: str | Path) -> list[dict]:

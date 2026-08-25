@@ -4,7 +4,14 @@ import numpy as np
 import pytest
 import torch
 
-from ngd_pion.linalg import cayley, floor_eigenvalues, floor_spectrum, is_identity, skew
+from ngd_pion.linalg import (
+    cayley,
+    exact_fp32,
+    floor_eigenvalues,
+    floor_spectrum,
+    is_identity,
+    skew,
+)
 
 torch.manual_seed(0)
 
@@ -103,3 +110,29 @@ def test_is_identity():
     assert is_identity(torch.eye(5, dtype=torch.float64))
     assert not is_identity(2.0 * torch.eye(5, dtype=torch.float64))
     assert not is_identity(torch.randn(4, 6, dtype=torch.float64))
+
+
+def test_exact_fp32_restores_what_it_changed():
+    """TF32 is off inside the guard and the caller's settings survive it.
+
+    What the guard is for cannot be tested here: TF32 exists only on the GPU,
+    and this suite runs on CPU. Measured on an RTX PRO 6000 Blackwell, leaving
+    it on moves the singular values of a weight by a relative 1.0 over 200
+    two-sided steps. So this pins the mechanism, and `scripts/gpu_smoke.py`
+    plus `scripts/preflight.py` check the consequence where it exists.
+    """
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
+    torch.set_float32_matmul_precision("high")
+    try:
+        with exact_fp32():
+            assert not torch.backends.cuda.matmul.allow_tf32
+            assert not torch.backends.cudnn.allow_tf32
+            assert torch.get_float32_matmul_precision() == "highest"
+        assert torch.backends.cuda.matmul.allow_tf32
+        assert torch.backends.cudnn.allow_tf32
+        assert torch.get_float32_matmul_precision() == "high"
+    finally:
+        torch.backends.cuda.matmul.allow_tf32 = False
+        torch.backends.cudnn.allow_tf32 = False
+        torch.set_float32_matmul_precision("highest")

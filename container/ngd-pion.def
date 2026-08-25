@@ -1,10 +1,16 @@
 Bootstrap: docker
-From: nvcr.io/nvidia/pytorch:25.04-py3
-# The tag must carry CUDA 12.8 or later: the rtx pool is sm_120 (RTX PRO 6000
-# Blackwell) and older builds have no kernels for it. 25.03 already ships CUDA
-# 12.8.1, so anything from there on should do -- but confirm it rather than
-# trusting the number, with `scripts/preflight.py`, which runs the operations
-# this project actually depends on instead of comparing versions.
+From: nvcr.io/nvidia/pytorch:26.07-py3
+# The tag must carry kernels for sm_120: the rtx pool is RTX PRO 6000 Blackwell
+# and the b200 pool is Blackwell too. Confirm it rather than trusting the
+# number, with `scripts/preflight.py`, which runs the operations this project
+# depends on instead of comparing versions.
+#
+# The tag is also deliberately current. An earlier pin to 25.04 was fifteen
+# months old by the time it was built, and age is not free: NGC ships a
+# constraint file pinning ~310 packages, so an old image's pin set resolved
+# `datasets` to a 2022 release that no longer streams from the Hub at all.
+# Kernel tuning for Blackwell moved over those months as well, and step 1
+# allocates three thousand GPU-hours from a throughput measurement.
 
 # NGC's PyTorch image is the base because Megatron-LM expects it: it ships a
 # built TransformerEngine, which the anchor run needs and which is painful to
@@ -27,7 +33,10 @@ From: nvcr.io/nvidia/pytorch:25.04-py3
 
 %post
     pip install --no-cache-dir --upgrade pip
-    pip install --no-cache-dir datasets transformers sentencepiece
+    # pytest and scipy are here because the test suite runs *inside* this
+    # image: scipy is what reference.py is checked against, and neither is
+    # guaranteed to be in the base image.
+    pip install --no-cache-dir datasets transformers sentencepiece pytest scipy
     python - <<'EOF'
 import torch
 print("torch", torch.__version__, "cuda", torch.version.cuda)

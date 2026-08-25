@@ -17,26 +17,81 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 from dataclasses import asdict, dataclass, field
 
 from .model import ModelConfig
 
-__all__ = ["RunConfig", "git_commit"]
+__all__ = ["RunConfig", "git_commit", "machine", "untracked_modules"]
 
 
 def git_commit() -> str:
-    """The working tree's commit, or a marker when it is not a repository."""
+    """The working tree's commit, or a marker when it is not a repository.
+
+    `-dirty` means a **tracked** file differs from the commit -- the code that
+    ran is not the code the hash names, which is the only thing this marker is
+    for. Untracked files are deliberately excluded. They used to count, and the
+    consequence was that a notes file created beside the repository stamped two
+    anchor runs `-dirty` while the code they executed was clean; a marker that
+    fires on things which cannot change a result stops meaning anything exactly
+    when it needs to.
+
+    The exception is an untracked *module*, which a run can import and which
+    would therefore be invisible here. `untracked_modules` reports those
+    separately rather than folding them into a flag that says nothing about
+    which file it means.
+    """
     try:
         out = subprocess.run(
             ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True
         )
         dirty = subprocess.run(
-            ["git", "status", "--porcelain"], capture_output=True, text=True, check=True
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            capture_output=True, text=True, check=True,
         ).stdout.strip()
         return out.stdout.strip()[:12] + ("-dirty" if dirty else "")
     except Exception:
         return "unknown"
+
+
+def untracked_modules() -> list[str]:
+    """Untracked `.py` files, which `git_commit` does not count as dirty.
+
+    An untracked module is the one kind of untracked file a run can actually
+    execute, so it belongs in the manifest even though it does not belong in
+    `-dirty`. Normally empty; a non-empty list is worth reading before trusting
+    the commit hash beside it.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard"],
+            capture_output=True, text=True, check=True,
+        ).stdout.split()
+        return sorted(f for f in out if f.endswith(".py"))
+    except Exception:
+        return []
+
+
+def machine(device: str | None = None) -> dict:
+    """Which card, which host, which torch. Recorded, never hashed."""
+    import platform
+
+    import torch
+
+    info = {
+        "host": platform.node(),
+        "slurm_job": os.environ.get("SLURM_JOB_ID"),
+        "partition": os.environ.get("SLURM_JOB_PARTITION"),
+        "torch": torch.__version__,
+        "cuda": torch.version.cuda,
+        "device": str(device) if device is not None else None,
+    }
+    if device is not None and str(device).startswith("cuda") and torch.cuda.is_available():
+        info["gpu"] = torch.cuda.get_device_name(0)
+        cap = torch.cuda.get_device_capability(0)
+        info["arch"] = f"sm_{cap[0]}{cap[1]}"
+    return info
 
 
 @dataclass(frozen=True)
@@ -57,6 +112,39 @@ class RunConfig:
     weight_decay: float = 0.1
     grad_clip: float = 1.0
 
+    # Arithmetic for the *model*. On an Ampere-or-newer card torch runs fp32
+    # matrix operations in TF32 -- ten bits of mantissa -- and on an RTX PRO
+    # 6000 Blackwell that is worth 2.2x to 2.6x on exactly the shapes this
+    # model multiplies, measured. The gradient it produces is then wrong by a
+    # relative 1e-3, against a step that is about 47% sampling noise, and
+    # Megatron runs their own experiments in bf16, which is coarser still. So
+    # it is on.
+    #
+    # It is emphatically **not** on inside the optimizer. TF32 there moves the
+    # singular values of a weight by a relative 1.0 over 200 two-sided steps
+    # (2.6e-04 without), which would silently destroy the one property the
+    # method is built on, and it corrupts the covariance the method inverts.
+    # `ngd_pion` turns it off around its own linear algebra and does not
+    # depend on this field being anything in particular.
+    #
+    # A scientific field regardless, not plumbing: it changes results, so it
+    # is in the hash.
+    tf32: bool = True
+
+    # Autocast for the forward pass and the loss. `bf16` is what their own
+    # runs use -- `--bf16` in opt_llama_60M_pion.sh -- so it is the setting
+    # that makes the anchor a fair test rather than a faster one, and it is
+    # first in anchor.KNOWN_DIFFERENCES while this is `fp32`.
+    #
+    # Weights and the optimizer stay fp32 regardless: autocast changes what the
+    # operations compute in, not what the parameters are, which is the same
+    # arrangement as Megatron's fp32 master weights. The covariance is fed from
+    # activations that are then bf16, and that is measured to be harmless --
+    # thousands of independent roundings cancel in the average, perturbing `A`
+    # by 4.5e-05, well under the 1e-4 spectral floor. Storing `A` in bf16 would
+    # not be, and `CovarianceAccumulator` refuses to.
+    precision: str = "fp32"          # fp32 | bf16
+
     # NGD-Pion
     ngd_eps: float = 1e-4
     ngd_beta: float = 0.95
@@ -69,6 +157,26 @@ class RunConfig:
     pion_momentum: str = "lie"      # the variant their published 60M numbers use
     pion_retraction: str = "trunc"
     pion_alternate: bool = True
+    pion_beta1: float = 0.9
+    pion_beta2: float = 0.95
+    # Their `--pion-use-second-momentum` is `store_true` with `default=None`,
+    # and `_use_second_momentum` falls through to `False` when it is absent.
+    # `opt_llama_60M_pion.sh` passes it only when `USE_SECOND_MOMENTUM` is set
+    # in the environment, so their published runs normalise the Lie momentum by
+    # its first moment alone.
+    #
+    # This harness divided by `sqrt(v) + 1e-8` regardless, because
+    # `Pion.__init__` defaults `beta2=0.95` and `build_optimizers` never passed
+    # a value. Worse, neither beta was a field here, so the choice was outside
+    # the hash: two runs differing in it produced the same name and shared a
+    # directory. Both are fields now, and the second moment is off by default
+    # because that is what their number comes from.
+    pion_second_moment: bool = False
+    # Their `pion_qkv_split_granularity`, which defaults to `"head"` and which
+    # the 60M script does not override: Q is rotated in per-head blocks, K and
+    # V whole. This harness keeps Q, K and V as separate matrices already, so
+    # only the granularity of Q was ever different.
+    pion_split_q_per_head: bool = True
 
     # plumbing, deliberately excluded from the hash
     data_path: str = "data/c4_train.bin"
@@ -111,13 +219,23 @@ class RunConfig:
     def name(self) -> str:
         return f"{self.optimizer}-lr{self.lr:g}-s{self.seed}-{self.hash}"
 
-    def manifest(self) -> dict:
-        """What gets written beside the results so a run can be reconstructed."""
+    def manifest(self, device: str | None = None) -> dict:
+        """What gets written beside the results so a run can be reconstructed.
+
+        The machine is part of that. Two cards do not agree bitwise -- cuBLAS
+        picks different algorithms per architecture, floating-point addition is
+        not associative, and some backward kernels accumulate atomically in no
+        fixed order -- so a comparison whose arms ran on different hardware has
+        a variable in it that nothing in the configuration records. Writing the
+        device down does not prevent that; it makes it answerable afterwards.
+        """
         return {
             "name": self.name,
             "hash": self.hash,
             "git_commit": git_commit(),
+            "untracked_modules": untracked_modules(),
             "tokens_per_step": self.tokens_per_step,
             "total_tokens": self.total_tokens,
+            "machine": machine(device),
             "config": asdict(self),
         }

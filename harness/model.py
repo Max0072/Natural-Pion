@@ -169,5 +169,16 @@ class Transformer(nn.Module):
         return rotational, rest
 
 
+    def query_projections(self) -> list[nn.Linear]:
+        """The Q projections, which their optimizer rotates one head at a time.
+
+        Megatron carries a fused QKV matrix and slices it; this harness carries
+        `wq`, `wk` and `wv` separately, so the same granularity is reached by
+        splitting `wq` into `heads` row-blocks. `wk` and `wv` are rotated whole
+        in their code too, and need no such treatment.
+        """
+        return [module for name, module in self.named_modules() if name.endswith(".wq")]
+
+
 def matrix_parameters(model: Transformer) -> list[nn.Parameter]:
     return [m.weight for m in model.parameter_split()[0]]

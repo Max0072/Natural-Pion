@@ -10,7 +10,10 @@ from __future__ import annotations
 
 import json
 import math
+import os
+import platform
 import time
+from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
 
@@ -68,6 +71,20 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
             # truncated exponential inflates and diverges within tens of steps
             retraction="cayley" if ablated else cfg.pion_retraction,
             alternate=False if ablated else cfg.pion_alternate,
+            beta1=cfg.pion_beta1,
+            beta2=cfg.pion_beta2 if cfg.pion_second_moment else None,
+            # Per-head Q blocks are their published configuration, so the
+            # anchor needs them -- but only the anchor. `pion_ablated` is the
+            # arm `ngd` is measured against, `NGDPion` rotates whole matrices,
+            # and giving one arm a finer granularity than the other would put a
+            # second variable in a comparison whose whole claim is that it has
+            # one. Lifting this means teaching `NGDPion` about blocks, not
+            # turning it on here.
+            row_blocks=(
+                {id(m.weight): cfg.model.heads for m in model.query_projections()}
+                if cfg.pion_split_q_per_head and not ablated
+                else None
+            ),
         )
         recorder = None
     else:
@@ -77,17 +94,88 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
     return rot, adamw, recorder
 
 
+def _autocast(cfg: RunConfig, device: str):
+    """Autocast for the forward pass, or a no-op context.
+
+    Only the forward pass and the loss. The optimizer step runs outside it,
+    under `no_grad` and with its own exact-fp32 guard, so the retraction and
+    the covariance keep the precision they need whatever this is set to.
+    """
+    if cfg.precision == "fp32":
+        return nullcontext()
+    if cfg.precision != "bf16":
+        raise ValueError(f"precision must be 'fp32' or 'bf16', got {cfg.precision!r}")
+    return torch.autocast("cuda" if str(device).startswith("cuda") else "cpu",
+                          dtype=torch.bfloat16)
+
+
 @torch.no_grad()
-def evaluate(model: Transformer, batches) -> float:
+def evaluate(model: Transformer, batches, cfg: RunConfig, device: str) -> float:
     model.eval()
     total = 0.0
     for x, y in batches:
-        total += float(model(x, y)[1])
+        with _autocast(cfg, device):
+            total += float(model(x, y)[1])
     model.train()
     return total / max(1, len(batches))
 
 
+class RunLock:
+    """One writer per run directory, with a heartbeat so a resume is not blocked.
+
+    A run's directory is named by the configuration hash, so the same
+    configuration on two machines is the same directory -- and two trainers
+    appending to one log and overwriting one checkpoint produce a run that
+    looks finished and is not. Nothing downstream could detect it.
+
+    The lock is refreshed at every checkpoint, roughly every four minutes at
+    this scale, so a lock older than the grace period belonged to something
+    that died. That is deliberately taken over rather than refused: the cluster
+    caps jobs at 24 hours and resubmitting to resume is the intended workflow,
+    which a lock left behind by a SIGKILL would otherwise break.
+    """
+
+    def __init__(self, path: Path, grace: float = 900.0) -> None:
+        self.path = path
+        self.grace = grace
+        self.owner = (f"{platform.node()} pid {os.getpid()} "
+                      f"slurm {os.environ.get('SLURM_JOB_ID', '-')}")
+
+    def take(self, force: bool = False) -> None:
+        if self.path.exists() and not force:
+            age = time.time() - self.path.stat().st_mtime
+            if age < self.grace:
+                raise SystemExit(
+                    f"{self.path} is held by {self.path.read_text().strip()} "
+                    f"({age:.0f}s ago). Two trainers in one run directory "
+                    f"interleave their logs and overwrite each other's "
+                    f"checkpoints. Use a different --out-dir, or --force if "
+                    f"that process is gone."
+                )
+            print(f"taking over a lock {age/60:.0f} min stale, left by "
+                  f"{self.path.read_text().strip()}", flush=True)
+        self.path.write_text(self.owner + "\n")
+
+    def touch(self) -> None:
+        try:
+            self.path.write_text(self.owner + "\n")
+        except OSError:
+            pass
+
+    def release(self) -> None:
+        self.path.unlink(missing_ok=True)
+
+
 def _save(path: Path, step: int, model, rot, adamw, data) -> None:
+    """Write the checkpoint, atomically.
+
+    A job killed while `torch.save` is writing -- the 24 h wall, a preemption,
+    a node failure -- leaves a truncated file where the resume path expects a
+    checkpoint, and the run then has to start over from nothing. Writing beside
+    it and renaming avoids that: `os.replace` is atomic within a filesystem, so
+    whatever checkpoint exists is a complete one.
+    """
+    tmp = path.with_name(path.name + ".tmp")
     torch.save(
         {
             "step": step,
@@ -97,8 +185,9 @@ def _save(path: Path, step: int, model, rot, adamw, data) -> None:
             "data_rng": data.rng_state,
             "torch_rng": torch.get_rng_state(),
         },
-        path,
+        tmp,
     )
+    os.replace(tmp, path)
 
 
 def _restore(path: Path, model, rot, adamw, data) -> int:
@@ -114,7 +203,8 @@ def _restore(path: Path, model, rot, adamw, data) -> int:
 
 
 def train(
-    cfg: RunConfig, device: str = "cpu", max_steps: int | None = None, resume: bool = True
+    cfg: RunConfig, device: str = "cpu", max_steps: int | None = None, resume: bool = True,
+    force: bool = False,
 ) -> Path:
     """Train one run, picking up from a checkpoint if one is already there.
 
@@ -124,9 +214,16 @@ def train(
     a resumed run does not replay the batches it already saw.
     """
     torch.manual_seed(cfg.seed)
+    # Applies to the model's own matmuls as well as the optimizer's, which
+    # guards itself in any case. Off by default: see RunConfig.tf32.
+    torch.backends.cuda.matmul.allow_tf32 = cfg.tf32
+    torch.backends.cudnn.allow_tf32 = cfg.tf32
+    torch.set_float32_matmul_precision("high" if cfg.tf32 else "highest")
     out = Path(cfg.out_dir) / cfg.name
     out.mkdir(parents=True, exist_ok=True)
-    (out / "manifest.json").write_text(json.dumps(cfg.manifest(), indent=2))
+    lock = RunLock(out / ".run.lock")
+    lock.take(force)
+    (out / "manifest.json").write_text(json.dumps(cfg.manifest(device), indent=2))
     # Appending rather than truncating keeps a preempted run's history, but it
     # also means a re-run with the same configuration writes into the same
     # file. A start marker separates them so readers can take the last attempt.
@@ -147,6 +244,15 @@ def train(
     accum = max(1, cfg.batch_sequences // cfg.micro_batch)
     started = time.time()
 
+    # A corpus smaller than the budget is not an error here and never will be:
+    # windows are sampled with replacement and there is no epoch, so the run
+    # would quietly show the same tokens twice. Log the ratio instead, where a
+    # reader can see it.
+    passes = train_data.epochs_for(steps * cfg.tokens_per_step)
+    log.write(json.dumps({"event": "corpus", "tokens": len(train_data),
+                          "passes": round(passes, 3)}) + "\n")
+    log.flush()
+
     first = 0
     checkpoint = out / "checkpoint.pt"
     if resume and checkpoint.exists():
@@ -155,10 +261,12 @@ def train(
         log.flush()
         if first >= steps:
             log.close()
+            lock.release()
             if recorder is not None:
                 recorder.remove()
             return out
 
+    window_time, window_step = time.time(), first
     for step in range(first, steps):
         lr = lr_at(step, cfg)
         for opt in (rot, adamw):
@@ -174,7 +282,8 @@ def train(
             if recorder is not None:
                 recorder.enabled = micro == 0
             x, y = train_data.batch(cfg.micro_batch, device)
-            _, loss = model(x, y)
+            with _autocast(cfg, device):
+                _, loss = model(x, y)
             (loss / accum).backward()
             loss_sum += loss.detach().item() / accum
 
@@ -185,25 +294,44 @@ def train(
                 opt.step()
 
         if step % cfg.log_every == 0 or step == steps - 1:
-            elapsed = time.time() - started
+            now = time.time()
+            elapsed = now - started
+            # Throughput decides which partition a run belongs on: a 60M model
+            # does not fill a B200, so the peak-FLOPS ratio against an RTX card
+            # is not the ratio that matters. Two numbers, because the average
+            # over a whole attempt carries its startup and warm-up with it and
+            # reads low on a short run -- and step 1 is a 200-step run whose
+            # answer allocates three thousand GPU-hours. `window` is the rate
+            # since the previous logged row; take that one.
+            done_here = step - first + 1
+            span, moved = now - window_time, step - window_step
             row = {"step": step, "lr": lr, "train_loss": loss_sum,
                    "wall": round(elapsed, 1),
-                   # throughput decides which partition a run belongs on: a 60M
-                   # model does not fill a B200, so the peak-FLOPS ratio against
-                   # an RTX card is not the ratio that matters
-                   "tokens_per_sec": round(cfg.tokens_per_step * (step + 1) / max(elapsed, 1e-9))}
+                   "tokens_per_sec": round(cfg.tokens_per_step * done_here / max(elapsed, 1e-9)),
+                   "tokens_per_sec_window": round(
+                       cfg.tokens_per_step * moved / max(span, 1e-9)) if moved else None}
+            if str(device).startswith("cuda"):
+                # Peak since the last log line, not since the run began: what
+                # decides `micro_batch` is what a step needs, and the head
+                # materialises vocab-by-tokens logits, so the answer is not
+                # obvious from the parameter count.
+                row["peak_gb"] = round(torch.cuda.max_memory_allocated() / 1e9, 2)
+                torch.cuda.reset_peak_memory_stats()
+            window_time, window_step = now, step
             if isinstance(rot, NGDPion):
                 row.update(summarise(layer_diagnostics(rot, names)))
             log.write(json.dumps(row) + "\n")
             log.flush()
 
         if (step + 1) % cfg.eval_every == 0 or step == steps - 1:
-            row = {"step": step, "val_loss": evaluate(model, val_batches)}
+            row = {"step": step, "val_loss": evaluate(model, val_batches, cfg, device)}
             log.write(json.dumps(row) + "\n")
             log.flush()
             _save(checkpoint, step, model, rot, adamw, train_data)
+            lock.touch()
 
     log.close()
+    lock.release()
     if recorder is not None:
         recorder.remove()
     return out

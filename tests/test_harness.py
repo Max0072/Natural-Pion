@@ -1,6 +1,9 @@
 """The training harness: model shapes, data, schedule, and one end-to-end run."""
 
 import json
+import math
+import os
+import time
 from collections import Counter
 from dataclasses import replace
 from pathlib import Path
@@ -329,3 +332,164 @@ def test_no_resume_starts_over(corpus, tmp_path):
     train(cfg, max_steps=2, resume=False)
     rows = [json.loads(line) for line in (out / "log.jsonl").read_text().splitlines()]
     assert not any(r.get("event") == "resume" for r in rows)
+
+
+def test_bf16_autocast_trains_and_leaves_the_weights_in_fp32(corpus, tmp_path):
+    """Their runs are --bf16, so ours must be able to be.
+
+    Autocast covers the forward pass and the loss; the parameters stay fp32,
+    which is the same arrangement as Megatron's fp32 master weights, and the
+    optimizer keeps its own exact arithmetic underneath. This runs on CPU, so
+    it pins the wiring rather than the numerics.
+    """
+    cfg = RunConfig(
+        optimizer="ngd", model=SMALL, batch_sequences=4, micro_batch=4,
+        train_steps=4, ngd_t_fac=2, eval_every=2, eval_batches=1, log_every=1,
+        precision="bf16",
+        data_path=str(corpus / "train.bin"), val_path=str(corpus / "val.bin"),
+        out_dir=str(tmp_path),
+    )
+    out = train(cfg, max_steps=4)
+    rows = [json.loads(line) for line in (out / "log.jsonl").read_text().splitlines()]
+    losses = [r["train_loss"] for r in rows if "train_loss" in r]
+    assert losses and all(math.isfinite(v) for v in losses)
+    assert any("val_loss" in r for r in rows)
+
+    state = torch.load(out / "checkpoint.pt", map_location="cpu", weights_only=False)
+    dtypes = {v.dtype for v in state["model"].values() if torch.is_floating_point(v)}
+    assert dtypes == {torch.float32}, f"parameters must stay fp32, got {dtypes}"
+
+
+def test_precision_is_part_of_a_run_s_identity():
+    """It changes results, so two precisions are two runs, not one."""
+    assert RunConfig(precision="fp32").hash != RunConfig(precision="bf16").hash
+
+
+def test_an_unknown_precision_is_refused(corpus, tmp_path):
+    cfg = RunConfig(
+        optimizer="adamw", model=SMALL, batch_sequences=4, micro_batch=4,
+        train_steps=1, eval_every=99, log_every=1, precision="fp8",
+        data_path=str(corpus / "train.bin"), val_path=str(corpus / "val.bin"),
+        out_dir=str(tmp_path),
+    )
+    with pytest.raises(ValueError, match="precision"):
+        train(cfg, max_steps=1)
+
+
+def test_a_second_trainer_will_not_share_a_run_directory(corpus, tmp_path):
+    """Same configuration, same directory -- and two writers ruin both.
+
+    A run's directory is its configuration hash, so the same run on two
+    machines lands in one place, appends to one log and overwrites one
+    checkpoint. The result looks finished. Nothing downstream could tell.
+    """
+    from harness.train import RunLock
+
+    cfg = RunConfig(
+        optimizer="adamw", model=SMALL, batch_sequences=4, micro_batch=4,
+        train_steps=2, eval_every=99, log_every=1,
+        data_path=str(corpus / "train.bin"), val_path=str(corpus / "val.bin"),
+        out_dir=str(tmp_path),
+    )
+    out = Path(cfg.out_dir) / cfg.name
+    out.mkdir(parents=True, exist_ok=True)
+    held = RunLock(out / ".run.lock")
+    held.take()
+
+    with pytest.raises(SystemExit, match="held by"):
+        train(cfg, max_steps=2)
+
+    # --force is the way past it, for when the holder is known to be gone.
+    train(cfg, max_steps=2, force=True)
+
+
+def test_a_stale_lock_does_not_block_a_resume(corpus, tmp_path):
+    """The cluster caps jobs at 24 h and resubmitting is how a run continues.
+
+    A lock left behind by a SIGKILL must not stand in the way of that, so one
+    older than the grace period is taken over rather than obeyed.
+    """
+    from harness.train import RunLock
+
+    cfg = RunConfig(
+        optimizer="adamw", model=SMALL, batch_sequences=4, micro_batch=4,
+        train_steps=2, eval_every=99, log_every=1,
+        data_path=str(corpus / "train.bin"), val_path=str(corpus / "val.bin"),
+        out_dir=str(tmp_path),
+    )
+    out = Path(cfg.out_dir) / cfg.name
+    out.mkdir(parents=True, exist_ok=True)
+    lock = out / ".run.lock"
+    RunLock(lock).take()
+    os.utime(lock, (time.time() - 3600, time.time() - 3600))
+
+    train(cfg, max_steps=2)          # takes it over, loudly, rather than refusing
+    assert not lock.exists(), "a finished run releases its lock"
+
+
+def _corpus(tmp_path, tokens=10_000, seq_len=8, seed=0):
+    from harness.data import TokenCorpus
+    path = tmp_path / "toy.bin"
+    np.arange(tokens, dtype=np.uint16).tofile(path)
+    return TokenCorpus(path, seq_len=seq_len, seed=seed)
+
+
+def test_an_epoch_visits_every_window_exactly_once(tmp_path):
+    """Their sample index partitions the stream; a shuffle index orders it.
+
+    This used to draw window starts uniformly *with replacement*, which is a
+    different distribution over training data rather than a different order of
+    the same data -- at 0.959 passes some windows arrive several times and
+    others never. Reading `gpt_dataset.py` settled it: their samples are
+    contiguous non-overlapping slices, permuted once per epoch.
+    """
+    c = _corpus(tmp_path)
+    starts = Counter()
+    for _ in range(c.windows):
+        starts[int(c.batch(1)[0][0, 0])] += 1
+    assert len(starts) == c.windows
+    assert set(starts.values()) == {1}
+
+
+def test_the_order_is_shuffled_and_not_sequential(tmp_path):
+    """A partition alone is not enough -- the permutation has to be there."""
+    c = _corpus(tmp_path)
+    first = [int(c.batch(1)[0][0, 0]) for _ in range(20)]
+    assert first != sorted(first)
+
+
+def test_the_next_epoch_reshuffles(tmp_path):
+    """Two epochs must not replay the same order, or the second pass is the first."""
+    c = _corpus(tmp_path)
+    one = [int(c.batch(1)[0][0, 0]) for _ in range(c.windows)]
+    two = [int(c.batch(1)[0][0, 0]) for _ in range(c.windows)]
+    assert sorted(one) == sorted(two)
+    assert one != two
+
+
+def test_resume_continues_the_permutation(tmp_path):
+    """The sampler's position is an epoch and an offset, and it round-trips.
+
+    The permutation is rebuilt from `(seed, epoch)` rather than checkpointed:
+    39 million windows would be 313 MB of `int64` in every checkpoint.
+    """
+    c = _corpus(tmp_path)
+    for _ in range(7):
+        c.batch(3)
+    saved = c.rng_state
+    expected = c.batch(3)[0]
+
+    d = _corpus(tmp_path)
+    d.rng_state = saved
+    assert torch.equal(d.batch(3)[0], expected)
+
+
+def test_a_pre_partition_checkpoint_is_refused_rather_than_misread(tmp_path):
+    """A bit-generator state belongs to the sampler this class no longer is.
+
+    Accepting it would resume a run into a different data distribution from the
+    one it started in, and nothing downstream could detect that.
+    """
+    c = _corpus(tmp_path)
+    with pytest.raises(ValueError, match="bit-generator"):
+        c.rng_state = np.random.default_rng(0).bit_generator.state

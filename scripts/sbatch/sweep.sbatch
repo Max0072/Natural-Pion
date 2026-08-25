@@ -28,7 +28,7 @@
 # first sbatch, or the job dies with no output explaining why.
 set -euo pipefail
 
-REPO="${REPO:-$HOME/Natural-Pion}"
+REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"
 DATA="${DATA:-$DATA_p330/c4}"
 RUNS="${RUNS:-$DATA_p330/runs}"
@@ -48,7 +48,7 @@ STEPS=9155
 
 echo "task ${SLURM_ARRAY_TASK_ID}: ${OPT} lr=${LR} steps=${STEPS}"
 
-apptainer exec --nv \
+apptainer exec --env PYTHONUNBUFFERED=1 --nv \
     --bind "$REPO:$REPO" --bind "$DATA_p330:$DATA_p330" \
     --pwd "$REPO" \
     "$SIF" \

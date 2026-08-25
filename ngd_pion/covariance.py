@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import torch
 
+from .linalg import exact_fp32
+
 __all__ = ["CovarianceAccumulator"]
 
 _ALLOWED = (torch.float32, torch.float64)
@@ -58,12 +60,23 @@ class CovarianceAccumulator:
         flat = x.detach().reshape(-1, x.shape[-1]).to(self.dtype)
         if flat.shape[0] == 0:
             return
-        gram = (flat.transpose(0, 1) @ flat) / flat.shape[0]
+        # `x^T x` is a matmul, so on a GPU it is TF32 unless told otherwise --
+        # ten bits of mantissa in the one statistic the method inverts, whose
+        # small eigenvalues are both the least determined and the most
+        # amplified. The dtype check above would not have caught it.
+        with exact_fp32():
+            gram = (flat.transpose(0, 1) @ flat) / flat.shape[0]
         if self._matrix is None:
             self._matrix = gram
         else:
             self._matrix.mul_(self.beta).add_(gram, alpha=1.0 - self.beta)
         self.count += flat.shape[0]
+
+    def to(self, device) -> "CovarianceAccumulator":
+        """Move the accumulated matrix. Needed after a checkpoint reload."""
+        if self._matrix is not None:
+            self._matrix = self._matrix.to(device)
+        return self
 
     def state_dict(self) -> dict:
         return {"matrix": self._matrix, "count": self.count, "beta": self.beta}
