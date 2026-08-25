@@ -121,6 +121,7 @@ floored at `max(λ, ε·λ_max)`, and nothing else is damped anywhere.
 
 | | |
 |---|---|
+| **[`docs/RESUME.md`](docs/RESUME.md)** | **start here** — what is running right now, and what to do next |
 | **[`ALGORITHM.md`](ALGORITHM.md)** | the specification — every decision with the measurement behind it |
 | **[`AGENTS.md`](AGENTS.md)** | state of play, decisions not to reopen, traps already hit |
 | **[`docs/CLUSTER.md`](docs/CLUSTER.md)** | the cluster sequence, in order |

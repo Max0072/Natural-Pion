@@ -20,6 +20,10 @@ not between two branches of it.
 
 ## Read before changing anything
 
+0. **[`docs/RESUME.md`](docs/RESUME.md)** — start here if you are picking this
+   up cold. What is in flight, the criteria already fixed, and the decision
+   already taken for the case where the current attempt misses. It is a
+   snapshot: rewrite it, do not append to it.
 1. **[`ALGORITHM.md`](ALGORITHM.md)** — the specification. Every design decision
    with the measurement that produced it. Each module implements one of its
    sections and says so in its docstring.
