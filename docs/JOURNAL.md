@@ -844,3 +844,76 @@ The lesson worth keeping: a list of caveats accumulates entries that were
 plausible when written and were never re-checked against what they would
 actually cost or buy. This one had been quoted three times in this journal
 before anybody asked whether 6% against 6% was a difference at all.
+
+---
+
+## 2026-08-25, 15:30 — the re-run: gap 4.5x -> 1.8x, criterion missed by 0.0011
+
+| side | target | before | after | miss |
+|---|---|---|---|---|
+| bilateral | 3.3575 | 3.3997 | **3.4021** | +0.0446 |
+| alternate | 3.3654 | 3.4352 | **3.4161** | +0.0507 |
+
+Gap **+0.0140** against their 0.0079, down from +0.0355. The criterion set
+before the numbers — `|gap - 0.0079| <= 0.005` — gives 0.0061 and is **not
+met**. It stays where it was put; missing by 0.0011 is missing.
+
+Two readings, both clean:
+
+**The scaling fix did what it was diagnosed to do.** Alternate improved by
+0.019 and bilateral moved 0.0024, which is our noise floor. Since `_scale`
+only misbehaved under `alternate`, an improvement confined to that arm is
+exactly the predicted signature.
+
+**The other two fixes did nothing to the level.** Dropping the second moment
+and rotating Q per head left bilateral where it was, inside noise. So the
+remaining common offset of ~0.045 is not explained by either, and the two
+surviving `KNOWN_DIFFERENCES` entries are thin: master-weight placement, which
+we established is the same arrangement described twice, and storage layout,
+whose geometry is now matched.
+
+**The residual arm asymmetry is real.** The two offsets differ by 0.0061,
+three times the 0.0020 spread two machines showed. Something still treats the
+sides differently from the way their code does, and it is not the scale, the
+alternation phase, the momentum buffers or the per-head granularity — all four
+were read off their source and matched.
+
+### Their own experiment stops one step short
+
+Asked whether one rotator might contribute nothing, and whether they ever
+trained a single side. Checked both the code and the paper.
+
+Their `_configured_update_side` accepts `in` and `out`, but those are the
+internals of `alternate` — `_effective_update_side` resolves the alternating
+mode into one of them per step. No script sets them, and `README_PION.md`
+documents `--pion-update-side {both, alternate}` only. Section 2.4.3 compares
+exactly two configurations, and their conclusion is:
+
+> "updating the two transformations simultaneously is not always necessary to
+> obtain strong optimization performance, and much of the benefit can be
+> retained through a more lightweight alternating scheme"
+
+**A fixed single side, held for a whole run, is not in the paper.**
+
+### Whether a side can be dead — measured
+
+Partly, and structurally rather than empirically. For a wide `W` the in-side
+generator has a block that provably cannot move it: `down` is 512x1376, its
+kernel is 864-dimensional, and a skew supported entirely inside that kernel
+gives `||W·Cayley(Omega) - W|| = 1.0e-10`. That block is **372,816 of 946,000
+generator parameters, 39.4%**, dead by construction. The same holds for the
+out-side of the tall `gate` and `up`. For the square `wq/wk/wv/wo` neither
+side has a dead block.
+
+But dead is not the same as redundant. With `W = U S V^T`, the left rotation
+moves `U` and the right moves `V`; a single side reaches a strictly smaller
+set, it does not reach the same set by another route. So the honest statement
+is that one side is *not* useless, while their own alternate result says the
+two are largely interchangeable in practice — and nobody has asked whether one
+alone suffices.
+
+That question is cheap here and has something at stake for this project
+specifically: a single side would mean one eigendecomposition per step instead
+of two, and `S = I` would only ever apply to the out-side. It needs
+`update_side` added to `Pion` and `NGDPion`, mirroring their
+`_configured_update_side`, and four short runs at the 1.2B budget step 5 uses.
