@@ -13,6 +13,9 @@ outputs.
 
 What is different so far:
 
+* `skew_ratio` is recorded, which the reference does not compute at all. It
+  is a diagnostic and nothing reads it inside the step. See `_apply`.
+
 * `angle` comes from `spectral_norm` -- power iteration -- instead of
   `torch.linalg.matrix_norm(X, 2)`. Measured on one RTX PRO 6000 Blackwell,
   the exact call cost 69.5 s of the 73.5 s optimizer step, because cusolver
@@ -69,6 +72,28 @@ class FastNGDPion(NGDPion):
         basis_in, basis_out = state["bases"]
 
         G_in, G_out = generators(W, G)
+
+        # How much of `W^T G` is antisymmetric, which is the only part the
+        # method uses. `G_in = W^T G - G^T W` is a difference of nearly equal
+        # quantities, and the forward runs under bf16 autocast, so `G` carries
+        # roughly `8e-3` of relative noise however it is stored afterwards.
+        # Measured on synthetic `G` pushed through bf16: at a skew-to-sym ratio
+        # of `1e-2` the relative error in `G_in` is already 12%, at `1e-3` it is
+        # 117% -- the signal is gone. The same ratios in fp32 give `2e-5` and
+        # `2e-4`, four orders better, so if this number falls the cure is the
+        # precision of the gradient rather than anything in this module.
+        #
+        # `W^T G` is recomputed here rather than taken from `generators`, which
+        # returns only the difference. One extra matmul, about 0.4% of a step,
+        # and it keeps `generators` untouched so the trajectory stays
+        # bit-identical to the reference.
+        M = W.transpose(-1, -2) @ G
+        sym = M + M.transpose(-1, -2)
+        state["skew_ratio"] = float(
+            torch.linalg.matrix_norm(G_in, "fro")
+            / torch.linalg.matrix_norm(sym, "fro").clamp_min(torch.finfo(dt).tiny)
+        )
+
         X_in = natural_gradient(G_in, basis_in)
         X_out = natural_gradient(G_out, basis_out)
 

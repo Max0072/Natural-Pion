@@ -161,6 +161,43 @@ def test_run_end_to_end_and_reduce_loss(optimizer, corpus, tmp_path):
     if optimizer.startswith("ngd-pion"):
         assert "angle_max" in train_rows[-1], "NGD runs must log the diagnostics"
         assert train_rows[-1]["alpha_max"] <= 1.0
+        assert "skew_ratio_max" in train_rows[-1]
+    assert (out / "diagnostics.jsonl").exists() == optimizer.startswith("ngd-pion")
+
+
+def test_per_layer_diagnostics_are_written_and_carry_depth(corpus, tmp_path):
+    """The summary is a min and a max; the depth questions need the rows.
+
+    Whether the required step size varies with depth, and whether the
+    antisymmetric part of the gradient survives bf16, are both per-layer
+    questions. `summarise` cannot answer either, so the rows are persisted
+    separately and this pins that they are.
+    """
+    cfg = RunConfig(
+        optimizer="ngd-pion", model=SMALL, batch_sequences=8, micro_batch=4,
+        train_steps=20, ngd_t_fac=5, eval_every=100, eval_batches=2, log_every=5,
+        data_path=str(corpus / "train.bin"), val_path=str(corpus / "val.bin"),
+        out_dir=str(tmp_path),
+    )
+    out = train(cfg, max_steps=20)
+    rows = [json.loads(l) for l in (out / "diagnostics.jsonl").read_text().splitlines()]
+    assert rows, "no per-layer rows written"
+
+    for key in ("name", "shape", "alpha", "angle", "cond_A", "skew_ratio", "depth", "step"):
+        assert key in rows[0], f"missing {key}"
+
+    # every block of the model should appear, and the depths should be the
+    # block indices rather than -1: a naming change that broke the parse would
+    # otherwise turn into a silently flat depth profile at analysis time
+    depths = {r["depth"] for r in rows}
+    assert depths == set(range(SMALL.layers)), f"depths {sorted(depths)}"
+
+    # one row per parameter per logged step, not one row per step
+    per_step = {}
+    for r in rows:
+        per_step.setdefault(r["step"], []).append(r)
+    counts = {len(v) for v in per_step.values()}
+    assert len(counts) == 1 and counts.pop() > 1, "expected several layers per step"
 
 
 def test_anchor_follows_the_published_number_not_the_shell_script():

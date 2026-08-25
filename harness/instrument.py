@@ -11,6 +11,16 @@ only a real run can answer:
   Fisher keeps it bounded on its own is the open question.
 * `cond(A)` -- decides whether fp32 suffices, and sets the useful range of the
   spectral floor.
+* `skew_ratio` -- `||skew(W^T G)|| / ||sym(W^T G)||`. The method uses only the
+  antisymmetric part, obtained as a difference of nearly equal quantities from
+  a gradient that came through bf16 autocast. Below about `1e-2` that part is
+  lost to rounding, so this says whether a small rotation is a fact about the
+  geometry or an artefact of precision.
+
+`layer_diagnostics` returns one row per parameter and `summarise` collapses
+them to a log line. Both are used: the summary goes on the training log, the
+rows go to `diagnostics.jsonl`, because questions like "does the required step
+size depend on depth" cannot be answered from a min and a max.
 
 Cheap enough to run every few hundred steps, too expensive for every step.
 """
@@ -41,11 +51,27 @@ def layer_diagnostics(optimizer, names: dict | None = None) -> list[dict]:
                     "alpha": float(state.get("alpha", float("nan"))),
                     "angle": float(state.get("angle", float("nan"))),
                     "cond_A": float(_cond(state["cov"].matrix)),
+                    "skew_ratio": float(state.get("skew_ratio", float("nan"))),
+                    "depth": _depth(names, p),
                     "lam_ratio": float(positive.max() / positive.min()) if positive.numel() else float("nan"),
                     "step": int(state.get("step", 0)),
                 }
             )
     return rows
+
+
+def _depth(names: dict | None, p: torch.Tensor) -> int:
+    """Block index parsed out of the module name, or -1 when there is none.
+
+    The whole point of the per-layer rows is comparing early layers against
+    late ones, and doing that by string matching at analysis time is how a
+    naming change silently turns into a wrong plot.
+    """
+    name = (names or {}).get(id(p), "")
+    for part in name.split("."):
+        if part.isdigit():
+            return int(part)
+    return -1
 
 
 def _cond(A: torch.Tensor) -> float:
@@ -62,6 +88,7 @@ def summarise(rows: list[dict]) -> dict:
     def stat(key):
         vals = [r[key] for r in rows if r[key] == r[key]]  # drop NaN
         return (min(vals), max(vals)) if vals else (float("nan"),) * 2
+    s_lo, s_hi = stat("skew_ratio")
     a_lo, a_hi = stat("alpha")
     g_lo, g_hi = stat("angle")
     c_lo, c_hi = stat("cond_A")
@@ -69,4 +96,5 @@ def summarise(rows: list[dict]) -> dict:
         "alpha_min": a_lo, "alpha_max": a_hi,
         "angle_min": g_lo, "angle_max": g_hi,
         "condA_min": c_lo, "condA_max": c_hi,
+        "skew_ratio_min": s_lo, "skew_ratio_max": s_hi,
     }

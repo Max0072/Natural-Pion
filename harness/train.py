@@ -282,6 +282,12 @@ def train(
 
     model = Transformer(cfg.model).to(device)
     rot, adamw, recorder = build_optimizers(model, cfg)
+    # Per-layer rows, alongside the summary that goes on the training log.
+    # `summarise` reduces to a min and a max, and questions that motivated the
+    # instrument in the first place -- does the required step size depend on
+    # depth, does the antisymmetric part of the gradient survive bf16 -- cannot
+    # be answered from two order statistics over 56 weights.
+    diagnostics = (out / "diagnostics.jsonl").open("a") if isinstance(rot, NGDPion) else None
     names = {id(m.weight): n for n, m in model.named_modules() if isinstance(m, nn.Linear)}
 
     train_data = TokenCorpus(cfg.data_path, cfg.model.seq_len, seed=cfg.seed)
@@ -309,6 +315,8 @@ def train(
         log.flush()
         if first >= steps:
             log.close()
+            if diagnostics is not None:
+                diagnostics.close()
             lock.release()
             if recorder is not None:
                 recorder.remove()
@@ -367,7 +375,12 @@ def train(
                 torch.cuda.reset_peak_memory_stats()
             window_time, window_step = now, step
             if isinstance(rot, NGDPion):
-                row.update(summarise(layer_diagnostics(rot, names)))
+                rows = layer_diagnostics(rot, names)
+                row.update(summarise(rows))
+                if diagnostics is not None:
+                    for r in rows:
+                        diagnostics.write(json.dumps(r) + "\n")
+                    diagnostics.flush()
             log.write(json.dumps(row) + "\n")
             log.flush()
 
@@ -379,6 +392,8 @@ def train(
             lock.touch()
 
     log.close()
+    if diagnostics is not None:
+        diagnostics.close()
     lock.release()
     if recorder is not None:
         recorder.remove()
