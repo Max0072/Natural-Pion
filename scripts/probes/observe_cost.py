@@ -70,10 +70,7 @@ def main() -> None:
         if recorder is not None:
             recorder.enabled = observe
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            logits = model(x)
-            loss = torch.nn.functional.cross_entropy(
-                logits.reshape(-1, logits.shape[-1]).float(), y.reshape(-1)
-            )
+            _, loss = model(x, y)          # forward returns (logits, loss)
         loss.backward()
         model.zero_grad(set_to_none=False)
 
