@@ -1,0 +1,68 @@
+scripts/probes/step_cost.py on one RTX PRO 6000 Blackwell, 2026-08-25
+torch 2.13.0a0+9186a08b2c.nv26.07, fp32 with TF32 off except where marked
+
+UserWarning from torch.linalg.svd: "batches 0 failed to converge ... a more
+accurate method will be used as a fallback" -- the cusolver fallback the
+journal predicted, now observed directly.
+
+     shape stage                           n   ms/call   ms/step
+------------------------------------------------------------------
+   512x512 generators                     32     0.053      1.71
+   512x512 natural_gradient x2            32     0.117      3.75
+   512x512 grams (W^T W, W A W^T)         32     0.037      1.19
+   512x512 curv: fisher_apply x2          32     0.114      3.65
+   512x512 curv: contracted x2            32     0.065      2.07
+   512x512 SVD (matrix_norm 2) x2         32    40.308   1289.87
+   512x512 power iter x2 (5 it)           32     0.256      8.18
+   512x512 cayley x2                      32     2.021     64.67
+   512x512 retraction apply               32     2.034     65.08
+   512x512 host sync (float x2)           32     0.032      1.04
+   512x512 refactor (build_bases)         32     9.743    311.77
+   512x512 natural_gradient x2 [TF32]     32     0.084      2.69
+  1376x512 generators                     16     0.152      2.44
+  1376x512 natural_gradient x2            16     0.529      8.47
+  1376x512 grams (W^T W, W A W^T)         16     0.099      1.59
+  1376x512 curv: fisher_apply x2          16     0.496      7.94
+  1376x512 curv: contracted x2            16     0.259      4.14
+  1376x512 SVD (matrix_norm 2) x2         16  2842.921  45486.74
+  1376x512 power iter x2 (5 it)           16     0.258      4.14
+  1376x512 cayley x2                      16     3.988     63.81
+  1376x512 retraction apply               16     4.051     64.82
+  1376x512 host sync (float x2)           16     0.033      0.52
+  1376x512 refactor (build_bases)         16    17.576    281.22
+  1376x512 natural_gradient x2 [TF32]     16     0.250      4.00
+  512x1376 generators                      8     0.150      1.20
+  512x1376 natural_gradient x2             8     0.521      4.17
+  512x1376 grams (W^T W, W A W^T)          8     0.128      1.02
+  512x1376 curv: fisher_apply x2           8     0.496      3.97
+  512x1376 curv: contracted x2             8     0.257      2.06
+  512x1376 SVD (matrix_norm 2) x2          8  2840.330  22722.64
+  512x1376 power iter x2 (5 it)            8     0.259      2.07
+  512x1376 cayley x2                       8     3.941     31.53
+  512x1376 retraction apply                8     4.024     32.19
+  512x1376 host sync (float x2)            8     0.031      0.25
+  512x1376 refactor (build_bases)          8    44.890    359.12
+  512x1376 natural_gradient x2 [TF32]      8     0.248      1.98
+
+per optimizer step, summed over all 56 weights:
+  SVD (matrix_norm 2) x2            69499.25 ms
+  refactor (build_bases)              952.11 ms   (every t_fac=100 steps)
+  retraction apply                    162.09 ms   (double-counts cayley; see note)
+  cayley x2                           160.01 ms
+  natural_gradient x2                  16.39 ms
+  curv: fisher_apply x2                15.56 ms
+  power iter x2 (5 it)                 14.39 ms
+  natural_gradient x2 [TF32]            8.66 ms
+  curv: contracted x2                   8.27 ms
+  generators                            5.35 ms
+  grams (W^T W, W A W^T)                3.80 ms
+  host sync (float x2)                  1.81 ms
+
+Note: the "retraction apply" stage calls cayley twice itself, so its 162 ms is
+about 160 ms of cayley plus 2 ms of matmul, not an additional 162 ms. Probe
+design fault, harmless once known.
+
+Not measured here: covariance accumulation (`observe`, x^T x per layer). It is
+the only part of the step that scales with micro-batch, and it is the likely
+home of the residual gap between the 69.9 s this table accounts for and the
+73.5 s/step measured in job 241323.

@@ -1021,3 +1021,95 @@ it is large.
 One detail that checks itself: round-2 checkpoints are 821 MB where round-1's
 are 1044 MB. The 223 MB difference is exactly the second-moment buffers the
 `pion_second_moment` fix removed — the change is visible in the file size.
+
+---
+
+## 2026-08-25 — the 158x, measured rather than argued
+
+The entry above named `optimizer.py:236` on an arithmetic argument and said so
+in as many words: "a hypothesis with an arithmetic argument behind it, not a
+measurement". `scripts/probes/step_cost.py` now times every stage of `_apply`
+on the real shapes of LLaMA-60M, on one RTX PRO 6000 Blackwell. Full table in
+`docs/measurements/step-cost-rtx.txt`.
+
+### The hypothesis was right, and by a wider margin than expected
+
+**SVD: 69.5 s of the 73.5 s/step measured in job 241323.** 95%. The cusolver
+non-convergence warning fired in the probe too, so the fallback path the
+journal guessed at is now observed rather than inferred.
+
+The cost is not spread evenly. A 512x512 pair costs 40 ms; a pair involving a
+1376x1376 costs **2.84 s**. Twenty-four of the 56 weights have a 1376 side —
+`gate` and `up` through `X_out`, `down` through `X_in` — and 24 x 2.84 s is
+essentially the whole 69.5 s. The diagnostic was cheap on attention and
+catastrophic on the feed-forward block.
+
+**Power iteration replaces it at 14.4 ms/step**, five iterations, against
+69 499 ms. A factor of 4 830. For the question the diagnostic answers — does
+the rotation angle stay bounded without RMS scaling — three digits on the top
+singular value is far more than enough.
+
+### What becomes the bottleneck once it is gone
+
+| stage | ms/step |
+|---|---|
+| `cayley` x2 | 160.0 |
+| `natural_gradient` x2 | 16.4 |
+| `curv` via `fisher_apply` | 15.6 |
+| power iteration (SVD replacement) | 14.4 |
+| `build_bases`, amortised over `t_fac`=100 | 9.5 |
+| `generators` | 5.4 |
+| grams | 3.8 |
+| host syncs | 1.8 |
+| **total** | **~227** |
+
+Against Pion's 460 ms/step that is **+50%**: a 9.8 h anchor run becomes about
+14.7 h. Runnable, where 62 days was not.
+
+**`cayley` is now 71% of what remains, and it is latency, not arithmetic.** One
+512x512 solve with 512 right-hand sides is 0.36 GFLOP and takes 1 ms, which is
+roughly 28x off what the card does on work of that size. `_refactor` already
+fuses layers of equal shape into one `eigh`; `_apply` does not, and loops over
+all 56 weights instead. Three shape groups — 32 at 512x512, 16 at 1376x512, 8
+at 512x1376 — would collapse about 1100 kernel launches into 60. If batching
+recovers even 10x on the solve, the optimizer lands near 80 ms/step, or +18%.
+
+### Two of my own suspects died on the numbers
+
+**Narrowing `exact_fp32` to Cayley alone is not worth it.** `natural_gradient`
+runs 16.4 ms with TF32 off and 8.7 ms with it on. The whole prize is 7.7
+ms/step — 3% of the step — in exchange for touching the guarantee the method
+rests on. Not a trade worth making. Killed, and it should stay killed.
+
+**Host syncs are not the problem either.** `float(alpha)` and `float(angle)`
+across all 56 weights cost 1.8 ms/step, not the pipeline stall I predicted.
+Worth removing when `_apply` is rewritten for batching, since `_cayley` already
+accepts a tensor `c`, but not on its own account.
+
+### One free and exact saving
+
+`curv` builds a full matrix to produce a scalar. For skew `X` and symmetric
+`B`, `C` the two terms of `<X, 2(BXC + CXB)>` are equal — cyclic permutation
+gives `tr(XBXC) = tr(XCXB)` — so
+
+    <X, F(X)> = 4 tr(X^T B X C) = 4 sum((BX) * (XC))
+
+Two matmuls instead of four and no intermediate. Checked against the current
+expression on five random draws and on the identity-anchor case: relative error
+0 to 2e-16. Measured saving 15.6 -> 8.3 ms/step. Small now, but it is exact
+algebra with no approximation attached, so there is no reason not to take it.
+
+### What the probe does not cover
+
+Covariance accumulation (`observe`, `x^T x` per layer) is absent from the
+table, and it is the only part of the step that scales with micro-batch. The
+table accounts for 69.9 s of the 73.5 s/step measured in 241323; `observe` is
+the likeliest home of the remaining 3.6 s. Measure it before quoting a final
+overhead figure.
+
+### Order of work
+
+1. Power iteration in place of the SVD. This alone takes 158x to about 1.5x.
+2. Batch `_apply` by shape. Attacks `cayley`, which is 71% of what is left.
+3. The contracted `curv`. Free.
+4. Measure `observe`, then quote a real overhead number.
