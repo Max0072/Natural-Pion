@@ -663,3 +663,61 @@ difference. The worry recorded earlier was unfounded.
 | 6 | our transcription | **confirmed**, and now two named defects, not one |
 
 Level: 1, 2, 4 and the second moment. Gap: the scaling side, alone.
+
+---
+
+## 2026-08-25 — all four changes made, `980e18c`
+
+**Scaling side.** `_scale` takes the side and normalises `W @ g_in`,
+`g_out @ W` or their sum; `_step` resolves `alternate` to a side *before*
+scaling and retracts only that side. This is the gap fix.
+
+**Betas.** `pion_beta1`, `pion_beta2` and `pion_second_moment` are `RunConfig`
+fields now, so they are in the hash and the manifest. The second moment
+defaults **off**, which is what their published run does.
+
+**Per-head Q.** `Pion` takes `row_blocks: {id(param): n}` and rotates each row
+block on its own, with its own scale and its own momentum buffers, sharing the
+parameter's step counter so blocks alternate in phase — their arrangement
+exactly. `build_optimizers` applies it to Q only, `heads` blocks, and **only
+for `optimizer == "pion"`**: `NGDPion` rotates whole matrices, so switching it
+on for `pion_ablated` would give the two arms of the comparison different
+geometry and put a second variable in it. Lifting that means teaching `NGDPion`
+about blocks, not flipping the flag.
+
+**Sampler.** Windows partition the stream and a per-epoch permutation orders
+them, seeded by `(seed, epoch)` and rebuilt on resume rather than checkpointed —
+39M windows would be 313 MB of `int64` per checkpoint. `rng_state` is now
+`{seed, epoch, cursor}` and **refuses** an old bit-generator state rather than
+resuming into a different data distribution.
+
+Also corrected in passing: `--use-same-init-for-output-layers`, which their
+script sets, makes O and down initialise at the same 0.02 as everything else
+instead of Megatron's `0.02/sqrt(2*layers)`. This harness initialises uniformly
+at `init_std`, so it matches — checked rather than assumed.
+
+136 tests, 1 skipped, 22 s. Ten are new. That the old suite passed the scaling
+change untouched is itself the finding: nothing pinned `alternate`'s scale, so
+the defect could sit there through a full 9.6-hour run and four completed
+anchors without a single test going red.
+
+### The re-run
+
+`anchor_config` hashes moved, so nothing overwrites anything:
+
+| side | was | now |
+|---|---|---|
+| bilateral | `8aff0f95a9` | `1795e6ddb3` |
+| alternate | `51458a70e2` | `65f5f2acdb` |
+
+Two runs, ~4.9 h each on b200, side by side on one node: about 10 b200
+GPU-hours, 1% of that allocation. What to look for, in order of what it settles:
+
+1. **The gap.** Their 0.0079. If the scaling fix is the whole story it should
+   land near it; the pre-registered criterion is within 0.005, decided now
+   rather than after seeing the number.
+2. **Both levels.** Expect them still high and *by a common amount* — the C4
+   subset is unchanged. A common offset is what licenses the comparison; two
+   different offsets would not.
+3. Whether the second-moment and per-head changes moved bilateral at all, which
+   the old bilateral number (3.3997) makes readable.
