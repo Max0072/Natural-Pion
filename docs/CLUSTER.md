@@ -131,11 +131,20 @@ precisely "associate account `p330` with partition `cpu`".
 and mostly idle. It is the right place for work with no GPU in it -- tokenising
 the corpus is hours of CPU -- because it does not strand anybody's cards.
 
-**But read its billing weights before sending anything large there.**
+**Every CPU partition here bills a core like a GPU** -- this is not a `genoa`
+quirk, and the comparison below is between partition *kinds*, not between
+`genoa` and a cheaper alternative that does not exist:
 
+    cpu     CPU=1.0,    Mem=0.208G
+    milan   CPU=1.0,    Mem=0.5G
     genoa   CPU=1.0,    Mem=0.375G
+    virtual CPU=1.0,    Mem=0.0G
     rtx     cpu=0.0625, Mem=0.007767G, gres/gpu=1.0
     b200    CPU=0.0625, Mem=0.003877G, GRES/gpu=1.0
+
+Of the three CPU partitions reachable by anyone, `genoa` is the largest (3264
+cores against `cpu`'s 680) and the most generous per core (500 GB across 192
+cores). Asking for it rather than `cpu` was the right request.
 
 Under `MAX_TRES` a job bills the largest of its weighted components, so **one
 genoa core-hour bills 1.0 -- the same as a whole GPU on `rtx`**, and a whole
@@ -149,10 +158,26 @@ is enforced by SLURM; what this spends is **fairshare**, and it lands in the
 same `p330` pool that sets the priority of our GPU jobs. `QOS normal` caps
 concurrency at `cpu=1280` per user, which is 6.6 genoa nodes at once.
 
-Whether the institute counts `genoa` against the 2000 RTX / 1000 B200 grant or
-against a separate CPU budget is **not answerable from SLURM** and is worth
-asking them, because the two readings differ by a lot: at CPU=1.0 a day of
-tokenising on one node would show up as 4608 billing units.
+`genoa` has its **own 5000-hour quota**, separate from the GPU grant. The unit
+is undocumented -- neither the HPCF partitions page nor its job-submission page
+states one -- but two things point at core-hours: the institute's own
+preparatory-access wording is "typically 5,000 to 100,000 core hours", and the
+billing weights are set so that a node bills its own natural resource (`ne49`
+is `billing=192` for 192 cores, `rtx6004` is `billing=8` for 8 GPUs). Under
+either reading the only CPU work in this project's plan -- tokenising the whole
+of C4 at roughly 1 core-hour per 1B tokens, so about 156 -- is affordable, so
+the ambiguity changes no decision. Settle it with `hpc.support@cyi.ac.cy`, or
+by running one core for two minutes and watching `RawUsage`.
+
+**The fairshare cost of doing that is accepted, deliberately.** 156 core-hours
+is 561,600 billing-seconds against the 119,844 this project has spent in total,
+so it would depress GPU priority for several days at the 7-day half-life. The
+judgement is that this rarely bites: both GPU pools have been idle or
+near-idle most of the time we have watched them, and fairshare only decides who
+wins when two jobs want the same card. It did bite once -- 1.5 h behind another
+user's whole-node job on 2026-08-24 -- and a high score is what took `b201`
+back the moment it freed. Worth re-checking before a wide sweep, not before a
+single run.
 
 **Both the login node and the compute nodes have network.** huggingface.co,
 pypi.org and files.pythonhosted.org answer from `rtx6003` as well as from the
