@@ -806,3 +806,41 @@ run costs 96 billing units an hour there against 6 on `rtx`. Whether the
 institute charges `genoa` against the 2000/1000 GPU grant or a separate CPU
 budget is not visible from SLURM and should be asked before anything large goes
 there.
+
+---
+
+## 2026-08-25 — the corpus is the same corpus, and the entry is gone
+
+Challenged on why the dataset would be tokenised again when it already had
+been, and the answer is that it should not be. The entry read "a 10B-token C4
+subset in our own order against their full stream", which sounds like a
+difference and is not.
+
+Both runs consume **9.6B tokens of C4 with the T5 vocabulary**. C4 `en` is
+roughly 156B tokens, so theirs is about 6% of the corpus and ours is about 6%
+of the corpus. Neither sees a "full stream". Checked what we actually hold:
+**64 shards of 1024, numbers 0 through 63** — an unbroken prefix. (An earlier
+note here said 197; that was a `find` over every file under `downloads/`,
+service files included. 64 is the shard count.) C4's shards are a
+deterministic partition of an already-shuffled crawl, with no ordering by
+source, date or quality, so a prefix of 64 is exchangeable with any other 64.
+Tokenising the remaining 960 would produce a *different draw from the same
+distribution*, not a more representative one, and the size of that effect is
+already measured: two runs of the same configuration on different hardware
+differed by 0.002.
+
+Priced for the record, since it will look tempting again: ~156 core-hours at
+about 1 core-hour per 1B tokens, 312 GB of disk against 977 GB free, and a
+fairshare hit of 561,600 billing-seconds against the 119,844 this project has
+spent in total. For nothing measurable.
+
+`KNOWN_DIFFERENCES` is down to two, and the note above it says the corpus is
+the same one and tells the next reader not to put the entry back. Of what
+remains, one is where the master weights sit — which we established is largely
+the same arrangement described twice — and the other is storage layout, whose
+geometry `pion_split_q_per_head` already matches.
+
+The lesson worth keeping: a list of caveats accumulates entries that were
+plausible when written and were never re-checked against what they would
+actually cost or buy. This one had been quoted three times in this journal
+before anybody asked whether 6% against 6% was a difference at all.

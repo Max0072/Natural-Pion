@@ -60,11 +60,19 @@ TOLERANCE = 0.02
 
 #: Reasons the number could miss even with correct code. A miss should be
 #: diagnosed against this list before anything is called a bug.
+#: **The corpus is the same one.** C4, the T5 tokenizer, 9.6B tokens. This list
+#: used to carry "a C4 subset against their full stream", which sounds like a
+#: difference and is not: their 9.6B is drawn from a corpus of roughly 156B, so
+#: they consume about 6% of C4 and we consume about 6% of C4. Neither run sees
+#: a "full stream". C4's shards are a deterministic partition of an already
+#: shuffled crawl, with no ordering by source, date or quality, so the first 64
+#: shards are exchangeable with any other 64 and a different slice would be a
+#: different draw from one distribution rather than a better one. Tokenising the
+#: remaining 960 shards would cost about 156 core-hours, 312 GB and several days
+#: of depressed fairshare, and buy nothing measurable -- the spread it would
+#: change is the same one two runs on different hardware already showed at
+#: 0.002. Do not put it back.
 KNOWN_DIFFERENCES = (
-    "a 10B-token C4 subset -- 197 of the 1024 `en` shards, in our own order -- "
-    "against their full stream. The sampling discipline matches now (windows "
-    "partition the stream and a permutation orders them, once per epoch), but "
-    "the text behind it does not",
     "where the master weights sit: Megatron's optimizer wrapper keeps its own "
     "fp32 copies, while this harness holds fp32 parameters and autocasts the "
     "forward pass. Both clip one global norm over every parameter before the "
