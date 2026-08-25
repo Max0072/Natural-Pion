@@ -1241,3 +1241,81 @@ fast enough to validate with? The stage timings suggest about 220 ms/step of
 optimizer against Pion's 460 ms/step, but that is extrapolation from warmed
 micro-benchmarks, and the probe still leaves 3.6 s/step of the original 73.5
 unaccounted for. Measure the real thing before deciding anything else.
+
+---
+
+## 2026-08-25 — 246531: the algorithm is runnable
+
+`OPT=ngd-pion sbatch -p rtx scripts/sbatch/throughput.sbatch`, five minutes on
+rtx6002, same procedure as 241323 so the numbers compare directly.
+
+| run | micro-batch | tokens/s | s/step | 9.6B tokens |
+|---|---|---|---|---|
+| Pion, 241338 | 512 | 283,000 | 0.463 | 9.4 h |
+| NGD, 241323 | 256 | 1,788 | 73.31 | **1,491 h = 62 days** |
+| `ngd-pion`, 246531 | 256 | 121,818 | 1.076 | **21.9 h** |
+
+**A factor of 68**, from one diagnostic. 62 days to under a day.
+
+### The 3.6 s gap resolved, mostly
+
+The stage probe accounted for 69.9 s of the old 73.5 s/step and left 3.6 s
+unexplained; the two candidates on record were `observe` and allocator churn
+caused by the SVD's own cusolver workspaces. The answer is mostly the second.
+Roughly decomposing the 1.076 s/step now:
+
+| | s/step | how known |
+|---|---|---|
+| optimizer stages | ~0.22 | measured, `step_cost.py` |
+| model forward and backward | ~0.48 | Pion's 0.463 at the same tokens |
+| remainder, most likely `observe` | ~0.38 | **inferred, not measured** |
+
+So about 3.2 s of the old gap was the SVD's own overhead beyond its arithmetic,
+and it left with it. The residual ~0.38 s is consistent with `observe`, whose
+`x^T x` at micro-batch 256 is about 3.6e12 FLOP per step. That decomposition is
+arithmetic against two measured endpoints, not a measurement, and should be
+called an estimate until `observe` is timed directly.
+
+### Micro-batch 512 no longer fits, and that has consequences
+
+Pion fits micro-batch 512 at 83.3 GB of 97.9. `ngd-pion` OOMs there and runs at
+256, peaking at 42.28 GB.
+
+The persistent state does not explain it: covariance plus both bases across all
+56 weights is about 385 MB. The likely cause is fragmentation from the many
+small transient allocations in `_apply` — `X_in`, `X_out`, `eye_out`, the
+`fisher_apply` intermediates and Cayley's workspace, several of them 1376x1376
+and live at once, 56 times per step with nothing batched.
+
+Two consequences worth recording before they are discovered the hard way:
+
+1. **The comparison arms must share a micro-batch.** `pion_ablated` fits 512,
+   `ngd-pion` does not. Running them at different accumulation depths puts a
+   second variable into a comparison whose entire claim is that it has one. Fix
+   256 for both.
+2. **`ngd_beta` means something different at 256.** `observe` fires once per
+   forward pass per layer, so gradient accumulation over two micro-batches
+   updates `A` twice per optimizer step rather than once. With `beta = 0.95`
+   the effective per-step retention is `0.95^2 = 0.9025`, and the covariance
+   horizon in units of steps is halved. This is a hyperparameter changed by a
+   memory constraint rather than by a decision, which is the kind of thing that
+   is invisible in a results table. Either set `ngd_beta = sqrt(0.95)` at this
+   depth or state the horizon in steps rather than in `beta`.
+
+### Is it fast enough to validate with
+
+21.9 h against a 24 h partition cap, and the probe ran with `--eval-every
+100000`, i.e. with no evaluation at all. A real run evaluates, so a real run
+crosses the cap and needs a requeue. `resume.sbatch` exists and the resume path
+is tested, so this is friction rather than a blocker — but it is friction on
+every validation run, not once.
+
+Against the allocation it is comfortable: one run 21.9 h, a minimal
+`ngd-pion` against `pion_ablated` pair about 33 h, a four-point learning-rate
+sweep across both arms about 130 h — 6.5% of the 2000 rtx-hour budget.
+
+The honest summary is that speed is no longer what blocks validation, and the
+next decision is whether to spend a little more on the memory profile — a
+batched `_apply` is mathematically identical and would likely restore
+micro-batch 512, removing the requeue and returning `observe` to one call per
+step — or to start validating now and leave it.
