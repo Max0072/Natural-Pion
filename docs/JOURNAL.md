@@ -1384,75 +1384,92 @@ decomposition is still unmeasured.
 
 ---
 
-## 2026-08-25 — 246613: the missing 0.42 s was the allocator
+## 2026-08-25 — 246613: the missing 0.42 s is warm-up, not the allocator
 
-The 2x2, 200 steps a cell, `expandable_segments` on everywhere, nothing else
-varied between any pair.
+**This entry replaces one that claimed the allocator flag was worth 1.60x. That
+claim was wrong and the error was caught by the user asking a one-line
+question: how did micro-batch 512 run without `expandable_segments` when it
+does not fit without it? It did not. Job 246610 had the flag on. I compared two
+runs that both had it on and labelled the difference as the flag.**
+
+The 2x2, 200 steps a cell, `expandable_segments` on everywhere:
 
 | s/step | mb 256 | mb 512 |
 |---|---|---|
 | `pion` | 0.869 | 0.460 |
 | `ngd-pion` | 0.673 | 0.722 |
 
-### `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` is worth 1.60x, to NGD only
+### What actually separates the fast numbers from the slow ones
 
-The same cells, before and after the flag:
+Every measurement taken, with the predicted cost from the measured components
+(model + `observe` + optimizer step):
 
-| | before | after | |
-|---|---|---|---|
-| `ngd-pion` mb 256 | 1.076 | 0.673 | **1.599x** |
-| `ngd-pion` mb 512 | 1.153 | 0.722 | **1.597x** |
-| `pion` mb 256 | 0.869 | 0.869 | 1.000x |
-| `pion` mb 512 | 0.463 | 0.460 | 1.007x |
+| optimizer | mb | s/step | job | first to read the corpus? | predicted | residual |
+|---|---|---|---|---|---|---|
+| `pion` | 256 | 0.869 | 246607 | yes (only 12 steps warmed) | 0.427 | **+0.442** |
+| `pion` | 256 | 0.869 | 246613 | yes | 0.427 | **+0.442** |
+| `pion` | 512 | 0.460 | 246613 | no | 0.438 | +0.022 |
+| `ngd-pion` | 256 | 1.076 | 246531 | yes | 0.685 | **+0.391** |
+| `ngd-pion` | 256 | 0.673 | 246613 | no | 0.685 | −0.012 |
+| `ngd-pion` | 512 | 1.153 | 246610 | yes | 0.730 | **+0.423** |
+| `ngd-pion` | 512 | 0.722 | 246613 | no | 0.730 | −0.008 |
 
-Two independent cells agreeing to three digits, and no effect at all on Pion.
-That is the unexplained 0.42 s/step, and it was allocator churn: NGD-Pion makes
-many varied-size allocations per step — 1376x1376 temporaries, 56 weights, an
-unbatched `_apply` — and the caching allocator cannot serve them from a pool
-already shaped by the model's activations, so it falls back to real
-`cudaMalloc`/`cudaFree` traffic. Pion allocates almost nothing per step and
-does not care.
+The split is exact and has nothing to do with the allocator or the optimizer:
+**a run that is the first in its job to touch the corpus pays about +0.42
+s/step; one whose windows are already in page cache pays nothing.** With
+`--no-resume` and a fixed seed every run draws the same window sequence, so the
+second and later runs in a job re-read exactly what the first one read.
 
-**With the flag on, the decomposition reconciles.** Predicted 0.685 and 0.730
-from measured components; measured 0.673 and 0.722. Residuals `-0.012` and
-`-0.008`, under 2%. So `step_cost.py` and `observe_cost.py` were both right all
-along, and what was wrong was using them to predict a run whose allocator was
-thrashing — a failure mode with no signature in any per-stage timing.
+### Confirmed against a production run, not just against itself
 
-The flag is now set in `train`, `resume`, `throughput` and `sweep` sbatch
-scripts, with the measurement recorded above the line. Without it a run silently
-costs 1.6x.
+Anchor 246482, Pion at micro-batch 512, per-window rate:
 
-### The clean overhead figure
+```
+step    50   4.476 s/step     startup
+step   100   0.976
+step   150   0.881            <- the "cold" number, 0.460 + 0.42
+step   200   0.828
+...
+step 35000   0.469            <- the "warm" number, sustained
+```
 
-**At micro-batch 512, NGD-Pion costs `0.722 / 0.460 = 1.57x` — +57%.** 14.7 h
-against Pion's 9.4 h for 9.6B tokens. That is close to the +50% I first
-extrapolated from stage timings and then wrongly disowned; the extrapolation was
-sound and the comparison I checked it against was not.
+So the +0.42 s is a **warm-up transient that decays over the first few hundred
+steps**, and a 200-step probe logging every 50 measures inside it. The
+sustained 0.469 s/step of a 35 000-step run agrees with the grid's warm cell
+(0.460) to 2%.
 
-At micro-batch 256 the ratio reads 0.774x — NGD-Pion apparently *faster* than
-Pion — but that is an artefact of the next entry, not a result.
+This also dissolves the "reproducible Pion oddity at micro-batch 256" recorded
+in the previous entry. Both of its measurements were cold. There is no oddity.
 
-### An oddity, reproducible and unexplained: Pion at micro-batch 256
+### What survives
 
-Subtracting the measured model cost from each cell:
+* **`expandable_segments` buys no speed.** It is kept because micro-batch 512
+  OOMs without it and fits with it — tested back to back inside job 246607,
+  which is the only clean evidence anyone has about this flag. The sbatch
+  comments have been corrected to say so.
+* **The decomposition is right.** Every warm cell sits within 2% of model +
+  `observe` + optimizer.
+* **The overhead figure survives**, because that comparison was between two
+  warm cells in the same job differing only in optimizer:
+  **`0.722 / 0.460 = 1.57x`, +57% at micro-batch 512** — 14.7 h against 9.4 h.
+* `pion` at micro-batch 256 has no valid measurement; both were cold.
 
-| | measured | model | residual |
-|---|---|---|---|
-| `pion` mb 512 | 0.460 | 0.438 | **+0.022** |
-| `pion` mb 256 | 0.869 | 0.427 | **+0.442** |
-| `ngd-pion` mb 512 | 0.722 | 0.438 + 0.068 + 0.224 | −0.008 |
-| `ngd-pion` mb 256 | 0.673 | 0.427 + 0.034 + 0.224 | −0.012 |
+### The methodological failure, third of the day
 
-`ngd-pion` is fully accounted for at both depths. `pion` is fully accounted for
-at 512 and carries an unexplained 0.44 s at 256 — which the allocator flag does
-not touch, and which `ngd-pion` does not have at the same depth. Identical to
-three decimals across jobs 246607 and 246613, so it is reproducible rather than
-noise.
+The first two were comparing the anchor gap across mismatched step counts and
+comparing the 2.3x across mismatched micro-batches. This one is worse, because
+the grid was built specifically to have one variable per comparison — and it
+had a hidden second one, position in the job, which nothing in the design
+controlled.
 
-I have no explanation and will not offer a fourth guess today. It does not block
-anything, because micro-batch 512 is the right choice regardless. Recorded so
-that whoever runs Pion at 256 knows the number is not what the model predicts.
+Two things follow for every throughput measurement from here:
+
+1. **A 200-step probe measures warm-up, not steady state.** Either discard the
+   first few hundred steps or run long enough that they do not dominate. The
+   existing `throughput.sbatch` reports a median over four windows, all of
+   which land inside the transient on a cold run.
+2. **State the cache condition with the number.** "0.722 s/step" is not a fact
+   about the configuration unless it says whether the corpus was warm.
 
 ### Where this leaves the validation phase
 
