@@ -10,7 +10,8 @@ from .covariance import CovarianceAccumulator
 from .direction import fisher_apply, generators, natural_gradient, trust_region_alpha
 from .factorization import Basis, basis_congruence, basis_identity_anchor, build_bases
 from .hooks import attach, attached
-from .linalg import cayley, floor_eigenvalues, floor_spectrum, skew
+from .fast import FastNGDPion
+from .linalg import cayley, floor_eigenvalues, floor_spectrum, skew, spectral_norm
 from .optimizer import NGDPion
 
 __all__ = [
@@ -27,6 +28,8 @@ __all__ = [
     "fisher_apply",
     "trust_region_alpha",
     "cayley",
+    "FastNGDPion",
+    "spectral_norm",
     "skew",
     "floor_eigenvalues",
     "floor_spectrum",

@@ -1113,3 +1113,77 @@ overhead figure.
 2. Batch `_apply` by shape. Attacks `cayley`, which is 71% of what is left.
 3. The contracted `curv`. Free.
 4. Measure `observe`, then quote a real overhead number.
+
+---
+
+## 2026-08-25 — the reference stays the reference
+
+Decided on the user's instruction, and it changes where optimisation work is
+allowed to land: **`optimizer.py` is the reference implementation and does not
+get modified.** It stays a direct transcription of `ALGORITHM.md`, one level
+above the role `reference.py` plays for the mathematics. Speed work goes into
+`ngd_pion/fast.py`, a subclass, so the delta is explicit and small.
+
+The reason this is the better arrangement and not merely a tidier one: an
+optimised implementation that is edited in place has nothing left to be checked
+against. With the split, the check is mechanical — run both from the same
+initial state on the same gradients and compare trajectories.
+
+The rule `fast.py` lives under: **every difference is either exactly equivalent
+or confined to a diagnostic.** Nothing in it may move the weights.
+
+### First item: power iteration in place of the SVD
+
+`angle` is now estimated by `spectral_norm` — power iteration on `X^T X`,
+`O(n^2)` per iteration — instead of `torch.linalg.matrix_norm(X, 2)`.
+
+This is safe for a reason specific to this quantity, not a general tolerance
+for approximation: `angle` is read by `harness.instrument` every few hundred
+steps and by nothing in the step. It cannot feed back into the trajectory.
+`alpha`, which *does* reach the step, is untouched and pinned by its own test.
+
+### Cold convergence is bad, and the design had to answer that
+
+Measured before choosing a default, on a random 512x512 skew:
+
+| iterations | relative error, cold |
+|---|---|
+| 1 | 2.1e-1 |
+| 5 | 6.1e-2 |
+| 20 | 5.3e-3 |
+| 50 | 1.1e-4 |
+
+That is not an implementation weakness. A skew matrix has its singular values
+in equal pairs and the large ones bunch, so the ratio governing convergence
+sits near 1. Warm — starting from the vector converged on the previous step's
+`X`, with `X` perturbed by a relative `1e-3` — **one iteration gives `1e-4`**.
+
+So the vector is cached in optimizer state, and generous iteration counts are
+spent in exactly the two places where no warm vector exists: the first step,
+and the step after each refactorisation, where `X` moves discontinuously
+because the basis it is expressed in has just been rebuilt. Defaults
+`angle_iters=2`, `angle_warmup=50`. Two iterations across all 56 weights is
+about 6 ms/step against 69 499 ms for the exact call.
+
+One property worth stating because a test depends on it: the estimate is a
+Rayleigh quotient and therefore always a **lower** bound. For a diagnostic
+asking whether an angle stays bounded, low is the uncomfortable direction to
+err in, which is why the warm-start discipline is a requirement rather than a
+refinement.
+
+### Tests
+
+`tests/test_fast.py`, 18 new, suite now 158 passing and 1 skipped.
+
+The equivalence test compares trajectories rather than final weights, with
+`t_fac=5` so the run crosses several refactorisations, and asserts
+`torch.equal` — bit-identical, not merely close. A single step agreeing would
+prove much less: the optimizer carries state, and a divergence introduced at
+step 3 can be invisible at step 1 and fatal by step 300.
+
+### Not done yet, on purpose
+
+`FastNGDPion` is not wired into `harness/train.py`. Which implementation
+`--optimizer ngd` selects is a decision about what the paper runs, not a
+detail, so it waits. Newton-Schulz for the Cayley solve, the batched `_apply`
+and the contracted curvature are next, in that order.
