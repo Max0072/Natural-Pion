@@ -772,3 +772,37 @@ one it took. Per-head spectra hold to 1e-6.
 2. Both levels still high, and high by a **common** amount.
 3. Bilateral readable against its old 3.3997 to see what the second-moment and
    per-head changes did on their own.
+
+---
+
+## 2026-08-25, ~10:50 — `genoa` access arrived mid-morning
+
+Checked `cpu` at 10:02: refused, and `genoa` with it. Checked again at 10:52
+because the user said access had been granted, and `genoa` now works — the
+association appeared between the two checks. `cpu` is still refused.
+
+    p330  b200   normal
+    p330  genoa  normal      <- new
+    p330  rtx    normal
+
+Two things worth carrying:
+
+**The block on `cpu` is an accounting association, not partition policy.**
+`scontrol show partition cpu` says `AllowGroups=ALL AllowAccounts=ALL
+AllowQos=ALL State=UP`, 17 nodes and 680 cores. So the request to make is
+narrow and specific: associate account `p330` with partition `cpu`.
+
+**`genoa` is not cheap CPU.** `TRESBillingWeights=CPU=1.0,Mem=0.375G` against
+`cpu=0.0625` on both GPU partitions, and with `PriorityFlags=MAX_TRES` a job
+bills the largest weighted component. One genoa core-hour therefore bills the
+same as one whole GPU-hour on `rtx`, and a genoa node bills 192 an hour where
+an rtx node bills 8. No association carries a hard quota, so nothing is
+enforced — what it spends is fairshare, in the same `p330` pool that decides
+when our GPU jobs start.
+
+That inverts the obvious plan. `genoa` is the right *place* for CPU work
+because it strands nobody's cards, but at these weights a 96-core tokenisation
+run costs 96 billing units an hour there against 6 on `rtx`. Whether the
+institute charges `genoa` against the 2000/1000 GPU grant or a separate CPU
+budget is not visible from SLURM and should be asked before anything large goes
+there.

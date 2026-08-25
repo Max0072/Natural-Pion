@@ -117,14 +117,42 @@ partitions cap at `MaxTime=1-00:00:00`. Billing weights are `gres/gpu=1.0`
 against `cpu=0.0625`, so the allocation is spent by GPU-hour and the eight
 cores each job asks for cost almost nothing.
 
-**The account reaches two partitions, not the whole machine.** `sbatch
---test-only` under `-A p330` is accepted on `rtx` and `b200` and refused on
-`cpu`, `milan`, `genoa`, `a100`, `gpu` and `a5000` with *"Invalid account or
-account/partition combination"*. That matters for work with no GPU in it --
-tokenising the corpus is hours of single-threaded CPU -- which currently has to
-occupy a GPU node or be run on the login node. Asking for `cpu` or `genoa`
-access is worth doing; it is not a blocker, since a job on `rtx` without
-`--gres` allocates no GPU and bills only CPU.
+**The account reaches three partitions.** `genoa` was added on 2026-08-25 --
+it was refused at 10:02 and accepted at 10:52 the same morning, so re-test
+rather than trust this paragraph. `sbatch --test-only` under `-A p330` is
+accepted on `rtx`, `b200` and `genoa`, and still refused on `cpu`, `milan`,
+`a100`, `gpu`, `a5000` and `virtual` with *"Invalid account or
+account/partition combination"*. Those partitions are open --
+`AllowAccounts=ALL` on `cpu` -- so what blocks us is a missing association in
+the accounting database, not partition policy, and the request to make is
+precisely "associate account `p330` with partition `cpu`".
+
+`genoa` is 17 nodes of 192 cores, 500 GB each, 3264 cores in total, 24 h cap,
+and mostly idle. It is the right place for work with no GPU in it -- tokenising
+the corpus is hours of CPU -- because it does not strand anybody's cards.
+
+**But read its billing weights before sending anything large there.**
+
+    genoa   CPU=1.0,    Mem=0.375G
+    rtx     cpu=0.0625, Mem=0.007767G, gres/gpu=1.0
+    b200    CPU=0.0625, Mem=0.003877G, GRES/gpu=1.0
+
+Under `MAX_TRES` a job bills the largest of its weighted components, so **one
+genoa core-hour bills 1.0 -- the same as a whole GPU on `rtx`**, and a whole
+genoa node bills 192 where a whole rtx node bills 8. The node TRES confirm it:
+`ne49` is `cpu=192,mem=500G,billing=192`, `rtx6004` is
+`cpu=64,mem=1030000M,billing=8`. A 96-core tokenisation job costs 96 billing
+units an hour on `genoa` against 6 on `rtx`.
+
+No association here carries `GrpTRESMins` or any other hard quota, so nothing
+is enforced by SLURM; what this spends is **fairshare**, and it lands in the
+same `p330` pool that sets the priority of our GPU jobs. `QOS normal` caps
+concurrency at `cpu=1280` per user, which is 6.6 genoa nodes at once.
+
+Whether the institute counts `genoa` against the 2000 RTX / 1000 B200 grant or
+against a separate CPU budget is **not answerable from SLURM** and is worth
+asking them, because the two readings differ by a lot: at CPU=1.0 a day of
+tokenising on one node would show up as 4608 billing units.
 
 **Both the login node and the compute nodes have network.** huggingface.co,
 pypi.org and files.pythonhosted.org answer from `rtx6003` as well as from the
