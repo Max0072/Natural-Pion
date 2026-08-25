@@ -12,7 +12,7 @@ from contextlib import contextmanager
 import torch
 
 __all__ = ["skew", "floor_eigenvalues", "floor_spectrum", "cayley", "is_identity",
-           "exact_fp32", "spectral_norm"]
+           "exact_fp32", "spectral_norm", "cayley_newton_schulz"]
 
 
 @contextmanager
@@ -143,6 +143,61 @@ def _cayley(X: torch.Tensor, c: float | torch.Tensor) -> torch.Tensor:
     half = half.reshape(*([1] * (X.dim() - 2)), 1, 1) if isinstance(half, torch.Tensor) and half.dim() else half
     A = half * X
     return torch.linalg.solve(eye + A, eye - A)
+
+
+def cayley_newton_schulz(
+    X: torch.Tensor, c: float | torch.Tensor, iters: int = 2
+) -> torch.Tensor:
+    """`cayley`, with the inverse by Newton-Schulz instead of a solve.
+
+    `Cayley(-cX) = (I + A)^-1 (I - A) = 2(I + A)^-1 - I` for `A = (c/2)X`, and
+    that second form is used here because it costs one matmul less.
+
+    The iteration is `Z <- Z(2I - MZ)`, whose residual `R = I - MZ` **squares**
+    every step. Starting from `Z0 = I - A` gives `M Z0 = I - A^2`, so the
+    residual begins at `A^2` and runs `A^4`, `A^8`, `A^16`. Rotation angles in
+    this method sit near `1e-2`, where two iterations land below the fp32
+    epsilon.
+
+    Why bother, when `torch.linalg.solve` computes the same thing exactly: the
+    solve is latency-bound, not flop-bound. A 512x512 solve with 512
+    right-hand sides is 0.36 GFLOP and takes 1 ms on an RTX PRO 6000
+    Blackwell -- 0.36 TFLOPS, where matmuls on the same card run at 18. LU with
+    pivoting is sequential and does not fill a GPU at this size, and the step
+    does 112 of them. Newton-Schulz costs `4k n^3` of matmul against the
+    solve's `2.7 n^3`: three times the arithmetic on hardware fifty times
+    faster at it.
+
+    **This converges only for `||A|| < 1`**, and unlike the solve it degrades
+    rather than failing loudly -- at `||A|| = 0.5` a single iteration leaves an
+    orthogonality error of `3.8e-2`. Callers must bound `(|c|/2) * ||X||_2`,
+    which `spectral_norm` already produces for the angle diagnostic, and either
+    raise `iters` or fall back to `cayley`. Measured orthogonality error in
+    fp32, against `1.1e-6` for the exact solve at the same angle:
+
+    | angle | 1 iter | 2 iters | 3 iters |
+    |---|---|---|---|
+    | `1e-2` | `1.1e-5` | `6.1e-6` | `6.1e-6` |
+    | `1e-1` | `8.3e-6` | `3.7e-6` | `3.7e-6` |
+    | `5e-1` | `2.7e-3` | `8.6e-6` | `3.1e-6` |
+    | `1.0`  | `3.8e-2` | `1.2e-3` | `4.6e-6` |
+    """
+    if iters < 1:
+        raise ValueError(f"iters must be at least 1, got {iters}")
+    with exact_fp32():
+        n = X.shape[-1]
+        eye = torch.eye(n, dtype=X.dtype, device=X.device).expand_as(X)
+        half = c if isinstance(c, torch.Tensor) else torch.as_tensor(
+            c, dtype=X.dtype, device=X.device)
+        half = 0.5 * half
+        if half.dim():
+            half = half.reshape(*([1] * (X.dim() - 2)), 1, 1)
+        A = half * X
+        M = eye + A
+        Z = eye - A                       # residual A^2, and it squares
+        for _ in range(iters):
+            Z = Z @ (2.0 * eye - M @ Z)
+        return 2.0 * Z - eye
 
 
 def is_identity(M: torch.Tensor, atol: float = 1e-6) -> bool:

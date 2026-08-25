@@ -6,6 +6,7 @@ import torch
 
 from ngd_pion.linalg import (
     cayley,
+    cayley_newton_schulz,
     exact_fp32,
     floor_eigenvalues,
     floor_spectrum,
@@ -136,3 +137,54 @@ def test_exact_fp32_restores_what_it_changed():
         torch.backends.cuda.matmul.allow_tf32 = False
         torch.backends.cudnn.allow_tf32 = False
         torch.set_float32_matmul_precision("highest")
+
+
+# --- Newton-Schulz: measured, tested, and deliberately not wired in ---------
+#
+# `ngd_pion.fast` does not use this. It was written, measured and then left
+# out, because the rotation angles this method produces are far past the range
+# where it is usable -- one to two radians per step at `lr = 1e-3` on small
+# problems, against the `||A|| = angle/2 < 0.4` it needs. The primitive stays
+# because the measurement behind that decision is worth keeping executable: if
+# a real run turns out to have small angles, wiring it back in is one line.
+
+
+@pytest.mark.parametrize("iters,angle,limit", [
+    # residual follows ||A||^(2^(k+1)) with ||A|| = angle/2; limits from that
+    (1, 1e-2, 1e-7), (2, 1e-2, 1e-12), (2, 1e-1, 1e-10), (3, 0.5, 1e-9),
+])
+def test_newton_schulz_matches_its_error_law(iters, angle, limit):
+    X = rand_skew(48)
+    X = X / torch.linalg.matrix_norm(X, 2)
+    R = cayley_newton_schulz(X, angle, iters)
+    eye = torch.eye(48, dtype=torch.float64)
+    assert (R.T @ R - eye).abs().max() < limit
+
+
+def test_newton_schulz_agrees_with_cayley_where_it_converges():
+    X = rand_skew(32)
+    X = X / torch.linalg.matrix_norm(X, 2)
+    got = cayley_newton_schulz(X, 0.05, 3)
+    assert torch.allclose(got, cayley(X, 0.05), atol=1e-12)
+
+
+def test_newton_schulz_degrades_quietly_past_its_range():
+    """It returns a worse matrix rather than raising, which is why any use of
+    it needs a bound on `||A||` rather than trust."""
+    X = rand_skew(32)
+    X = X / torch.linalg.matrix_norm(X, 2)
+    R = cayley_newton_schulz(X, 1.6, 1)          # ||A|| = 0.8
+    eye = torch.eye(32, dtype=torch.float64)
+    assert (R.T @ R - eye).abs().max() > 1e-2
+
+
+def test_newton_schulz_batches():
+    X = rand_skew(8, batch=(3,))
+    R = cayley_newton_schulz(X, 0.1, 2)
+    for i in range(3):
+        assert torch.allclose(R[i], cayley_newton_schulz(X[i], 0.1, 2))
+
+
+def test_newton_schulz_rejects_zero_iterations():
+    with pytest.raises(ValueError):
+        cayley_newton_schulz(rand_skew(8), 0.1, 0)

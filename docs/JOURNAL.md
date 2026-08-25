@@ -1524,3 +1524,77 @@ evaluation, so no requeue. A pair is about 24 h; a four-point learning-rate
 sweep across both arms about 97 h, under 5% of the 2000 rtx-hour allocation.
 
 Suite at 159 passing, 1 skipped. Speed work is done for the validation phase.
+
+---
+
+## 2026-08-25 — Newton-Schulz: measured, then dropped
+
+Written, measured, and left out. `fast.py` is back to bit-identical with the
+reference; `cayley_newton_schulz` stays in `linalg.py` as a tested primitive
+that nothing calls.
+
+### The error law, confirmed over five orders
+
+Residual after `k` iterations is `||A||^(2^(k+1))` with `A = (c/2)X`. Measured
+in fp64 against that prediction:
+
+| `||A||` | NS 1 | NS 2 | NS 3 |
+|---|---|---|---|
+| 0.010 | `1.1e-08` | `3.2e-15` | `2.4e-15` |
+| 0.050 | `6.8e-06` | `3.3e-11` | `2.8e-15` |
+| 0.100 | `1.1e-04` | `8.4e-09` | `3.0e-15` |
+| 0.250 | `4.0e-03` | `1.2e-05` | `1.5e-10` |
+| 0.400 | `2.4e-02` | `4.8e-04` | `2.6e-07` |
+
+The exact solve in fp32 leaves about `1.1e-6` at any angle, so each count stops
+being the dominant error at `||A||` of 0.032, 0.180 and 0.424 respectively.
+
+### Why it is out, and it is not about Newton-Schulz
+
+**The rotation angles are one to two radians per step.** Median over 20 steps
+on the small test problems:
+
+| shape | `lr=1e-2` | `lr=1e-3` | `lr=1e-4` |
+|---|---|---|---|
+| 16x16 | 2.86 | 1.00 | 0.18 |
+| 24x12 | 3.97 | 1.77 | 0.53 |
+| 12x24 | 1.43 | 0.22 | 0.26 |
+
+`lr = 1e-3` is what the anchors run. Newton-Schulz needs `||A|| = angle/2`
+under about 0.4, so at those angles it refuses every step and buys nothing.
+
+Two further things came out of trying:
+
+* **The guard cannot be built on `spectral_norm`.** It is a Rayleigh quotient
+  and therefore a lower bound, and measured inside the optimizer it ran between
+  0.58 and 0.98 of the truth — worst when `X` moves fast and the cached vector
+  goes stale. A 42% underestimate turns a nominal `||A|| = 0.35` into a real
+  0.60, where NS-3 leaves `3e-4`, silently. The sound upper bounds were checked
+  and rejected: for skew `X` both `||X||_inf` and `||X||_F` bound `||X||_2`,
+  but on 512x512 they run 4x to 11x loose, so a guard on either refuses always.
+* **At small angles a third iteration makes drift slightly worse, not better.**
+  The residual is long since under the fp32 floor, so the extra matmuls only
+  add rounding: over 1000 steps at angle 0.1 on 512x512, drift was `4.4e-4` at
+  two iterations and `8.4e-4` at three. Newton-Schulz at our angles would have
+  been rounding-limited, not truncation-limited — its cost to the spectrum is
+  two extra matmuls per retraction, roughly doubling drift against the solve.
+
+So `cayley` keeps its 160 ms, and NGD-Pion stays at +57% — 14.7 h against 9.4.
+Which does not block validation.
+
+### The finding that outlives the attempt
+
+The angle measurement is the important part, and it is about the method rather
+than about the retraction. `ALGORITHM.md` capped its own trust-region grid at
+0.1 rad because the quadratic model loses accuracy above it. One to two radians
+per step is far outside that, and the open question the whole `angle`
+diagnostic exists to answer — whether the angle stays bounded once Pion's RMS
+scaling is ablated — now has a preliminary answer, and it is not reassuring.
+
+**Caveat, and it is a large one:** these are 12-to-24 dimensional problems with
+random gradients and a fixed covariance. They are evidence about a unit test,
+not about a 60M transformer.
+
+Which is now cheap to settle. `ngd-pion` runs at 0.722 s/step, so 500 steps is
+six minutes, and `harness.instrument` already logs `angle_min` and `angle_max`.
+No NGD run has ever produced them at scale.
