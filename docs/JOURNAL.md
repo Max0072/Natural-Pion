@@ -1293,14 +1293,24 @@ Two consequences worth recording before they are discovered the hard way:
    `ngd-pion` does not. Running them at different accumulation depths puts a
    second variable into a comparison whose entire claim is that it has one. Fix
    256 for both.
-2. **`ngd_beta` means something different at 256.** `observe` fires once per
-   forward pass per layer, so gradient accumulation over two micro-batches
-   updates `A` twice per optimizer step rather than once. With `beta = 0.95`
-   the effective per-step retention is `0.95^2 = 0.9025`, and the covariance
-   horizon in units of steps is halved. This is a hyperparameter changed by a
-   memory constraint rather than by a decision, which is the kind of thing that
-   is invisible in a results table. Either set `ngd_beta = sqrt(0.95)` at this
-   depth or state the horizon in steps rather than in `beta`.
+2. ~~**`ngd_beta` means something different at 256.**~~ **Wrong, corrected
+   the same day.** I claimed the covariance EMA fires once per micro-batch, so
+   accumulation over two would halve its horizon in steps. It does not.
+   `ActivationRecorder` carries an `enabled` switch for exactly this reason —
+   its docstring says so — and `train.py:331` sets `recorder.enabled = micro ==
+   0`, so `observe` runs on the first micro-batch of each step and on no other.
+   `beta` means what it says at any accumulation depth.
+
+   What *is* true, and much smaller: the covariance is estimated from one
+   micro-batch, so at 256 it sees 65 536 tokens per step where at 512 it would
+   see 131 072. The docstring's position is that one micro-batch is already far
+   more samples than the covariance needs, which is plausible and untested.
+
+   The lesson is the ordinary one: I inferred a mechanism from the algorithm
+   instead of reading the code that implements it, having already been caught
+   doing that earlier in this project. It also inverts a prediction — since
+   `observe` processes one micro-batch, moving to 512 makes it *more* expensive
+   per step, not less, which removes one of the reasons I gave for wanting 512.
 
 ### Is it fast enough to validate with
 
