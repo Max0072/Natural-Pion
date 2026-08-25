@@ -17,6 +17,7 @@ from harness.config import RunConfig
 from harness.data import TokenCorpus
 from harness.model import ModelConfig, Transformer
 from harness.train import build_optimizers, lr_at, train
+from ngd_pion.fast import FastNGDPion
 from ngd_pion.optimizer import NGDPion
 from ngd_pion.pion_baseline import Pion
 
@@ -119,14 +120,15 @@ def test_missing_corpus_says_what_to_run():
 
 @pytest.mark.parametrize(
     "optimizer,expected",
-    [("ngd", NGDPion), ("pion", Pion), ("pion_ablated", Pion), ("adamw", None)],
+    [("ngd-pion", FastNGDPion), ("ngd-pion-ref", NGDPion),
+     ("pion", Pion), ("pion_ablated", Pion), ("adamw", None)],
 )
 def test_optimizer_wiring(optimizer, expected):
     model = Transformer(SMALL)
     rot, adamw, recorder = build_optimizers(model, RunConfig(optimizer=optimizer, model=SMALL))
     assert rot is None if expected is None else isinstance(rot, expected)
     assert isinstance(adamw, torch.optim.AdamW)
-    assert (recorder is not None) == (optimizer == "ngd")
+    assert (recorder is not None) == optimizer.startswith("ngd-pion")
     if recorder is not None:
         recorder.remove()
 
@@ -141,7 +143,7 @@ def test_ablated_pion_is_wired_with_an_exact_retraction():
     assert group["retraction"] == "cayley"
 
 
-@pytest.mark.parametrize("optimizer", ["ngd", "pion", "pion_ablated", "adamw"])
+@pytest.mark.parametrize("optimizer", ["ngd-pion", "pion", "pion_ablated", "adamw"])
 def test_run_end_to_end_and_reduce_loss(optimizer, corpus, tmp_path):
     cfg = RunConfig(
         optimizer=optimizer, model=SMALL, batch_sequences=8, micro_batch=4,
@@ -156,7 +158,7 @@ def test_run_end_to_end_and_reduce_loss(optimizer, corpus, tmp_path):
     assert any("val_loss" in r for r in rows)
     assert (out / "manifest.json").exists()
     assert (out / "checkpoint.pt").exists()
-    if optimizer == "ngd":
+    if optimizer.startswith("ngd-pion"):
         assert "angle_max" in train_rows[-1], "NGD runs must log the diagnostics"
         assert train_rows[-1]["alpha_max"] <= 1.0
 
@@ -288,7 +290,7 @@ def test_a_run_resumes_from_its_checkpoint(corpus, tmp_path):
     """Every partition caps at 24h and a full run may not fit, so a requeued
     job has to continue rather than start over."""
     cfg = RunConfig(
-        optimizer="ngd", model=SMALL, batch_sequences=4, micro_batch=4,
+        optimizer="ngd-pion", model=SMALL, batch_sequences=4, micro_batch=4,
         train_steps=8, ngd_t_fac=2, eval_every=2, eval_batches=1, log_every=1,
         data_path=str(corpus / "train.bin"), val_path=str(corpus / "val.bin"),
         out_dir=str(tmp_path),
@@ -343,7 +345,7 @@ def test_bf16_autocast_trains_and_leaves_the_weights_in_fp32(corpus, tmp_path):
     it pins the wiring rather than the numerics.
     """
     cfg = RunConfig(
-        optimizer="ngd", model=SMALL, batch_sequences=4, micro_batch=4,
+        optimizer="ngd-pion", model=SMALL, batch_sequences=4, micro_batch=4,
         train_steps=4, ngd_t_fac=2, eval_every=2, eval_batches=1, log_every=1,
         precision="bf16",
         data_path=str(corpus / "train.bin"), val_path=str(corpus / "val.bin"),

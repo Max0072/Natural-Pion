@@ -288,7 +288,7 @@ Things that look right and are not. Every one of these cost real time here.
 
 ```bash
 pytest -q                                        # 140 tests, 24 s
-python -m harness.run --optimizer ngd --lr 1e-3  # one run
+python -m harness.run --optimizer ngd-pion --lr 1e-3  # one run
 python -m harness.run --anchor bilateral         # the calibration run
 ```
 

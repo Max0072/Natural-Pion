@@ -244,8 +244,8 @@ weight holds still even with TF32 switched on deliberately.
 Twenty minutes, and it decides how the 3000 hours are spent.
 
 ```bash
-sbatch -p rtx  scripts/sbatch/train.sbatch --optimizer ngd --max-steps 200
-sbatch -p b200 scripts/sbatch/train.sbatch --optimizer ngd --max-steps 200
+sbatch -p rtx  scripts/sbatch/train.sbatch --optimizer ngd-pion --max-steps 200
+sbatch -p b200 scripts/sbatch/train.sbatch --optimizer ngd-pion --max-steps 200
 ```
 
 Read `tokens_per_sec` from the last line of each run's `log.jsonl`.

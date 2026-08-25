@@ -20,6 +20,7 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 
+from ngd_pion.fast import FastNGDPion
 from ngd_pion.hooks import attach
 from ngd_pion.optimizer import NGDPion
 from ngd_pion.pion_baseline import Pion
@@ -41,6 +42,28 @@ def lr_at(step: int, cfg: RunConfig) -> float:
     return cfg.lr_min + 0.5 * (cfg.lr - cfg.lr_min) * (1.0 + math.cos(math.pi * progress))
 
 
+# Two names for NGD-Pion, and the split is about provenance rather than taste.
+#
+# `ngd_pion/optimizer.py` is the reference: a transcription of ALGORITHM.md,
+# left unoptimised so there is something to check against. `fast.py` is what
+# actually runs. Today they are bit-identical -- `tests/test_fast.py` asserts
+# equal weight trajectories -- but the next items on the cost list (a
+# Newton-Schulz retraction, a batched step) change rounding, and from then on
+# the two produce different numbers.
+#
+# `RunConfig.name` is built from this string, so giving each implementation its
+# own name is what keeps a run directory an honest record of the code that
+# produced it. A silent alias would defeat exactly that, which is why the old
+# bare "ngd" is not accepted: failing loudly costs one puzzled minute, and
+# guessing wrong costs a run.
+#
+# The fast one gets the short name because it is the one the paper runs, and
+# because the opposite arrangement fails badly: forgetting a suffix would buy
+# 62 days of wall-clock instead of 14 hours, and nothing would say so until the
+# job had been queued.
+NGD_IMPLEMENTATIONS = {"ngd-pion": FastNGDPion, "ngd-pion-ref": NGDPion}
+
+
 def build_optimizers(model: Transformer, cfg: RunConfig):
     """Split the parameters the way Pion does, and give each half an optimizer.
 
@@ -54,8 +77,8 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
     if cfg.optimizer == "adamw":
         return None, _adamw(model.parameters(), cfg), None
 
-    if cfg.optimizer == "ngd":
-        rot = NGDPion(
+    if cfg.optimizer in NGD_IMPLEMENTATIONS:
+        rot = NGD_IMPLEMENTATIONS[cfg.optimizer](
             weights, lr=cfg.lr, beta=cfg.ngd_beta, eps=cfg.ngd_eps,
             alpha_max=cfg.ngd_alpha_max, t_fac=cfg.ngd_t_fac,
         )
@@ -88,7 +111,10 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
         )
         recorder = None
     else:
-        raise ValueError(f"unknown optimizer {cfg.optimizer!r}")
+        raise ValueError(
+            f"unknown optimizer {cfg.optimizer!r}; expected one of "
+            + ", ".join(repr(k) for k in (*NGD_IMPLEMENTATIONS, "pion", "pion_ablated", "adamw"))
+        )
 
     adamw = _adamw(rest, cfg)
     return rot, adamw, recorder

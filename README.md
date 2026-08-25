@@ -172,7 +172,7 @@ belong to another optimizer, which is how Pion splits parameters too.
 ```bash
 pytest -q                                        # 140 tests, 24 s
 python scripts/prepare_data.py --out data --target-tokens 1e10
-python -m harness.run --optimizer ngd --lr 1e-3
+python -m harness.run --optimizer ngd-pion --lr 1e-3
 python -m harness.run --anchor bilateral         # calibration; read AGENTS.md first
 ```
 

@@ -13,7 +13,7 @@
 #
 #   sbatch -p rtx  scripts/sbatch/throughput.sbatch
 #   sbatch -p b200 scripts/sbatch/throughput.sbatch
-#   OPT=ngd sbatch -p rtx scripts/sbatch/throughput.sbatch
+#   OPT=ngd-pion sbatch -p rtx scripts/sbatch/throughput.sbatch
 #
 # Log every 50 steps, as a real run does, not more often. Writing a line costs
 # about 1.5 s against an NFS flush, so at --log-every 4 the window is 2 s of

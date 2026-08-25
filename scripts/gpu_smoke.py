@@ -81,7 +81,7 @@ def main() -> int:
         rng.integers(0, small.vocab_size, size=200_000, dtype=np.uint16).tofile(tmp / f"{name}.bin")
 
     cfg = RunConfig(
-        optimizer="ngd", model=small, batch_sequences=8, micro_batch=8,
+        optimizer="ngd-pion", model=small, batch_sequences=8, micro_batch=8,
         train_steps=8, ngd_t_fac=2, eval_every=2, eval_batches=1, log_every=1,
         data_path=str(tmp / "train.bin"), val_path=str(tmp / "val.bin"),
         out_dir=str(tmp / "runs"),

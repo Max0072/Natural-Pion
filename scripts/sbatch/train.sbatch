@@ -18,7 +18,7 @@
 # for anything that fits.
 #
 #   sbatch scripts/sbatch/train.sbatch --anchor bilateral
-#   sbatch -p rtx scripts/sbatch/train.sbatch --optimizer ngd --lr 1e-3 --train-steps 9155
+#   sbatch -p rtx scripts/sbatch/train.sbatch --optimizer ngd-pion --lr 1e-3 --train-steps 9155
 #
 # A requeued job resumes from its checkpoint automatically -- the run directory
 # is named by the configuration hash, so resubmitting the same command picks up

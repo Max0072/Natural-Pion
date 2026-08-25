@@ -97,7 +97,7 @@ def machine(device: str | None = None) -> dict:
 @dataclass(frozen=True)
 class RunConfig:
     # what is being compared
-    optimizer: str = "ngd"          # ngd | pion | pion_ablated | adamw
+    optimizer: str = "ngd-pion"     # ngd-pion | ngd-pion-ref | pion | pion_ablated | adamw
     lr: float = 1e-3
     seed: int = 0
 

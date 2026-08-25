@@ -1187,3 +1187,57 @@ step 3 can be invisible at step 1 and fatal by step 300.
 `--optimizer ngd` selects is a decision about what the paper runs, not a
 detail, so it waits. Newton-Schulz for the Cayley solve, the batched `_apply`
 and the contracted curvature are next, in that order.
+
+---
+
+## 2026-08-25 — `ngd-pion` and `ngd-pion-ref`
+
+`--optimizer ngd` is gone. Two names now:
+
+| name | class | role |
+|---|---|---|
+| `ngd-pion` | `FastNGDPion` | what runs |
+| `ngd-pion-ref` | `NGDPion` | the transcription of `ALGORITHM.md` |
+
+`RunConfig.name` is built from this string, so each implementation naming
+itself is what keeps a run directory an honest record of the code behind it.
+Checked: the two produce different hashes (`b9ed2b7807` against `ed842a7b07`)
+on otherwise identical configurations, so the split is enforced by the naming
+scheme rather than by anyone remembering.
+
+Today the two are bit-identical, so the distinction buys nothing yet. It is
+made now because the next items — a Newton-Schulz retraction, a batched step —
+change rounding, and from then on the same name would mean different numbers
+before and after.
+
+**The old bare `ngd` is rejected rather than aliased.** A silent alias defeats
+the whole point of the split. Failing loudly costs a puzzled minute; guessing
+wrong costs a run.
+
+The fast implementation takes the short name deliberately. The opposite
+arrangement fails badly: forgetting a `-fast` suffix buys 62 days of wall-clock
+instead of 14 hours, and nothing says so until the job is already queued.
+
+`angle_iters` and `angle_warmup` stay out of `RunConfig`. Everything in the
+config enters the hash, and these two move only a diagnostic — putting them in
+would give two runs with identical weights different hashes, which is exactly
+the confusion the hash exists to prevent.
+
+Suite at 159 passing, 1 skipped.
+
+### Where this leaves the validation phase
+
+The stated goal right now is to get the algorithm runnable at a satisfactory
+speed so it can be validated, and to keep the accuracy-trading optimisations
+for afterwards, where their cost can be measured against `ngd-pion-ref`.
+
+Worth being clear that the change made so far is **not** in the
+accuracy-trading category. Power iteration touches a diagnostic and nothing
+else; the weight trajectory is bit-identical. Newton-Schulz and the batched
+step are the first entries that genuinely change numbers.
+
+So the open question is narrow: does `ngd-pion` as it now stands already run
+fast enough to validate with? The stage timings suggest about 220 ms/step of
+optimizer against Pion's 460 ms/step, but that is extrapolation from warmed
+micro-benchmarks, and the probe still leaves 3.6 s/step of the original 73.5
+unaccounted for. Measure the real thing before deciding anything else.
