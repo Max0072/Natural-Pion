@@ -165,7 +165,17 @@ class RunConfig:
     pion_rms: float = 0.2
     pion_momentum: str = "lie"      # the variant their published 60M numbers use
     pion_retraction: str = "trunc"
-    pion_alternate: bool = True
+    # Bilateral, which is their better published number for this model -- 3.3575
+    # against 3.3654 for alternate -- and the one `pion_ablated` is forced to.
+    # This default said `True` for a while with nothing defending it, which
+    # would have run the context arm in a variant the measurement arm does not
+    # use, putting a second difference between them. The context arm exists so
+    # the ablated baseline cannot be called a straw man, and that argument only
+    # works if the context is Pion at its best.
+    #
+    # `anchor_config` sets this from `update_side` and does not read the
+    # default, so the anchors were never affected either way.
+    pion_alternate: bool = False
     pion_beta1: float = 0.9
     pion_beta2: float = 0.95
     # Their `--pion-use-second-momentum` is `store_true` with `default=None`,

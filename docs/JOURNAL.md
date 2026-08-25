@@ -1636,3 +1636,48 @@ least have landed in its own directory rather than contaminating one. Small
 mercy, and not the one that mattered here.
 
 Suite at 167 passing, 1 skipped.
+
+---
+
+## 2026-08-25 — the default configuration is now the anchor, minus the optimizer
+
+Went through `anchor_config` field by field against `RunConfig()`. Two
+disagreed, both of them defaults that nothing actually ran and nothing
+defended:
+
+* `precision`, `fp32` against the anchor's `bf16` — the one that killed
+  246662/246663.
+* `pion_alternate`, `True` against the bilateral anchor's `False`, and the only
+  field in that block of `config.py` with no comment justifying it.
+
+`pion_alternate` reaches only the `pion` context arm: `pion_ablated` is forced
+to `False` in `train.py` and `NGDPion` never reads it, and `anchor_config` sets
+it from `update_side` rather than from the default, so the anchors were never
+affected. But the context arm exists so that the ablated baseline cannot be
+called a straw man, and that argument only holds if the context is Pion at its
+best — 3.3575 bilateral against 3.3654 alternate. Running it in a variant the
+measurement arm does not use would have put a second difference between them
+for no reason.
+
+With both fixed, `RunConfig()` differs from `anchor_config("bilateral")` in
+**one field: `optimizer`.** Every setting the published numbers were produced
+under — `lr_min=1e-5`, `warmup_steps=0`, `train_steps=73242`,
+`batch_sequences=512`, `weight_decay=0.1`, `grad_clip=1.0`, `pion_rms=0.2`,
+`pion_momentum="lie"`, `pion_retraction="trunc"`, `precision="bf16"` — is
+inherited rather than restated.
+
+### One inherited value that is *not* justified, and it matters tonight
+
+`lr = 1e-3` is Pion's tuned learning rate. Nothing has tuned it for NGD-Pion,
+and inheriting it is a convenience, not a decision.
+
+It is also the value where the toy measurement put rotation angles at one to
+two radians per step — far outside the 0.1 rad where `ALGORITHM.md` says the
+trust region's quadratic model holds. That measurement was on 12-to-24
+dimensional problems and may say nothing about a 60M transformer, but it is the
+only evidence there is, and it points at `lr = 1e-3` being too large for this
+optimizer rather than at anything being wrong with the optimizer.
+
+So tonight's `ngd-pion` run is **one point of a sweep that has not been run**,
+not "the" NGD-Pion result. Whatever it produces should be read that way, and
+the `angle_min`/`angle_max` it logs are the thing to look at first.
