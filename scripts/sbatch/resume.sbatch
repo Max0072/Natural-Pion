@@ -19,11 +19,17 @@
 #   SIDE=alternate KILL_AFTER=900 sbatch scripts/sbatch/resume.sbatch
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
+# Measured on 2026-08-25, jobs 246531/246610/246613: this flag is worth 1.60x
+# for ngd-pion and exactly nothing for pion (1.599x and 1.597x in two
+# independent cells; 1.000x and 1.007x for pion). NGD-Pion makes many
+# varied-size allocations per step -- 1376x1376 temporaries, 56 weights, an
+# unbatched _apply -- and the caching allocator cannot serve them from a pool
+# shaped by the model's activations. Without it a run silently costs 1.6x.
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"
 SIDE="${SIDE:-bilateral}"
 KILL_AFTER="${KILL_AFTER:-540}"     # past the first checkpoint at step 500
 W="$DATA_p330/runs/resumecheck-$SLURM_JOB_ID"
-RUN="apptainer exec --env PYTHONUNBUFFERED=1 --nv --bind $DATA_p330:$DATA_p330 --pwd $REPO $SIF python -m harness.run"
+RUN="apptainer exec --env PYTHONUNBUFFERED=1 --env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True --nv --bind $DATA_p330:$DATA_p330 --pwd $REPO $SIF python -m harness.run"
 ARGS="--anchor $SIDE --micro-batch 512 --out-dir $W \
       --data-path $DATA_p330/c4/c4_train.bin --val-path $DATA_p330/c4/c4_val.bin"
 

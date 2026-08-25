@@ -83,7 +83,7 @@ try:
 except FileNotFoundError:
     raise SystemExit("no cells recorded")
 
-print(f"{\"s/step\":>10}{\"mb 256\":>12}{\"mb 512\":>12}")
+print("{:>10}{:>12}{:>12}".format("s/step", "mb 256", "mb 512"))
 for opt in ("pion", "ngd-pion"):
     row = "".join(f"{cells[(opt, mb)][0]:>12.3f}" if (opt, mb) in cells else f"{chr(45)*2:>12}"
                   for mb in (256, 512))

@@ -1381,3 +1381,89 @@ phase where accuracy trades are on the table.
 `observe_cost.py` crashed on this run: `Transformer.forward` returns
 `(logits, loss)` and the probe used the return value as logits. Fixed; the
 decomposition is still unmeasured.
+
+---
+
+## 2026-08-25 — 246613: the missing 0.42 s was the allocator
+
+The 2x2, 200 steps a cell, `expandable_segments` on everywhere, nothing else
+varied between any pair.
+
+| s/step | mb 256 | mb 512 |
+|---|---|---|
+| `pion` | 0.869 | 0.460 |
+| `ngd-pion` | 0.673 | 0.722 |
+
+### `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` is worth 1.60x, to NGD only
+
+The same cells, before and after the flag:
+
+| | before | after | |
+|---|---|---|---|
+| `ngd-pion` mb 256 | 1.076 | 0.673 | **1.599x** |
+| `ngd-pion` mb 512 | 1.153 | 0.722 | **1.597x** |
+| `pion` mb 256 | 0.869 | 0.869 | 1.000x |
+| `pion` mb 512 | 0.463 | 0.460 | 1.007x |
+
+Two independent cells agreeing to three digits, and no effect at all on Pion.
+That is the unexplained 0.42 s/step, and it was allocator churn: NGD-Pion makes
+many varied-size allocations per step — 1376x1376 temporaries, 56 weights, an
+unbatched `_apply` — and the caching allocator cannot serve them from a pool
+already shaped by the model's activations, so it falls back to real
+`cudaMalloc`/`cudaFree` traffic. Pion allocates almost nothing per step and
+does not care.
+
+**With the flag on, the decomposition reconciles.** Predicted 0.685 and 0.730
+from measured components; measured 0.673 and 0.722. Residuals `-0.012` and
+`-0.008`, under 2%. So `step_cost.py` and `observe_cost.py` were both right all
+along, and what was wrong was using them to predict a run whose allocator was
+thrashing — a failure mode with no signature in any per-stage timing.
+
+The flag is now set in `train`, `resume`, `throughput` and `sweep` sbatch
+scripts, with the measurement recorded above the line. Without it a run silently
+costs 1.6x.
+
+### The clean overhead figure
+
+**At micro-batch 512, NGD-Pion costs `0.722 / 0.460 = 1.57x` — +57%.** 14.7 h
+against Pion's 9.4 h for 9.6B tokens. That is close to the +50% I first
+extrapolated from stage timings and then wrongly disowned; the extrapolation was
+sound and the comparison I checked it against was not.
+
+At micro-batch 256 the ratio reads 0.774x — NGD-Pion apparently *faster* than
+Pion — but that is an artefact of the next entry, not a result.
+
+### An oddity, reproducible and unexplained: Pion at micro-batch 256
+
+Subtracting the measured model cost from each cell:
+
+| | measured | model | residual |
+|---|---|---|---|
+| `pion` mb 512 | 0.460 | 0.438 | **+0.022** |
+| `pion` mb 256 | 0.869 | 0.427 | **+0.442** |
+| `ngd-pion` mb 512 | 0.722 | 0.438 + 0.068 + 0.224 | −0.008 |
+| `ngd-pion` mb 256 | 0.673 | 0.427 + 0.034 + 0.224 | −0.012 |
+
+`ngd-pion` is fully accounted for at both depths. `pion` is fully accounted for
+at 512 and carries an unexplained 0.44 s at 256 — which the allocator flag does
+not touch, and which `ngd-pion` does not have at the same depth. Identical to
+three decimals across jobs 246607 and 246613, so it is reproducible rather than
+noise.
+
+I have no explanation and will not offer a fourth guess today. It does not block
+anything, because micro-batch 512 is the right choice regardless. Recorded so
+that whoever runs Pion at 256 knows the number is not what the model predicts.
+
+### Where this leaves the validation phase
+
+Speed is settled. Running the comparison at micro-batch 512:
+
+* `ngd-pion` 14.7 h, `pion_ablated` about 9.4 h, both inside the 24 h cap even
+  once evaluation is added, so no requeue.
+* A pair costs about 24 h, a four-point learning-rate sweep across both arms
+  about 97 h — under 5% of the 2000 rtx-hour allocation.
+
+Newton-Schulz, the batched `_apply` and the contracted curvature are all still
+worth doing, and all of them now belong where the plan always put them: after
+validation, in the phase where trading accuracy is on the table. None of them
+is needed to start.
