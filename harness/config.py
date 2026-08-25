@@ -157,6 +157,26 @@ class RunConfig:
     pion_momentum: str = "lie"      # the variant their published 60M numbers use
     pion_retraction: str = "trunc"
     pion_alternate: bool = True
+    pion_beta1: float = 0.9
+    pion_beta2: float = 0.95
+    # Their `--pion-use-second-momentum` is `store_true` with `default=None`,
+    # and `_use_second_momentum` falls through to `False` when it is absent.
+    # `opt_llama_60M_pion.sh` passes it only when `USE_SECOND_MOMENTUM` is set
+    # in the environment, so their published runs normalise the Lie momentum by
+    # its first moment alone.
+    #
+    # This harness divided by `sqrt(v) + 1e-8` regardless, because
+    # `Pion.__init__` defaults `beta2=0.95` and `build_optimizers` never passed
+    # a value. Worse, neither beta was a field here, so the choice was outside
+    # the hash: two runs differing in it produced the same name and shared a
+    # directory. Both are fields now, and the second moment is off by default
+    # because that is what their number comes from.
+    pion_second_moment: bool = False
+    # Their `pion_qkv_split_granularity`, which defaults to `"head"` and which
+    # the 60M script does not override: Q is rotated in per-head blocks, K and
+    # V whole. This harness keeps Q, K and V as separate matrices already, so
+    # only the granularity of Q was ever different.
+    pion_split_q_per_head: bool = True
 
     # plumbing, deliberately excluded from the hash
     data_path: str = "data/c4_train.bin"

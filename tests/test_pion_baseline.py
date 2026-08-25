@@ -166,3 +166,122 @@ def test_the_three_momentum_variants_differ():
     for i in range(len(keys)):
         for j in range(i + 1, len(keys)):
             assert not torch.allclose(outs[keys[i]], outs[keys[j]])
+
+
+def _stepped(W0, G, **kw):
+    """One Pion step on a single weight, returned."""
+    p = nn.Parameter(W0.clone())
+    opt = Pion([p], lr=1e-2, momentum="none", retraction="cayley", **kw)
+    p.grad = G.clone()
+    opt.step()
+    return p.detach()
+
+
+def test_alternate_scales_the_side_it_applies():
+    """Their `_scale_update_matrix_rms` takes `update_side`; ours must too.
+
+    Normalising against `W @ g_in + g_out @ W` while applying only one side
+    calibrates the RMS target against a step twice the size of the one taken.
+    Left unfixed it produced a bilateral-to-alternate gap of 0.0355 against
+    their published 0.0079 -- the anchor's sharpest test, missed by 4.5x, with
+    every entry in KNOWN_DIFFERENCES unable to explain it because they act on
+    both arms alike.
+    """
+    W, G = rand(6, 4, seed=1), rand(6, 4, seed=2)
+    g_in, g_out = ref_generators(W.numpy(), G.numpy())
+    g_in, g_out = torch.as_tensor(g_in), torch.as_tensor(g_out)
+    group = dict(scaling="rms", rms=0.2, lr=1e-2)
+
+    one = Pion._scale(W, g_in, g_out, group, "out")
+    both = Pion._scale(W, g_in, g_out, group, "both")
+    assert one != pytest.approx(both), "the side must reach the scale"
+
+    m, n = W.shape
+    expected = 1e-2 * 0.2 * np.sqrt(m * n) / torch.linalg.matrix_norm(g_out @ W, "fro")
+    assert one == pytest.approx(float(expected), rel=1e-9)
+
+
+def test_alternate_takes_one_side_per_step_starting_with_out():
+    """`"in" if step % 2 == 1 else "out"`, their `_effective_update_side`.
+
+    Step 0 rotates on the left and leaves the row space alone; step 1 rotates
+    on the right. Getting the phase backwards would swap which arm of the
+    anchor is which without changing anything a test of norms could see.
+    """
+    W, G = rand(5, 5, seed=3), rand(5, 5, seed=4)
+    p = nn.Parameter(W.clone())
+    opt = Pion([p], lr=1e-2, momentum="none", retraction="cayley",
+               scaling="none", alternate=True)
+    p.grad = G.clone()
+    opt.step()
+    # left multiplication only: W^T W is unchanged, W W^T is not
+    assert torch.allclose(p.detach().T @ p.detach(), W.T @ W, atol=1e-10)
+    p.grad = G.clone()
+    opt.step()
+    # right multiplication only, now against the weight the first step left
+    after_one = _stepped(W, G, scaling="none", alternate=True)
+    assert torch.allclose(p.detach() @ p.detach().T, after_one @ after_one.T, atol=1e-10)
+
+
+def test_row_blocks_rotate_each_block_on_its_own():
+    """Their per-head Q: each block gets its own generators and its own scale.
+
+    A block-split weight is not the same update as the whole matrix rotated
+    once, and each block keeps its own singular values because each is
+    multiplied by its own orthogonal factor.
+    """
+    W, G = rand(8, 5, seed=5), rand(8, 5, seed=6)
+    whole = _stepped(W, G, scaling="rms", alternate=False)
+    split = _stepped(W, G, scaling="rms", alternate=False, row_blocks=None)
+    assert torch.allclose(whole, split)
+
+    p = nn.Parameter(W.clone())
+    opt = Pion([p], lr=1e-2, momentum="none", retraction="cayley",
+               scaling="rms", alternate=False, row_blocks={id(p): 4})
+    p.grad = G.clone()
+    opt.step()
+    blocked = p.detach()
+    assert not torch.allclose(blocked, whole, atol=1e-8)
+    for b in range(4):
+        sl = slice(b * 2, (b + 1) * 2)
+        assert torch.allclose(
+            torch.linalg.svdvals(blocked[sl]), torch.linalg.svdvals(W[sl]), atol=1e-10
+        )
+
+
+def test_row_blocks_keep_separate_momentum_but_share_the_step():
+    """Blocks must not share momentum buffers, and must share the phase.
+
+    Their code keys momentum by a per-block prefix while `state["step"]` is
+    incremented once per parameter, so every block of one weight alternates
+    together. Sharing the buffers would mix unrelated gradients; splitting the
+    counter would put blocks of one matrix on opposite sides of the update.
+    """
+    W, G = rand(8, 5, seed=7), rand(8, 5, seed=8)
+    p = nn.Parameter(W.clone())
+    opt = Pion([p], lr=1e-2, momentum="lie", retraction="cayley",
+               scaling="rms", alternate=True, row_blocks={id(p): 4})
+    p.grad = G.clone()
+    opt.step()
+    state = opt.state[p]
+    assert state["step"] == 1
+    assert {f"b{b}_m_in" for b in range(4)} <= set(state)
+    assert "m_in" not in state
+
+
+def test_second_moment_is_off_when_beta2_is_none():
+    """Their `--pion-use-second-momentum` defaults off; ours divided regardless.
+
+    `Pion.__init__` defaulted `beta2=0.95` and `build_optimizers` passed no
+    value, so every Pion run here normalised the Lie momentum by `sqrt(v)`
+    where their published runs do not.
+    """
+    W, G = rand(5, 5, seed=9), rand(5, 5, seed=10)
+    p = nn.Parameter(W.clone())
+    opt = Pion([p], lr=1e-2, momentum="lie", retraction="cayley",
+               scaling="none", alternate=False, beta2=None)
+    p.grad = G.clone()
+    opt.step()
+    assert "v_in" not in opt.state[p]
+    assert torch.allclose(opt.state[p]["m_in"], 0.1 * skew(
+        torch.as_tensor(ref_generators(W.numpy(), G.numpy())[0])), atol=1e-10)

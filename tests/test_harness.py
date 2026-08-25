@@ -425,3 +425,71 @@ def test_a_stale_lock_does_not_block_a_resume(corpus, tmp_path):
 
     train(cfg, max_steps=2)          # takes it over, loudly, rather than refusing
     assert not lock.exists(), "a finished run releases its lock"
+
+
+def _corpus(tmp_path, tokens=10_000, seq_len=8, seed=0):
+    from harness.data import TokenCorpus
+    path = tmp_path / "toy.bin"
+    np.arange(tokens, dtype=np.uint16).tofile(path)
+    return TokenCorpus(path, seq_len=seq_len, seed=seed)
+
+
+def test_an_epoch_visits_every_window_exactly_once(tmp_path):
+    """Their sample index partitions the stream; a shuffle index orders it.
+
+    This used to draw window starts uniformly *with replacement*, which is a
+    different distribution over training data rather than a different order of
+    the same data -- at 0.959 passes some windows arrive several times and
+    others never. Reading `gpt_dataset.py` settled it: their samples are
+    contiguous non-overlapping slices, permuted once per epoch.
+    """
+    c = _corpus(tmp_path)
+    starts = Counter()
+    for _ in range(c.windows):
+        starts[int(c.batch(1)[0][0, 0])] += 1
+    assert len(starts) == c.windows
+    assert set(starts.values()) == {1}
+
+
+def test_the_order_is_shuffled_and_not_sequential(tmp_path):
+    """A partition alone is not enough -- the permutation has to be there."""
+    c = _corpus(tmp_path)
+    first = [int(c.batch(1)[0][0, 0]) for _ in range(20)]
+    assert first != sorted(first)
+
+
+def test_the_next_epoch_reshuffles(tmp_path):
+    """Two epochs must not replay the same order, or the second pass is the first."""
+    c = _corpus(tmp_path)
+    one = [int(c.batch(1)[0][0, 0]) for _ in range(c.windows)]
+    two = [int(c.batch(1)[0][0, 0]) for _ in range(c.windows)]
+    assert sorted(one) == sorted(two)
+    assert one != two
+
+
+def test_resume_continues_the_permutation(tmp_path):
+    """The sampler's position is an epoch and an offset, and it round-trips.
+
+    The permutation is rebuilt from `(seed, epoch)` rather than checkpointed:
+    39 million windows would be 313 MB of `int64` in every checkpoint.
+    """
+    c = _corpus(tmp_path)
+    for _ in range(7):
+        c.batch(3)
+    saved = c.rng_state
+    expected = c.batch(3)[0]
+
+    d = _corpus(tmp_path)
+    d.rng_state = saved
+    assert torch.equal(d.batch(3)[0], expected)
+
+
+def test_a_pre_partition_checkpoint_is_refused_rather_than_misread(tmp_path):
+    """A bit-generator state belongs to the sampler this class no longer is.
+
+    Accepting it would resume a run into a different data distribution from the
+    one it started in, and nothing downstream could detect that.
+    """
+    c = _corpus(tmp_path)
+    with pytest.raises(ValueError, match="bit-generator"):
+        c.rng_state = np.random.default_rng(0).bit_generator.state

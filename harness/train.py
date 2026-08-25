@@ -71,6 +71,20 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
             # truncated exponential inflates and diverges within tens of steps
             retraction="cayley" if ablated else cfg.pion_retraction,
             alternate=False if ablated else cfg.pion_alternate,
+            beta1=cfg.pion_beta1,
+            beta2=cfg.pion_beta2 if cfg.pion_second_moment else None,
+            # Per-head Q blocks are their published configuration, so the
+            # anchor needs them -- but only the anchor. `pion_ablated` is the
+            # arm `ngd` is measured against, `NGDPion` rotates whole matrices,
+            # and giving one arm a finer granularity than the other would put a
+            # second variable in a comparison whose whole claim is that it has
+            # one. Lifting this means teaching `NGDPion` about blocks, not
+            # turning it on here.
+            row_blocks=(
+                {id(m.weight): cfg.model.heads for m in model.query_projections()}
+                if cfg.pion_split_q_per_head and not ablated
+                else None
+            ),
         )
         recorder = None
     else:

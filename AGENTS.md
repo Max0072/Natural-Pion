@@ -38,7 +38,7 @@ Carlo, the closed-form solve against an explicit Kronecker system, the descent
 lemma, the sign, Cayley's exactness, spectrum preservation. The optimizer, the
 Pion baseline with ablation switches, a LLaMA-60M harness in their
 configuration, the anchor machinery, SLURM scripts, a container definition.
-121 tests, 14 s in the container on four threads. One is skipped by design --
+136 tests, 22 s in the container on four threads. One is skipped by design --
 `square W has no kernel` -- and **none of them touches a GPU**, which is a
 property of checking the torch path against a numpy oracle rather than an
 oversight, but it does mean anything device-specific has to be checked by
@@ -93,17 +93,43 @@ than reproducing either level, because the gap is insensitive to data order and
 initialisation in a way the level is not.
 
 If it misses, `anchor.KNOWN_DIFFERENCES` lists the harness differences to rule
-out before calling anything a bug. A miss inside ~0.05 is more likely the flat
-token stream or the C4 subset than a defect.
+out before calling anything a bug. A miss inside ~0.05 is more likely the C4
+subset than a defect -- but the *gap* is not covered by that excuse, because
+every entry there acts on both arms alike. When the gap missed, the cause was
+in this repository, and reading their optimizer found it in an afternoon.
 
-**Their script has now been read, not inferred.** `opt_llama_60M_pion.sh`
+**The anchor has now been run, and it missed.** Four complete runs, both sides
+on both partitions: bilateral 3.3997 against 3.3575, alternate 3.4352/3.4369
+against 3.3654, every one `matched: false`. The two partitions agree to 0.002,
+so the miss is systematic. The *gap* came out 0.0355 against their 0.0079 --
+4.5x, on the quantity chosen because harness differences should not move it.
+
+**Their optimizer has now been read too**, at
+`$DATA_p330/reference/pion/megatron-lm/megatron/core/optimizer/pion.py`, and it
+named the cause. Three differences were ours, not Megatron's, and all three are
+fixed: `_scale_update_matrix_rms` takes an `update_side` and normalises the
+side being applied where ours always normalised both (the gap); their default
+leaves the second moment off where `beta2=0.95` was hard-wired here, and
+neither beta was a `RunConfig` field, so the choice sat outside the hash; and
+their `pion_qkv_split_granularity` defaults to per-head Q where this harness
+rotated Q whole. Two entries left `KNOWN_DIFFERENCES` as non-differences: their
+Pion never decays a rotated weight, and their sample windows cross document
+boundaries exactly as ours do -- the 60M script passes none of
+`--reset-position-ids`, `--reset-attention-mask`, `--eod-mask-loss`. The
+sampler was changed anyway, because theirs permutes a partition of the stream
+while ours drew windows with replacement.
+
+**The anchor has to be re-run**; the four results above belong to the code as
+it was. The configuration hash changed, so they keep their directories.
+
+**Their script had been read before that, not inferred.** `opt_llama_60M_pion.sh`
 confirms every shape and schedule this harness copies, and both defaults the
 anchor deliberately departs from. It also says `--bf16`: their runs are mixed
 precision under Megatron with fp32 master weights in the optimizer, while this
-harness trains in fp32 with TF32 matmuls. That is a real difference in the
-comparison and is now first in `KNOWN_DIFFERENCES` -- the first suspect if the
-*level* misses, and the least likely to move the bilateral-to-alternate *gap*,
-which is why the gap is the sharper test.
+harness trains in fp32 with TF32 matmuls -- `anchor_config` sets `bf16` for
+that reason. What is left of it in `KNOWN_DIFFERENCES` is only where the master
+weights sit, which is the least likely entry there to move a number: both clip
+one global norm over every parameter before the step.
 
 Left open, and worth an hour before the paper rather than before the anchor:
 whether their own rotations hold the spectrum numerically. They retract with a
@@ -227,7 +253,7 @@ Things that look right and are not. Every one of these cost real time here.
 ## Running things
 
 ```bash
-pytest -q                                        # 121 tests, 14 s
+pytest -q                                        # 136 tests, 22 s
 python -m harness.run --optimizer ngd --lr 1e-3  # one run
 python -m harness.run --anchor bilateral         # the calibration run
 ```
