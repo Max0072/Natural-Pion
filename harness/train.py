@@ -52,7 +52,7 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
     weights = [m.weight for m in linears]
 
     if cfg.optimizer == "adamw":
-        return None, torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay), None
+        return None, _adamw(model.parameters(), cfg), None
 
     if cfg.optimizer == "ngd":
         rot = NGDPion(
@@ -90,8 +90,30 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
     else:
         raise ValueError(f"unknown optimizer {cfg.optimizer!r}")
 
-    adamw = torch.optim.AdamW(rest, lr=cfg.lr, weight_decay=cfg.weight_decay)
+    adamw = _adamw(rest, cfg)
     return rot, adamw, recorder
+
+
+def _adamw(params, cfg: RunConfig) -> torch.optim.AdamW:
+    """AdamW for the parameters Pion does not own, in their configuration.
+
+    Two groups, because Megatron's standard override exempts every 1-D
+    parameter and every bias from weight decay and this harness did not. See
+    `RunConfig.decay_norms_and_biases` for why that is worse under a
+    spectrum-preserving optimizer than under an ordinary one.
+    """
+    betas = (cfg.adam_beta1, cfg.adam_beta2)
+    if cfg.decay_norms_and_biases:
+        groups = [{"params": list(params), "weight_decay": cfg.weight_decay}]
+    else:
+        params = list(params)
+        flat = [p for p in params if p.dim() <= 1]
+        rest = [p for p in params if p.dim() > 1]
+        groups = [
+            {"params": rest, "weight_decay": cfg.weight_decay},
+            {"params": flat, "weight_decay": 0.0},
+        ]
+    return torch.optim.AdamW(groups, lr=cfg.lr, betas=betas, eps=cfg.adam_eps)
 
 
 def _autocast(cfg: RunConfig, device: str):

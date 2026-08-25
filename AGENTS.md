@@ -38,7 +38,7 @@ Carlo, the closed-form solve against an explicit Kronecker system, the descent
 lemma, the sign, Cayley's exactness, spectrum preservation. The optimizer, the
 Pion baseline with ablation switches, a LLaMA-60M harness in their
 configuration, the anchor machinery, SLURM scripts, a container definition.
-136 tests, 22 s in the container on four threads. One is skipped by design --
+140 tests, 24 s in the container on four threads. One is skipped by design --
 `square W has no kernel` -- and **none of them touches a GPU**, which is a
 property of checking the torch path against a numpy oracle rather than an
 oversight, but it does mean anything device-specific has to be checked by
@@ -119,8 +119,36 @@ boundaries exactly as ours do -- the 60M script passes none of
 sampler was changed anyway, because theirs permutes a partition of the stream
 while ours drew windows with replacement.
 
-**The anchor has to be re-run**; the four results above belong to the code as
-it was. The configuration hash changed, so they keep their directories.
+**The re-run landed the gap and not the level.** bilateral 3.4021, alternate
+3.4161, gap **+0.0140** against their 0.0079 -- down from +0.0355, but the
+criterion set before the numbers (`|gap - 0.0079| <= 0.005`) gives 0.0061 and
+is not met. Alternate improved by 0.019 and bilateral by 0.0024, which is our
+noise floor, so the scaling fix showed exactly the signature it was diagnosed
+to have and the other two fixes moved the level by nothing.
+
+**Then the setting was compared rather than the optimizer**, and the ~0.045
+common offset had two causes, both on the 32.9M parameters Pion does not own --
+56.5% of this model. Their non-matrix parameters go to Megatron's ordinary
+Adam, and `build_optimizers` differed from it twice: it passed **no betas**, so
+torch's `(0.9, 0.999)` stood where their script sets `--adam-beta2 0.95`; and
+it decayed **every** parameter at 0.1, where Megatron's standard override gives
+`wd_mult = 0.0` to every 1-D parameter and every bias. The second is the larger:
+over 73242 steps of this cosine, `weight_decay=0.1` multiplies an RMSNorm gain
+by **0.0248**, a 40x shrink of something that starts at 1.0.
+
+That interacts with Pion specifically. A network normally absorbs decayed norm
+gains by growing its linear weights; under a spectrum-preserving optimizer that
+route is closed, because every rotated matrix keeps its singular values for the
+whole run. The only compensation left is the embedding and the head.
+
+Both act on the two arms alike, so they move the common offset and not the gap
+-- which is the part that was unexplained. `adam_beta1`, `adam_beta2`,
+`adam_eps` and `decay_norms_and_biases` are `RunConfig` fields now; the last
+defaults to `False` and exists so the completed runs stay reproducible.
+
+**The anchor has to be re-run again**; every result above belongs to the code
+as it was. The configuration hash changes each time, so they keep their
+directories.
 
 **Their script had been read before that, not inferred.** `opt_llama_60M_pion.sh`
 confirms every shape and schedule this harness copies, and both defaults the
@@ -254,7 +282,7 @@ Things that look right and are not. Every one of these cost real time here.
 ## Running things
 
 ```bash
-pytest -q                                        # 136 tests, 22 s
+pytest -q                                        # 140 tests, 24 s
 python -m harness.run --optimizer ngd --lr 1e-3  # one run
 python -m harness.run --anchor bilateral         # the calibration run
 ```

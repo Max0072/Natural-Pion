@@ -178,6 +178,28 @@ class RunConfig:
     # only the granularity of Q was ever different.
     pion_split_q_per_head: bool = True
 
+    # AdamW, for everything Pion does not own -- the embedding, the output head
+    # and the norm gains, which are 32.9M of this model's 58.2M parameters.
+    # `build_optimizers` used to construct `torch.optim.AdamW` without betas and
+    # take torch's `(0.9, 0.999)`, while their script sets `--adam-beta2 0.95`
+    # (and `--pion-beta2 0.95` beside it, so 0.95 either way). Like the Pion
+    # betas before them, these were not fields, so the choice sat outside the
+    # configuration hash and no manifest recorded it.
+    adam_beta1: float = 0.9
+    adam_beta2: float = 0.95
+    adam_eps: float = 1e-8
+    # Megatron's standard override gives `wd_mult = 0.0` to every parameter with
+    # `len(shape) == 1` or a name ending in `.bias`, so their RMSNorm gains are
+    # never decayed. This harness applied `weight_decay` to all of `rest`, and
+    # at this schedule that multiplies a gain by 0.0248 over the run -- a
+    # **40x shrink** of a parameter that starts at 1.0.
+    #
+    # It matters more here than it would elsewhere. A network normally absorbs
+    # decayed norm gains by growing the linear weights, and under Pion that
+    # route is closed: the spectrum of every rotated matrix is frozen for the
+    # whole run. The only compensation left is the embedding and the head.
+    decay_norms_and_biases: bool = False
+
     # plumbing, deliberately excluded from the hash
     data_path: str = "data/c4_train.bin"
     val_path: str = "data/c4_val.bin"

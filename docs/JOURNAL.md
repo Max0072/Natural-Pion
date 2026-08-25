@@ -917,3 +917,63 @@ specifically: a single side would mean one eigendecomposition per step instead
 of two, and `S = I` would only ever apply to the out-side. It needs
 `update_side` added to `Pion` and `NGDPion`, mirroring their
 `_configured_update_side`, and four short runs at the 1.2B budget step 5 uses.
+
+---
+
+## 2026-08-25 — the setting, not the optimizer: two differences on 56.5% of the model
+
+With the optimizer matched and the gap down to 1.8x, the remaining ~0.045
+common offset had to be somewhere we had never looked. It was: the parameters
+Pion does **not** own. The embedding, the output head and the 17 norm gains are
+**32,879,104 of 58,176,000 parameters, 56.5% of the model**, and every audit so
+far had been about the 43.5% Pion rotates.
+
+Their non-matrix parameters go to Megatron's ordinary Adam (`pion.py` flips
+`matrix_params.requires_grad` off, calls `get_megatron_optimizer`, flips it
+back). `build_optimizers` differed from it twice.
+
+**Adam betas.** We built `torch.optim.AdamW(rest, lr=..., weight_decay=...)`
+with no betas and took torch's `(0.9, 0.999)`. Their script sets
+`--adam-beta1 0.9 --adam-beta2 0.95`, and `--pion-beta2 0.95` beside it, so 0.95
+under either reading. This is the third time a hyperparameter that changes
+results was outside `RunConfig` and therefore outside the hash.
+
+**Weight decay on 1-D parameters.** `get_standard_config_overrides` assigns
+`ParamGroupOverride(wd_mult=0.0)` to every parameter with `len(shape) == 1` or a
+name ending `.bias`, so their RMSNorm gains are never decayed. We decayed
+everything in `rest` at 0.1. Measured against the anchor's own schedule, the
+AdamW decoupled factor over 73242 steps is **0.0248** — a gain that starts at
+1.0 ends at 0.025, a **40x shrink**.
+
+The second is the one to believe, and the reason is specific to this family of
+optimizers. A network normally absorbs shrinking norm gains by growing the
+linear weights that follow them. Under Pion it cannot: the singular values of
+every rotated matrix are frozen for the entire run, by construction. The only
+free capacity left is the embedding and the head.
+
+Both differences act on bilateral and alternate alike, so they move the
+**common offset** and not the gap — precisely the part that was unexplained,
+and precisely not the part that already had an explanation. The 0.0061
+asymmetry between the two arms is untouched by this and stays open.
+
+**Checked and found matching, so nobody re-checks them:** gradient clipping
+(`ChainedOptimizer.step` computes one norm over all chained optimizers and
+applies that single coefficient to each group, which is our one global
+`clip_grad_norm_`); `--untie-embeddings-and-output-weights`; `--swiglu`;
+`--disable-bias-linear`; `--init-method-std 0.02` with
+`--use-same-init-for-output-layers`; RMSNorm at `--norm-epsilon 1e-6`; rotary
+base 10000; `--kv-channels 64`; and the parameter split itself — 2-D and not
+embedding-or-output goes to Pion, as ours does.
+
+### Fixed
+
+`adam_beta1 = 0.9`, `adam_beta2 = 0.95`, `adam_eps = 1e-8` and
+`decay_norms_and_biases = False` are `RunConfig` fields, so they are in the hash
+and the manifest. `_adamw` builds two groups, 1-D at `wd = 0`. The escape hatch
+defaults to `False` because their runs do not decay those; it exists so the
+completed anchors remain reproducible.
+
+140 tests, 1 skipped. Four are new. One of them failed first at `lr=0`, which
+was the test being wrong rather than the code: decoupled decay is proportional
+to the learning rate, so at `lr=0` nothing decays and a broken split would have
+passed.

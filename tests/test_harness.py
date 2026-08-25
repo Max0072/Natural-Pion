@@ -493,3 +493,78 @@ def test_a_pre_partition_checkpoint_is_refused_rather_than_misread(tmp_path):
     c = _corpus(tmp_path)
     with pytest.raises(ValueError, match="bit-generator"):
         c.rng_state = np.random.default_rng(0).bit_generator.state
+
+
+def _anchor_optims():
+    from harness.anchor import anchor_config
+    from harness.model import Transformer
+    from harness.train import build_optimizers
+    cfg = anchor_config("bilateral")
+    model = Transformer(cfg.model)
+    return cfg, model, build_optimizers(model, cfg)[1]
+
+
+def test_adam_betas_are_theirs_not_torchs_default():
+    """Their script sets `--adam-beta2 0.95`; torch's AdamW default is 0.999.
+
+    `build_optimizers` constructed AdamW without betas, so every run here used
+    0.999 on the embedding, the output head and the norm gains -- 32.9M of this
+    model's 58.2M parameters. Like the Pion betas before them, these were not
+    configuration fields, so nothing recorded the choice.
+    """
+    _, _, adamw = _anchor_optims()
+    assert adamw.param_groups[0]["betas"] == (0.9, 0.95)
+    assert adamw.param_groups[0]["eps"] == 1e-8
+
+
+def test_norm_gains_and_biases_are_not_decayed():
+    """Megatron gives `wd_mult = 0.0` to every 1-D parameter and every bias.
+
+    This harness decayed them at 0.1, which over 73242 steps of the anchor's
+    cosine multiplies a gain by 0.0248 -- a 40x shrink of a parameter that
+    starts at 1.0. It matters more under Pion than it would elsewhere, because
+    the usual compensation of growing the linear weights is unavailable when
+    their spectra are frozen for the whole run.
+    """
+    cfg, _, adamw = _anchor_optims()
+    by_wd = {g["weight_decay"]: g["params"] for g in adamw.param_groups}
+    assert set(by_wd) == {0.0, cfg.weight_decay}
+    assert all(p.dim() <= 1 for p in by_wd[0.0])
+    assert all(p.dim() > 1 for p in by_wd[cfg.weight_decay])
+    assert sum(p.numel() for p in by_wd[0.0]) == 17 * cfg.model.hidden
+
+
+def test_a_norm_gain_holds_still_while_a_matrix_decays():
+    """The split has to bite in the step, not only in the group bookkeeping.
+
+    Zero gradients so Adam's own term is `0 / (0 + eps) = 0` and only the
+    decoupled decay `p *= 1 - lr*wd` can move anything. `lr` has to be nonzero
+    for that reason -- decoupled decay is proportional to it, so an `lr` of 0
+    decays nothing and the test would pass on a broken split.
+    """
+    from dataclasses import replace
+    from harness.config import RunConfig
+    from harness.train import _adamw
+    cfg = replace(RunConfig(), lr=0.1, weight_decay=0.5)
+    gain = nn.Parameter(torch.ones(4))
+    mat = nn.Parameter(torch.ones(4, 4))
+    opt = _adamw([gain, mat], cfg)
+    for p in (gain, mat):
+        p.grad = torch.zeros_like(p)
+    opt.step()
+    assert torch.allclose(gain.detach(), torch.ones(4)), "a 1-D parameter must not decay"
+    assert torch.allclose(mat.detach(), torch.full((4, 4), 1 - cfg.lr * cfg.weight_decay)), \
+        "a matrix must decay by exactly 1 - lr*wd"
+
+
+def test_the_old_behaviour_is_still_reachable():
+    """`decay_norms_and_biases` exists so the four completed anchors remain
+    reproducible; it is not the default because it is not what their runs do."""
+    from dataclasses import replace
+    from harness.anchor import anchor_config
+    from harness.model import Transformer
+    from harness.train import build_optimizers
+    cfg = replace(anchor_config("bilateral"), decay_norms_and_biases=True)
+    _, adamw, _ = build_optimizers(Transformer(cfg.model), cfg)
+    assert len(adamw.param_groups) == 1
+    assert adamw.param_groups[0]["weight_decay"] == cfg.weight_decay
