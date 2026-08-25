@@ -11,6 +11,10 @@ only a real run can answer:
   Fisher keeps it bounded on its own is the open question.
 * `cond(A)` -- decides whether fp32 suffices, and sets the useful range of the
   spectral floor.
+* `quad_over_curv` -- `alpha` before the clamp at `alpha_max`. `alpha` sits at
+  the cap in every run measured so far, which means it reports only "at least
+  1" and hides how far above it the ratio really is. That distance is what says
+  whether the curvature term is missing a factor.
 * `skew_ratio` -- `||skew(W^T G)|| / ||sym(W^T G)||`. The method uses only the
   antisymmetric part, obtained as a difference of nearly equal quantities from
   a gradient that came through bf16 autocast. Below about `1e-2` that part is
@@ -52,6 +56,7 @@ def layer_diagnostics(optimizer, names: dict | None = None) -> list[dict]:
                     "angle": float(state.get("angle", float("nan"))),
                     "cond_A": float(_cond(state["cov"].matrix)),
                     "skew_ratio": float(state.get("skew_ratio", float("nan"))),
+                    "quad_over_curv": float(state.get("quad_over_curv", float("nan"))),
                     "depth": _depth(names, p),
                     "lam_ratio": float(positive.max() / positive.min()) if positive.numel() else float("nan"),
                     "step": int(state.get("step", 0)),
@@ -88,6 +93,7 @@ def summarise(rows: list[dict]) -> dict:
     def stat(key):
         vals = [r[key] for r in rows if r[key] == r[key]]  # drop NaN
         return (min(vals), max(vals)) if vals else (float("nan"),) * 2
+    q_lo, q_hi = stat("quad_over_curv")
     s_lo, s_hi = stat("skew_ratio")
     a_lo, a_hi = stat("alpha")
     g_lo, g_hi = stat("angle")
@@ -97,4 +103,5 @@ def summarise(rows: list[dict]) -> dict:
         "angle_min": g_lo, "angle_max": g_hi,
         "condA_min": c_lo, "condA_max": c_hi,
         "skew_ratio_min": s_lo, "skew_ratio_max": s_hi,
+        "qoc_min": q_lo, "qoc_max": q_hi,
     }

@@ -162,6 +162,10 @@ def test_run_end_to_end_and_reduce_loss(optimizer, corpus, tmp_path):
         assert "angle_max" in train_rows[-1], "NGD runs must log the diagnostics"
         assert train_rows[-1]["alpha_max"] <= 1.0
         assert "skew_ratio_max" in train_rows[-1]
+        assert "qoc_max" in train_rows[-1]
+        # the point of logging it unclamped: it may exceed alpha_max, and alpha
+        # sitting at the cap is exactly when it carries information
+        assert train_rows[-1]["qoc_max"] >= train_rows[-1]["alpha_max"] - 1e-6
     assert (out / "diagnostics.jsonl").exists() == optimizer.startswith("ngd-pion")
 
 
@@ -183,7 +187,8 @@ def test_per_layer_diagnostics_are_written_and_carry_depth(corpus, tmp_path):
     rows = [json.loads(l) for l in (out / "diagnostics.jsonl").read_text().splitlines()]
     assert rows, "no per-layer rows written"
 
-    for key in ("name", "shape", "alpha", "angle", "cond_A", "skew_ratio", "depth", "step"):
+    for key in ("name", "shape", "alpha", "angle", "cond_A", "skew_ratio",
+                "quad_over_curv", "depth", "step"):
         assert key in rows[0], f"missing {key}"
 
     # every block of the model should appear, and the depths should be the

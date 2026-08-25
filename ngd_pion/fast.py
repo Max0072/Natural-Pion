@@ -13,8 +13,9 @@ outputs.
 
 What is different so far:
 
-* `skew_ratio` is recorded, which the reference does not compute at all. It
-  is a diagnostic and nothing reads it inside the step. See `_apply`.
+* `skew_ratio` and `quad_over_curv` are recorded, neither of which the
+  reference computes. Both are diagnostics and nothing reads them inside the
+  step. See `_apply`.
 
 * `angle` comes from `spectral_norm` -- power iteration -- instead of
   `torch.linalg.matrix_norm(X, 2)`. Measured on one RTX PRO 6000 Blackwell,
@@ -105,6 +106,25 @@ class FastNGDPion(NGDPion):
         ).sum()
         alpha = trust_region_alpha(quad, curv, group["alpha_max"])
         state["alpha"] = float(alpha)
+
+        # `alpha` is clamped at `alpha_max = 1`, and in every run so far it sits
+        # at the cap, so it reports nothing about how far above the cap the
+        # ratio actually is. That number is the direct test of whether the
+        # curvature is underestimated.
+        #
+        # The arithmetic that makes it worth logging: with `alpha` at the cap
+        # the applied step is just `lr`, and `lr = 3e-3` is what works. Were the
+        # curvature right, the trust region's own optimum would be
+        # `quad / curv`, so matching `3e-3` needs `curv` about 330x larger than
+        # `quad`. Meanwhile `alpha >= 1` says `curv <= quad`. The gap between
+        # those two is the size of whatever the local formula is missing --
+        # plausibly the Jacobian from this layer's output to the logits, which
+        # `<D, H D> = tr(D A D^T)` omits and which is exact only for a
+        # quadratic loss at the output layer.
+        #
+        # Kept as a tensor: `harness.instrument` calls `float()` on it every few
+        # hundred steps, so there is no reason to sync every step.
+        state["quad_over_curv"] = quad / curv.clamp_min(torch.finfo(dt).tiny)
 
         c = group["lr"] * float(alpha)
         # The one place this class departs from the reference, and it is a
