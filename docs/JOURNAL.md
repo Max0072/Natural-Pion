@@ -441,3 +441,84 @@ a marker that is technically true and practically misleading.
 
 Also noticed and not acted on: `AGENTS.md` and `README.md` both say "121 tests,
 14 s". It is 126 tests, 1 skipped, 21 s in the container as of `76fcf23`.
+
+---
+
+## 2026-08-25, ~05:30 — the anchor missed, and the gap missed by more
+
+All four runs completed the full 73242 steps. `anchor.check` says `matched:
+false` on every one.
+
+| side | rtx | b200 | target | miss |
+|---|---|---|---|---|
+| bilateral | 3.3997 | 3.3997 | 3.3575 | **+0.0422** |
+| alternate | 3.4352 | 3.4369 | 3.3654 | **+0.0698 / +0.0715** |
+
+Tolerance is 0.02, so bilateral misses by 2.1x it and alternate by 3.5x.
+Validation agrees with training throughout — 3.4059 and 3.4414 on rtx — and the
+corpus is 0.959 passes, so nothing here is overfitting.
+
+### The duplicate pair paid for itself
+
+Running the same anchor on both partitions was two runs more than step 4 asks
+for. It is what makes the next sentence sayable: **the miss is systematic, not
+noise.** Bilateral came out at 3.3997 on an RTX PRO 6000 and on a B200 — equal
+to four decimals — and alternate differed by 0.0017 between them. Hardware-to-
+hardware spread is therefore ~0.002 against misses of 0.042 and 0.070, twenty
+to thirty times larger. No amount of re-running fixes this.
+
+### The gap is the real finding
+
+`AGENTS.md` says reproducing the 0.0079 bilateral-to-alternate gap is the
+sharper test, *because the gap is insensitive to data order and initialisation
+in a way the level is not*. Ours:
+
+    rtx    3.4352 - 3.3997 = 0.0355     4.5x theirs
+    b200   3.4369 - 3.3997 = 0.0372     4.7x theirs
+
+The direction is right — bilateral beats alternate, as in their table — but the
+size is wrong by a factor of four and a half, on the quantity specifically
+chosen because harness differences should not move it. Every entry in
+`KNOWN_DIFFERENCES` is a Megatron or data difference that acts on the *level*;
+none of them explains a gap that is four times too wide.
+
+### First suspect, with a mechanism
+
+`pion_baseline._step`, lines 192-203. The step scale is computed once, from
+**both** generators:
+
+    c = self._scale(W, g_in, g_out, group)     # base = W @ g_in + g_out @ W
+    if group["alternate"]:
+        W = W @ right if state["step"] % 2 else left @ W
+
+`_scale` is their `_scale_update_matrix_rms`: it normalises by the Frobenius
+norm of the *two-sided* update and targets an RMS of 0.2. In `alternate` mode
+only one of those two sides is then applied. So the scale is calibrated against
+a step twice the size of the one taken, and alternate is systematically
+under-stepped relative to bilateral — which is exactly the direction and
+roughly the shape of an inflated gap.
+
+Note where the arithmetic lands: bilateral misses by 0.0422 and alternate by
+0.0698, and the difference between those two misses, 0.0276, *is* the gap
+inflation. A single mechanism that penalises only the alternate arm would
+account for the whole discrepancy while leaving bilateral's miss to the ordinary
+harness differences.
+
+This is a hypothesis with a mechanism, not a measurement. It is checkable
+without spending an hour of GPU: read their released `_scale_update_matrix_rms`
+and its call site and see whether the scale there is computed two-sided when
+`alternate` is on. Their code is not stored on this filesystem; the login node
+has network.
+
+### Where that leaves the project
+
+Bilateral's +0.0422 sits inside the ~0.05 that `AGENTS.md` calls "more likely
+the flat token stream or the C4 subset than a defect", and the three data
+differences at the top of `KNOWN_DIFFERENCES` remain the natural explanation
+for a level that lands slightly high. If the scale hypothesis holds and is
+fixed, the expected picture is both arms high by a similar ~0.04 with a gap
+near 0.0079 — which would be a passing anchor in everything but absolute level,
+and a much more defensible position than either number alone.
+
+Until then, step 5 does not start. `AGENTS.md`: *nothing this harness produces
+means anything until this lands.*
