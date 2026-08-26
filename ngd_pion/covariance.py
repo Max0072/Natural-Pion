@@ -60,12 +60,45 @@ class CovarianceAccumulator:
         flat = x.detach().reshape(-1, x.shape[-1]).to(self.dtype)
         if flat.shape[0] == 0:
             return
-        # `x^T x` is a matmul, so on a GPU it is TF32 unless told otherwise --
-        # ten bits of mantissa in the one statistic the method inverts, whose
-        # small eigenvalues are both the least determined and the most
-        # amplified. The dtype check above would not have caught it.
-        with exact_fp32():
+        # Two separate ways this matmul stops being fp32, and both have to be
+        # closed here.
+        #
+        # `exact_fp32` closes TF32: on an Ampere-or-newer card torch runs fp32
+        # matmuls with ten bits of mantissa unless told otherwise.
+        #
+        # `autocast(enabled=False)` closes the larger one. `observe` is called
+        # from a `register_forward_pre_hook`, so it runs *inside* the training
+        # loop's autocast block, and autocast dispatches by **operation**: it
+        # does not care that `flat` is fp32, it substitutes a bf16 matmul and
+        # returns bf16. `self._matrix` then takes that dtype on the first
+        # observation and `mul_().add_()` keeps it, so the one statistic this
+        # method inverts spends the entire run at eight bits of mantissa.
+        #
+        # That is not a small loss of accuracy, it is a change of kind.
+        # Quantising the *activations* is harmless -- the gram of bf16 vectors
+        # is still a gram, so still PSD, and measured it raises `lam_min`
+        # because the quantisation noise contributes `E[e e^T] >= 0`. Rounding
+        # the *assembled matrix* entrywise has no sign constraint, and on a
+        # trained model, whose activations have collapsed onto a
+        # low-dimensional subspace, it pushes the near-zero eigenvalues
+        # straight through zero. Measured on LLaMA-60M at step 499: 6253
+        # negative eigenvalues across 56 layers, `lam_min = -2.128` against
+        # `lam_max = 446`, matching the predicted `2 sqrt(512) eps_bf16 max|A|`
+        # of 2.1. Downstream, `curv = <X, F(X)>` -- provably non-negative for
+        # PSD factors -- came out at -1.336, was clamped to `+tiny`, and pinned
+        # `alpha` at its cap for every run this project has produced.
+        #
+        # Neither existing guard could see it. `_ALLOWED` checks `self.dtype`,
+        # which is honestly fp32 throughout; `exact_fp32` governs how an fp32
+        # matmul is executed, not whether one happens at all. What was never
+        # checked is the only thing that mattered: the dtype that came back.
+        with torch.autocast(flat.device.type, enabled=False), exact_fp32():
             gram = (flat.transpose(0, 1) @ flat) / flat.shape[0]
+        if gram.dtype != self.dtype:
+            raise RuntimeError(
+                f"covariance gram came back {gram.dtype}, expected {self.dtype}; "
+                "some dispatch mechanism is overriding the accumulation precision"
+            )
         if self._matrix is None:
             self._matrix = gram
         else:
@@ -82,6 +115,15 @@ class CovarianceAccumulator:
         return {"matrix": self._matrix, "count": self.count, "beta": self.beta}
 
     def load_state_dict(self, state: dict) -> None:
-        self._matrix = state["matrix"]
+        """Reload, restoring the accumulation dtype.
+
+        The cast is not cosmetic. `mul_().add_()` keeps whatever dtype
+        `_matrix` already has, so a checkpoint written before the autocast bug
+        above was closed carries a bf16 matrix that would stay bf16 for the
+        whole resumed run, silently, however correct `observe` now is. The
+        precision it lost is gone either way -- this only stops it spreading.
+        """
+        matrix = state["matrix"]
+        self._matrix = None if matrix is None else matrix.to(self.dtype)
         self.count = state["count"]
         self.beta = state["beta"]
