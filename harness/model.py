@@ -41,6 +41,20 @@ class ModelConfig:
     rope_base: float = 10000.0
     norm_eps: float = 1e-6
     init_std: float = 0.02
+    # Power-law exponent for a heavy-tailed initialisation, or 0 for the usual
+    # iid normal. Heavy-tailed self-regularisation (Martin & Mahoney) reports
+    # the spectral density of a *trained* weight going as `lam^-alpha` with
+    # `alpha` roughly in [2, 6], while an iid normal gives Marchenko-Pastur --
+    # compact support, hard edge, no tail. Those differ in shape, not scale, so
+    # no rescaling of the usual initialisation reaches one from the other.
+    #
+    # It matters more here than it would elsewhere. Pion and NGD-Pion move only
+    # the singular *vectors*: the spectrum a weight starts with is the spectrum
+    # it ends with. If the trained spectrum is heavy-tailed and the initial one
+    # is not, a spectrum-preserving optimizer cannot reach it at all -- and
+    # conversely, starting from the right shape is the one intervention that
+    # would let it.
+    init_pl_alpha: float = 0.0
 
     @property
     def head_dim(self) -> int:
@@ -140,7 +154,10 @@ class Transformer(nn.Module):
 
     def _init(self, module: nn.Module) -> None:
         if isinstance(module, (nn.Linear, nn.Embedding)):
-            nn.init.normal_(module.weight, mean=0.0, std=self.cfg.init_std)
+            if self.cfg.init_pl_alpha > 0.0:
+                _heavy_tailed_(module.weight, self.cfg.init_pl_alpha, self.cfg.init_std)
+            else:
+                nn.init.normal_(module.weight, mean=0.0, std=self.cfg.init_std)
 
     def forward(self, idx: torch.Tensor, targets: torch.Tensor | None = None):
         x = self.embed(idx)
@@ -182,3 +199,31 @@ class Transformer(nn.Module):
 
 def matrix_parameters(model: Transformer) -> list[nn.Parameter]:
     return [m.weight for m in model.parameter_split()[0]]
+
+
+@torch.no_grad()
+def _heavy_tailed_(w: torch.Tensor, alpha: float, std: float) -> None:
+    """Power-law singular spectrum, singular vectors drawn uniformly.
+
+    `alpha` is the exponent as the heavy-tailed self-regularisation literature
+    states it: the spectral density of `W^T W` going as `lam^-alpha`. Counting
+    gives `lam_i ~ i^-1/(alpha-1)` for the i-th largest, hence
+    `s_i ~ i^-1/(2(alpha-1))` -- so `alpha` of 2, 3 and 4 mean singular values
+    decaying as `i^-0.5`, `i^-0.25` and `i^-0.167`.
+
+    The scale is matched by Frobenius norm to the `normal(0, std)` this
+    replaces, and the singular vectors are uniform on the orthogonal group,
+    which is what an iid normal gives as well. The two initialisations
+    therefore differ in exactly one respect: the shape of the spectrum.
+    """
+    if alpha <= 1.0:
+        raise ValueError(f"init_pl_alpha must exceed 1, got {alpha}")
+    m, n = w.shape
+    r = min(m, n)
+    beta = 1.0 / (2.0 * (alpha - 1.0))
+    s = torch.arange(1, r + 1, dtype=torch.float32, device=w.device) ** (-beta)
+    U = torch.linalg.qr(torch.randn(m, r, device=w.device))[0]
+    V = torch.linalg.qr(torch.randn(n, r, device=w.device))[0]
+    out = (U * s) @ V.transpose(-1, -2)
+    out *= std * (m * n) ** 0.5 / out.norm()
+    w.copy_(out.to(w.dtype))
