@@ -24,6 +24,7 @@ import torch
 
 from .anchor import KNOWN_DIFFERENCES, TARGETS, anchor_config, check
 from .config import RunConfig
+from .model import ModelConfig
 from .train import train
 
 
@@ -47,6 +48,18 @@ def main() -> None:
         annotated = hints[f.name]
         kind = _boolean if annotated is bool else annotated
         ap.add_argument(f"--{f.name.replace('_', '-')}", type=kind, default=getattr(base, f.name))
+    # The nested model config gets flags of its own. Without them the
+    # architecture and its initialisation are the only part of `RunConfig` that
+    # cannot be reached from the command line, which is not a deliberate
+    # restriction -- the loop above skips `model` because it is a dataclass
+    # rather than a scalar, and nothing put its fields back.
+    model_hints = get_type_hints(ModelConfig)
+    for f in fields(ModelConfig):
+        annotated = model_hints[f.name]
+        kind = _boolean if annotated is bool else annotated
+        ap.add_argument(
+            f"--{f.name.replace('_', '-')}", type=kind, default=getattr(base.model, f.name)
+        )
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--max-steps", type=int, default=None, help="cut the run short, for smoke tests")
     ap.add_argument(
@@ -97,7 +110,10 @@ def main() -> None:
         for f in fields(RunConfig)
         if f.name != "model" and hasattr(args, f.name)
     }
-    cfg = replace(base, **overrides)
+    model_overrides = {
+        f.name: getattr(args, f.name) for f in fields(ModelConfig) if hasattr(args, f.name)
+    }
+    cfg = replace(base, **overrides, model=replace(base.model, **model_overrides))
     print(json.dumps(cfg.manifest()["config"] | {"name": cfg.name}, indent=2, default=str))
     out = train(cfg, device=args.device, max_steps=args.max_steps,
                 resume=not args.no_resume, force=args.force)
