@@ -153,11 +153,19 @@ class Transformer(nn.Module):
         self.apply(self._init)
 
     def _init(self, module: nn.Module) -> None:
-        if isinstance(module, (nn.Linear, nn.Embedding)):
-            if self.cfg.init_pl_alpha > 0.0:
-                _heavy_tailed_(module.weight, self.cfg.init_pl_alpha, self.cfg.init_std)
-            else:
-                nn.init.normal_(module.weight, mean=0.0, std=self.cfg.init_std)
+        if not isinstance(module, (nn.Linear, nn.Embedding)):
+            return
+        # The embedding and the head keep the usual initialisation whatever
+        # `init_pl_alpha` says. The spectral condition below is derived for
+        # matmul layers in the wide limit; an embedding is a lookup table, and
+        # `sqrt(32100/512) = 7.9` would stretch its rows to twice the usual
+        # scale for no stated reason. Both belong to AdamW in any case, which
+        # can move their spectra, so nothing is frozen there.
+        rotational = module is not self.embed and module is not self.head
+        if self.cfg.init_pl_alpha > 0.0 and rotational:
+            _power_law_(module.weight, self.cfg.init_pl_alpha)
+        else:
+            nn.init.normal_(module.weight, mean=0.0, std=self.cfg.init_std)
 
     def forward(self, idx: torch.Tensor, targets: torch.Tensor | None = None):
         x = self.embed(idx)
@@ -202,28 +210,45 @@ def matrix_parameters(model: Transformer) -> list[nn.Parameter]:
 
 
 @torch.no_grad()
-def _heavy_tailed_(w: torch.Tensor, alpha: float, std: float) -> None:
-    """Power-law singular spectrum, singular vectors drawn uniformly.
+def _power_law_(w: torch.Tensor, alpha: float) -> None:
+    """Power-law singular spectrum at the spectral norm feature learning wants.
 
-    `alpha` is the exponent as the heavy-tailed self-regularisation literature
-    states it: the spectral density of `W^T W` going as `lam^-alpha`. Counting
-    gives `lam_i ~ i^-1/(alpha-1)` for the i-th largest, hence
-    `s_i ~ i^-1/(2(alpha-1))` -- so `alpha` of 2, 3 and 4 mean singular values
-    decaying as `i^-0.5`, `i^-0.25` and `i^-0.167`.
+    Two separate choices, and they were confused in the first version of this.
 
-    The scale is matched by Frobenius norm to the `normal(0, std)` this
-    replaces, and the singular vectors are uniform on the orthogonal group,
-    which is what an iid normal gives as well. The two initialisations
-    therefore differ in exactly one respect: the shape of the spectrum.
+    *Shape.* `alpha` is the exponent as the heavy-tailed self-regularisation
+    literature states it: the spectral density of `W^T W` going as `lam^-alpha`.
+    Counting gives `lam_i ~ i^-1/(alpha-1)`, hence `s_i ~ i^-1/(2(alpha-1))`.
+    `alpha = inf` gives a flat spectrum -- every singular value equal, i.e. a
+    scaled semi-orthogonal matrix -- and the formula reaches it without a
+    special case.
+
+    *Scale.* The spectral norm is set to `sqrt(fan_out / fan_in)`, which is the
+    condition of Yang, Simon and Bernstein (arXiv:2310.17813) for activations
+    and gradients to propagate stably and for features to be learned at every
+    width. They contrast it explicitly with scaling by Frobenius norm or by
+    entry size, which is what an iid normal does.
+
+    Matching the Frobenius norm instead -- the first version of this function --
+    is wrong here and wrong in a way that masquerades as a result. With
+    `||W||_F` held fixed, a spikier spectrum puts more of that norm into the
+    leading singular value, so the operator norm grows: measured at 512x512,
+    3.9x above the condition at `alpha = 2` and 9.8x at `alpha = 1.25`. The
+    resulting losses ranked monotonically in that violation, which reads as
+    "heavy tails hurt" and is really "the scale was wrong".
+
+    This matters more for a spectrum-preserving optimizer than for anything
+    else. AdamW can grow out of a badly scaled initialisation; Pion and
+    NGD-Pion move only the singular vectors, so the spectrum handed to them at
+    step zero is the spectrum they finish with.
     """
     if alpha <= 1.0:
         raise ValueError(f"init_pl_alpha must exceed 1, got {alpha}")
     m, n = w.shape
     r = min(m, n)
-    beta = 1.0 / (2.0 * (alpha - 1.0))
+    beta = 1.0 / (2.0 * (alpha - 1.0))          # 0.0 when alpha is inf
     s = torch.arange(1, r + 1, dtype=torch.float32, device=w.device) ** (-beta)
     U = torch.linalg.qr(torch.randn(m, r, device=w.device))[0]
     V = torch.linalg.qr(torch.randn(n, r, device=w.device))[0]
-    out = (U * s) @ V.transpose(-1, -2)
-    out *= std * (m * n) ** 0.5 / out.norm()
-    w.copy_(out.to(w.dtype))
+    # `s[0]` is 1 by construction, so this leaves the spectral norm at exactly
+    # `sqrt(fan_out / fan_in)` and changes nothing about the shape.
+    w.copy_(((U * s) @ V.transpose(-1, -2) * (m / n) ** 0.5).to(w.dtype))
