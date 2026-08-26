@@ -78,9 +78,13 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
         return None, _adamw(model.parameters(), cfg), None
 
     if cfg.optimizer in NGD_IMPLEMENTATIONS:
+        kw = {}
+        if cfg.optimizer != "ngd-pion-ref":
+            # the reference takes no diagnostic options, on purpose
+            kw["diag_every"] = cfg.log_every
         rot = NGD_IMPLEMENTATIONS[cfg.optimizer](
             weights, lr=cfg.lr, beta=cfg.ngd_beta, eps=cfg.ngd_eps,
-            alpha_max=cfg.ngd_alpha_max, t_fac=cfg.ngd_t_fac,
+            alpha_max=cfg.ngd_alpha_max, t_fac=cfg.ngd_t_fac, **kw,
         )
         recorder = attach(linears, rot)
     elif cfg.optimizer in ("pion", "pion_ablated"):

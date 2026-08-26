@@ -108,13 +108,51 @@ def spectral_norm(
     if iters < 0:
         raise ValueError(f"iters must be non-negative, got {iters}")
     tiny = torch.finfo(X.dtype).tiny
+
+    def unit(z: torch.Tensor) -> torch.Tensor:
+        """Normalise, reseeding any vector that has collapsed to zero.
+
+        Without the reseed this function has an absorbing state: a cached `v`
+        that reaches zero once stays zero for the rest of the run, because
+        `0 / tiny` is `0`, and `sigma` is then reported as exactly `0` forever
+        for that layer.
+
+        Measured on a 1376x1376 skew in fp32, sweeping `||X||_2`: correct down
+        to `1e-14`; at `1e-16` the norm of `v` underflows to a denormal, the
+        `clamp_min(tiny)` below then inflates `v` to `7e11` and `sigma` comes
+        out **eleven orders too large**; at `1e-20` it is zero and stays zero.
+        So the failure is silent corruption before it is silence.
+
+        What this accounts for in job 246666 is the *shape* of the
+        `angle_max = 0` readings -- irreversible, and spreading layer by layer
+        between step 450 and step 700, with no layer ever recovering, which is
+        what an absorbing state looks like and what a genuinely small rotation
+        does not. It does not account for the trigger: the step's `X` runs
+        around `1e-3`, far above the threshold, so something had to push a
+        layer transiently below it. With the reseed the estimate recovers
+        instead of latching, so the next run distinguishes the two.
+        """
+        n = z.norm(dim=-1, keepdim=True)
+        dead = n <= tiny
+        if bool(dead.any()):
+            z = torch.where(dead, torch.ones_like(z), z)
+            n = z.norm(dim=-1, keepdim=True)
+        return z / n.clamp_min(tiny)
+
     if v is None:
         v = torch.ones(*X.shape[:-2], X.shape[-1], dtype=X.dtype, device=X.device)
-    v = v / v.norm(dim=-1, keepdim=True).clamp_min(tiny)
+    v = unit(v)
     Xt = X.transpose(-1, -2)
+    # Normalising between the two products rather than after the pair. The
+    # underflow above is not a property of a degenerate direction: `X^T X v`
+    # scales as `||X||^2`, and the step's `X` runs at `1e-2` and below, so in
+    # fp32 the intermediate reaches `1e-40` and rounds to zero while `X`
+    # itself is perfectly well scaled. Splitting the product keeps both
+    # intermediates at unit norm and removes the failure at its source; the
+    # iterate's direction, and therefore the estimate, is unchanged.
     for _ in range(iters):
-        v = (Xt @ (X @ v.unsqueeze(-1))).squeeze(-1)
-        v = v / v.norm(dim=-1, keepdim=True).clamp_min(tiny)
+        u = unit((X @ v.unsqueeze(-1)).squeeze(-1))
+        v = unit((Xt @ u.unsqueeze(-1)).squeeze(-1))
     return (X @ v.unsqueeze(-1)).squeeze(-1).norm(dim=-1), v
 
 

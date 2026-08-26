@@ -48,15 +48,24 @@ def layer_diagnostics(optimizer, names: dict | None = None) -> list[dict]:
             basis_in, basis_out = state["bases"]
             lam = basis_in.lam
             positive = lam[lam > 0]
+            spec = _spectrum(state["cov"].matrix, group["eps"])
             rows.append(
                 {
                     "name": (names or {}).get(id(p), f"{tuple(p.shape)}"),
                     "shape": tuple(p.shape),
                     "alpha": float(state.get("alpha", float("nan"))),
                     "angle": float(state.get("angle", float("nan"))),
-                    "cond_A": float(_cond(state["cov"].matrix)),
+                    "cond_A": spec["cond_trunc"],
+                    "lam_max_A": spec["lam_max"],
+                    "lam_min_A": spec["lam_min"],
+                    "n_below_floor": spec["n_below_floor"],
+                    "null_frac": spec["null_frac"],
                     "skew_ratio": float(state.get("skew_ratio", float("nan"))),
+                    "quad": float(state.get("quad", float("nan"))),
+                    "curv": float(state.get("curv", float("nan"))),
                     "quad_over_curv": float(state.get("quad_over_curv", float("nan"))),
+                    "floor_share_in": float(state.get("floor_share_in", float("nan"))),
+                    "floor_share_out": float(state.get("floor_share_out", float("nan"))),
                     "depth": _depth(names, p),
                     "lam_ratio": float(positive.max() / positive.min()) if positive.numel() else float("nan"),
                     "step": int(state.get("step", 0)),
@@ -79,11 +88,28 @@ def _depth(names: dict | None, p: torch.Tensor) -> int:
     return -1
 
 
-def _cond(A: torch.Tensor) -> float:
-    w = torch.linalg.eigvalsh(A.float())
-    w = w.clamp_min(0.0)
-    positive = w[w > w.max() * 1e-12]
-    return float(w.max() / positive.min()) if positive.numel() else float("inf")
+def _spectrum(A: torch.Tensor, eps: float) -> dict:
+    """What the accumulated covariance's spectrum actually looks like.
+
+    `cond_trunc` is the number this module reported on its own until
+    2026-08-26, kept so the older logs stay comparable, and it is an artefact:
+    it drops every eigenvalue below `lam_max * 1e-12` and reports the
+    condition number of the remainder. On the real runs it reads `1e5` to
+    `1e7` while the true condition number is infinite, because `A` is
+    rank-deficient on every layer -- which is precisely the thing that makes
+    `quad` and `curv` disagree, and precisely the thing this number cannot
+    show. `n_below_floor` and `lam_min` are the honest ones.
+    """
+    w = torch.linalg.eigvalsh(A.float()).clamp_min(0.0)
+    lam_max = float(w.max())
+    kept = w[w > lam_max * 1e-12]
+    return {
+        "cond_trunc": float(lam_max / kept.min()) if kept.numel() else float("inf"),
+        "lam_max": lam_max,
+        "lam_min": float(w.min()),
+        "n_below_floor": int((w < lam_max * eps).sum()),
+        "null_frac": float((w < lam_max * eps).sum()) / w.numel(),
+    }
 
 
 def summarise(rows: list[dict]) -> dict:
@@ -98,10 +124,12 @@ def summarise(rows: list[dict]) -> dict:
     a_lo, a_hi = stat("alpha")
     g_lo, g_hi = stat("angle")
     c_lo, c_hi = stat("cond_A")
+    n_lo, n_hi = stat("null_frac")
     return {
         "alpha_min": a_lo, "alpha_max": a_hi,
         "angle_min": g_lo, "angle_max": g_hi,
         "condA_min": c_lo, "condA_max": c_hi,
+        "nullfrac_min": n_lo, "nullfrac_max": n_hi,
         "skew_ratio_min": s_lo, "skew_ratio_max": s_hi,
         "qoc_min": q_lo, "qoc_max": q_hi,
     }

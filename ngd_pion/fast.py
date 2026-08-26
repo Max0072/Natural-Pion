@@ -57,13 +57,24 @@ class FastNGDPion(NGDPion):
             available are paid for explicitly rather than hoped over.
     """
 
-    def __init__(self, params, *, angle_iters: int = 2, angle_warmup: int = 50, **kwargs):
+    def __init__(
+        self,
+        params,
+        *,
+        angle_iters: int = 2,
+        angle_warmup: int = 50,
+        diag_every: int = 0,
+        **kwargs,
+    ):
         if angle_iters < 0 or angle_warmup < 0:
             raise ValueError("angle iteration counts must be non-negative")
+        if diag_every < 0:
+            raise ValueError(f"diag_every must be non-negative, got {diag_every}")
         super().__init__(params, **kwargs)
         for group in self.param_groups:
             group["angle_iters"] = angle_iters
             group["angle_warmup"] = angle_warmup
+            group["diag_every"] = diag_every
 
     def _apply(self, p: torch.Tensor, group: dict) -> None:
         state = self.state[p]
@@ -125,6 +136,26 @@ class FastNGDPion(NGDPion):
         # Kept as a tensor: `harness.instrument` calls `float()` on it every few
         # hundred steps, so there is no reason to sync every step.
         state["quad_over_curv"] = quad / curv.clamp_min(torch.finfo(dt).tiny)
+        # The two of them raw as well. The ratio alone cannot say which side
+        # degenerates: `quad = sum g^2 / lamt` is measured against the FLOORED
+        # operator, because `natural_gradient` divides by `basis.denominator`,
+        # while `curv = sum g^2 lam / lamt^2` is measured against the RAW one,
+        # because `fisher_apply` is handed `A` and `W^T W` unmodified. The
+        # floor only raises, so `lam <= lamt` termwise and `curv <= quad`
+        # identically -- which is why `alpha` sits at the cap by construction
+        # rather than because the curvature is underestimated.
+        state["quad"] = quad
+        state["curv"] = curv
+
+        # How much of `quad` comes from index pairs the floor touched. This is
+        # the direct measurement of the mechanism above: if the collapse is the
+        # floor, this goes to 1 exactly where `quad_over_curv` blows up. Two
+        # extra n^3 matmuls per side, so it runs on the logging cadence rather
+        # than every step, and never at all when `diag_every` is 0.
+        every = group["diag_every"]
+        if every and state["step"] % every == 0:
+            state["floor_share_in"] = _floor_share(G_in, basis_in, group["eps"])
+            state["floor_share_out"] = _floor_share(G_out, basis_out, group["eps"])
 
         c = group["lr"] * float(alpha)
         # The one place this class departs from the reference, and it is a
@@ -146,3 +177,26 @@ class FastNGDPion(NGDPion):
         p.copy_(W.to(p.dtype))
         state["step"] += 1
         state["since_refactor"] += 1
+
+
+def _floor_share(G_skew: torch.Tensor, basis, eps: float) -> float:
+    """Fraction of one side's `quad` contributed by floored index pairs.
+
+    In the basis, `quad` is `sum_ij Gb_ij^2 / denominator_ij` with
+    `Gb = P^T G P`, every term non-negative, so the share is a genuine
+    fraction in `[0, 1]`. A pair counts as floored when either of its two
+    eigenvalues was raised, since `denominator_ij = 2(lam_i + lam_j)` is a sum
+    and one raised index is enough to change it.
+
+    `basis.lam` is already floored, and every value the floor touched is
+    exactly `eps * lam_max`; `lam_max` is untouched by flooring, so the raised
+    entries are recoverable from the floored spectrum alone.
+    """
+    lam = basis.lam
+    at_floor = lam <= lam.amax(dim=-1, keepdim=True) * eps * (1.0 + 1e-5)
+    P = basis.P
+    Gb = P.transpose(-1, -2) @ G_skew @ P
+    contrib = Gb * Gb / basis.denominator
+    pair = at_floor.unsqueeze(-1) | at_floor.unsqueeze(-2)
+    total = contrib.sum()
+    return float((contrib * pair).sum() / total.clamp_min(torch.finfo(lam.dtype).tiny))
