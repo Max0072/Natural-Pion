@@ -158,6 +158,10 @@ class RunConfig:
     ngd_eps: float = 1e-4
     ngd_beta: float = 0.95
     ngd_t_fac: int = 100
+    # 0 disables. A cap on the rotation applied per step, in radians, which is
+    # the bound `alpha` structurally cannot provide: `alpha` is identically 1
+    # on a fresh basis, so the step after each refactorisation is unbounded.
+    ngd_angle_max: float = 0.0
     ngd_alpha_max: float = 1.0
 
     # vanilla Pion

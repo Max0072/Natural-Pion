@@ -82,6 +82,7 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
         if cfg.optimizer != "ngd-pion-ref":
             # the reference takes no diagnostic options, on purpose
             kw["diag_every"] = cfg.log_every
+            kw["angle_max"] = cfg.ngd_angle_max
         rot = NGD_IMPLEMENTATIONS[cfg.optimizer](
             weights, lr=cfg.lr, beta=cfg.ngd_beta, eps=cfg.ngd_eps,
             alpha_max=cfg.ngd_alpha_max, t_fac=cfg.ngd_t_fac, **kw,

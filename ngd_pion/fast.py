@@ -64,17 +64,21 @@ class FastNGDPion(NGDPion):
         angle_iters: int = 2,
         angle_warmup: int = 50,
         diag_every: int = 0,
+        angle_max: float = 0.0,
         **kwargs,
     ):
         if angle_iters < 0 or angle_warmup < 0:
             raise ValueError("angle iteration counts must be non-negative")
         if diag_every < 0:
             raise ValueError(f"diag_every must be non-negative, got {diag_every}")
+        if angle_max < 0.0:
+            raise ValueError(f"angle_max must be non-negative, got {angle_max}")
         super().__init__(params, **kwargs)
         for group in self.param_groups:
             group["angle_iters"] = angle_iters
             group["angle_warmup"] = angle_warmup
             group["diag_every"] = diag_every
+            group["angle_max"] = angle_max
 
     def _apply(self, p: torch.Tensor, group: dict) -> None:
         state = self.state[p]
@@ -157,17 +161,44 @@ class FastNGDPion(NGDPion):
             state["floor_share_in"] = _floor_share(G_in, basis_in, group["eps"])
             state["floor_share_out"] = _floor_share(G_out, basis_out, group["eps"])
 
-        c = group["lr"] * float(alpha)
-        # The one place this class departs from the reference, and it is a
-        # diagnostic: nothing below reads `angle`, and nothing in `_step` does
-        # either. `harness.instrument.layer_diagnostics` reads it every few
-        # hundred steps and calls `float()` on it there, which is also why it
-        # is left on the device as a tensor rather than synced every step.
+        # `angle` comes from power iteration rather than `matrix_norm(X, 2)`.
+        # `harness.instrument.layer_diagnostics` reads it every few hundred
+        # steps and calls `float()` there, which is why it stays a device
+        # tensor rather than syncing every step.
         fresh = "angle_v_in" not in state or state["since_refactor"] == 0
         iters = group["angle_warmup"] if fresh else group["angle_iters"]
         sigma_in, state["angle_v_in"] = spectral_norm(X_in, iters, state.get("angle_v_in"))
         sigma_out, state["angle_v_out"] = spectral_norm(X_out, iters, state.get("angle_v_out"))
-        state["angle"] = c * torch.maximum(sigma_in, sigma_out)
+        sigma = torch.maximum(sigma_in, sigma_out)
+
+        c = group["lr"] * alpha
+        state["angle_requested"] = c * sigma
+        # The second trust region, and the one the method never had.
+        #
+        # `alpha` cannot bound the step. `X = F^-1 G` makes `curv = <X, F(X)> =
+        # <X, G> = quad` an identity, true at any radius whatever, so
+        # `quad/curv` measures only the drift between the `F` that built `X`
+        # and the `F` that judges it -- staleness, and nothing else. On a
+        # freshly factorised basis it is exactly 1 by construction, so the step
+        # straight after every refactorisation is unbounded. Measured: at
+        # `eta = 1.0` that first step is a rotation of 5.66 radians, the model
+        # is wrecked inside twenty steps (loss 49.7), and it recurs on the
+        # refactorisation cycle.
+        #
+        # What is missing is a bound on the *domain* of the quadratic model
+        # rather than on its self-consistency. The model is a Taylor expansion
+        # in the algebra and `Cayley` departs from the exponential at order
+        # `||A||^2`, so there is a radius beyond which it means nothing;
+        # ALGORITHM.md puts it at 0.1 rad. Capping there costs the working
+        # configuration nothing -- its measured `angle_max` is 0.057 -- and cuts
+        # that first step by a factor of 57.
+        #
+        # `c` stays a tensor: `cayley` takes either, and forcing a sync here
+        # would cost more than the step it guards (see `spectral_norm`).
+        if group["angle_max"]:
+            tiny = torch.finfo(dt).tiny
+            c = torch.minimum(c, sigma.new_tensor(group["angle_max"]) / sigma.clamp_min(tiny))
+        state["angle"] = c * sigma
 
         if group["alternate"]:
             W = W @ cayley(X_in, c) if state["step"] % 2 else cayley(X_out, c) @ W

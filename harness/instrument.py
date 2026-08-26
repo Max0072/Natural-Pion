@@ -57,6 +57,7 @@ def layer_diagnostics(optimizer, names: dict | None = None) -> list[dict]:
                     "shape": tuple(p.shape),
                     "alpha": float(state.get("alpha", float("nan"))),
                     "angle": float(state.get("angle", float("nan"))),
+                    "angle_requested": float(state.get("angle_requested", float("nan"))),
                     "cond_A": spec["cond_trunc"],
                     "lam_max_A": spec["lam_max"],
                     "lam_min_A": spec["lam_min"],
@@ -158,6 +159,7 @@ def summarise(rows: list[dict]) -> dict:
     s_lo, s_hi = stat("skew_ratio")
     a_lo, a_hi = stat("alpha")
     g_lo, g_hi = stat("angle")
+    r_lo, r_hi = stat("angle_requested")
     c_lo, c_hi = stat("cond_A")
     n_lo, n_hi = stat("null_frac")
     f_lo, f_hi = stat("floored_frac_in")
@@ -165,6 +167,7 @@ def summarise(rows: list[dict]) -> dict:
     return {
         "alpha_min": a_lo, "alpha_max": a_hi,
         "angle_min": g_lo, "angle_max": g_hi,
+        "angle_req_min": r_lo, "angle_req_max": r_hi,
         "condA_min": c_lo, "condA_max": c_hi,
         "nullfrac_min": n_lo, "nullfrac_max": n_hi,
         "negfrac_min": g_neg_lo, "negfrac_max": g_neg_hi,
