@@ -2595,3 +2595,48 @@ has been run.
 Next, in this order: one repeat seed at `eta = 1.0` to price a comparison, then
 upward -- 3, 10, 30 -- because a plateau at 0.5 to 1.0 says the ceiling is
 higher than anything tried and it has never been seen.
+
+### Jobs 253136 / 253137: `T_fac` is a lever after all, and `alpha` is damage control
+
+The earlier `T_fac` comparison ran at `eta = 0.5` with AdamW driven to 0.5 as
+well, so it was contaminated like everything else. Repeated at `eta = 1.0` with
+AdamW pinned at 1e-3:
+
+    T_fac      0       20       40       60       80      100      120      140      149
+    10    10.4924  7.2790  7.0708  6.5453  6.2778  6.1056  5.9224  5.8455  5.8633
+    25    10.4924  7.2797  7.0643  6.6073  6.3338  6.1525  5.9690  5.8643  5.8773
+    100   10.4924  7.2797  7.2213  7.0416  6.7534  6.4959  6.1776  6.0299  6.0241
+
+Shorter is better, by 0.16 from `T_fac = 100` to 10 -- larger than the whole
+effect of `eta` across three orders of magnitude (0.13). The earlier "not much
+of a lever" was an artefact.
+
+**The saw-tooth, read straight off the instrument.** `alpha_max` over time:
+
+    T_fac  10:  1.000  1.000  1.000  0.999  1.000  1.000  1.000  1.000  1.000
+    T_fac  25:  1.000  0.515  0.449  0.662  0.929  1.000  0.916  0.992  0.966
+    T_fac 100:  1.000  0.515  0.252  0.118  0.058  1.000  0.820  0.775  0.726
+
+At `T_fac = 100` it decays to 0.058 by step 80 and snaps back to exactly 1.000
+at step 100. That is the refactorisation, visible as a reset. The staleness
+feedback loop proposed earlier today is real and this is its characteristic.
+
+**But the reading of it was wrong.** At `T_fac = 10`, `alpha` sits at 1.000
+throughout -- the loop never engages at all -- and that is the *best* arm. So
+`alpha` is not a safety mechanism protecting large steps; it is **damage
+control for an out-of-date preconditioner**. Remove the staleness and the
+compensation is not needed. The correct move is to keep the basis current, not
+to lean on the regulator.
+
+Against intuition too: `T_fac = 100` takes a *larger* maximum angle than
+`T_fac = 25` (2.31 rad against 1.71) and is the worse arm. Angle magnitude on
+its own does not predict quality; agreement between the rotation and the
+current geometry does.
+
+**Cost is negligible.** 142 s at `T_fac = 100`, 148 s at 10 -- four percent for
+ten times the `eigh` calls. Which makes the limit worth testing: at
+`T_fac = 1`, `alpha` is identically 1 forever, the trust region ceases to exist
+as a concept, and the method becomes natural gradient with a fully current
+Fisher and `eta` as its only parameter. If that is also the best arm, the
+paper's statement is that the method works best with its own safeguard
+inactive. Jobs 253138/253139/253140 test `T_fac` in {1, 3, 5}.
