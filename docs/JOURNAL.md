@@ -2677,3 +2677,45 @@ proceeding further without one means fitting parameters to fluctuations.
 
 Jobs 253146-253148 measure it: seeds 1, 2, 3 at `eta = 1.0, T_fac = 25`, joining
 seed 0 from job 253137.
+
+### Jobs 253146-253148: the noise floor, and what it retracts
+
+Four seeds at `eta = 1.0`, `T_fac = 25`, AdamW 1e-3, 150 steps:
+
+    seed 0   5.8773
+    seed 1   5.8455
+    seed 2   5.8353
+    seed 3   5.8198
+
+    n = 4    mean 5.8444    sd 0.0243    range 0.0575
+
+Applied to tonight's comparisons:
+
+    T_fac 100 -> 25     0.1468     6.0 sd     real
+    eta 3e-3 -> 1.0     0.1257     5.2 sd     real
+    T_fac  25 -> 1      0.0486     2.0 sd     not resolvable
+    eta 0.5 vs 1.0      0.0051     0.2 sd     noise
+
+**The two headline results hold with room to spare.** `T_fac = 100` is
+genuinely bad and `eta >= 0.5` genuinely beats `eta = 3e-3`, at five and six
+standard deviations.
+
+**"Shorter `T_fac` is better" was me fitting noise.** `T_fac = 1` scored 5.8287
+against a four-seed mean of 5.8444 at `T_fac = 25` -- a difference of 0.016,
+0.7 sd, nothing -- while costing 79% more per step. And the luck ran the wrong
+way: seed 0, the one that happened to be in the sweep, was the *worst* of the
+four at 5.8773, which inflated the apparent gain of the short cycle. The
+recommendation is `T_fac ~ 25`; everything below it is paid for and not
+received.
+
+**The resolution of the standard experiment, worth keeping.** With
+`sd = 0.024`, a two-sample comparison at reasonable power needs about
+`n = 15.7 sigma^2 / delta^2`:
+
+    to resolve 0.05    4 seeds per arm
+    to resolve 0.02   23 seeds per arm
+
+So **a single 150-step run resolves about 0.05 in loss and no better**. Every
+grid from here should be planned against that number, and any difference below
+it reported as unresolved rather than ranked. Three comparisons tonight were
+made before this existed and two of them survived; the third did not.
