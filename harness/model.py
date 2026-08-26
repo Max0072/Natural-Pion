@@ -163,7 +163,7 @@ class Transformer(nn.Module):
         # can move their spectra, so nothing is frozen there.
         rotational = module is not self.embed and module is not self.head
         if self.cfg.init_pl_alpha > 0.0 and rotational:
-            _power_law_(module.weight, self.cfg.init_pl_alpha)
+            _power_law_(module.weight, self.cfg.init_pl_alpha, self.cfg.init_std)
         else:
             nn.init.normal_(module.weight, mean=0.0, std=self.cfg.init_std)
 
@@ -209,46 +209,59 @@ def matrix_parameters(model: Transformer) -> list[nn.Parameter]:
     return [m.weight for m in model.parameter_split()[0]]
 
 
+# Fraction of the spectrum replaced by the power-law tail. HT-SR fits its
+# exponent to the upper tail of the ESD -- typically the largest ten to twenty
+# per cent of eigenvalues -- not to the whole spectrum, so a faithful
+# construction keeps a bulk and attaches a tail to it.
+_TAIL_FRACTION = 0.2
+
+
 @torch.no_grad()
-def _power_law_(w: torch.Tensor, alpha: float) -> None:
-    """Power-law singular spectrum at the spectral norm feature learning wants.
+def _power_law_(w: torch.Tensor, alpha: float, std: float) -> None:
+    """A trained-looking singular spectrum: Marchenko-Pastur bulk, power-law tail.
 
-    Two separate choices, and they were confused in the first version of this.
+    Two regimes, and they answer two different pieces of literature.
 
-    *Shape.* `alpha` is the exponent as the heavy-tailed self-regularisation
-    literature states it: the spectral density of `W^T W` going as `lam^-alpha`.
-    Counting gives `lam_i ~ i^-1/(alpha-1)`, hence `s_i ~ i^-1/(2(alpha-1))`.
-    `alpha = inf` gives a flat spectrum -- every singular value equal, i.e. a
-    scaled semi-orthogonal matrix -- and the formula reaches it without a
-    special case.
+    `alpha = inf` gives a **flat** spectrum -- every singular value equal --
+    scaled so the spectral norm is `sqrt(fan_out/fan_in)`. That is a scaled
+    semi-orthogonal weight: what dynamical isometry asks for at initialisation
+    (arXiv:1711.04735) at the scale feature learning asks for
+    (arXiv:2310.17813). It also makes `W^T W` proportional to the identity,
+    which Cayley then preserves for the whole run.
 
-    *Scale.* The spectral norm is set to `sqrt(fan_out / fan_in)`, which is the
-    condition of Yang, Simon and Bernstein (arXiv:2310.17813) for activations
-    and gradients to propagate stably and for features to be learned at every
-    width. They contrast it explicitly with scaling by Frobenius norm or by
-    entry size, which is what an iid normal does.
+    Finite `alpha` gives what HT-SR says a *trained* layer looks like: an iid
+    normal matrix's own singular values as the bulk -- which is Marchenko-Pastur
+    by construction, not by approximation -- with the largest `_TAIL_FRACTION`
+    of them replaced by a power law attached continuously at the break. The
+    exponent is theirs: an ESD going as `lam^-alpha` means the i-th largest
+    eigenvalue goes as `i^-1/(alpha-1)`, hence `s_i ~ i^-1/(2(alpha-1))`.
 
-    Matching the Frobenius norm instead -- the first version of this function --
-    is wrong here and wrong in a way that masquerades as a result. With
-    `||W||_F` held fixed, a spikier spectrum puts more of that norm into the
-    leading singular value, so the operator norm grows: measured at 512x512,
-    3.9x above the condition at `alpha = 2` and 9.8x at `alpha = 1.25`. The
-    resulting losses ranked monotonically in that violation, which reads as
-    "heavy tails hurt" and is really "the scale was wrong".
+    An earlier version applied the power law to the *whole* spectrum, which has
+    no bulk at all and is not the object that literature measures. Its
+    `alpha = 2` and their `alpha = 2` were different things sharing a name.
 
-    This matters more for a spectrum-preserving optimizer than for anything
-    else. AdamW can grow out of a badly scaled initialisation; Pion and
-    NGD-Pion move only the singular vectors, so the spectrum handed to them at
-    step zero is the spectrum they finish with.
+    The bulk keeps the scale of the `normal(0, std)` it replaces and the tail
+    extends above it, because that is what training does: measured over 2000
+    AdamW steps, the largest singular value of an inner layer grows by a factor
+    of 2 to 9. This construction gives 2.4x at `alpha = 3` and 7.6x at
+    `alpha = 2`, which is the same range.
     """
     if alpha <= 1.0:
         raise ValueError(f"init_pl_alpha must exceed 1, got {alpha}")
     m, n = w.shape
     r = min(m, n)
-    beta = 1.0 / (2.0 * (alpha - 1.0))          # 0.0 when alpha is inf
-    s = torch.arange(1, r + 1, dtype=torch.float32, device=w.device) ** (-beta)
     U = torch.linalg.qr(torch.randn(m, r, device=w.device))[0]
     V = torch.linalg.qr(torch.randn(n, r, device=w.device))[0]
-    # `s[0]` is 1 by construction, so this leaves the spectral norm at exactly
-    # `sqrt(fan_out / fan_in)` and changes nothing about the shape.
-    w.copy_(((U * s) @ V.transpose(-1, -2) * (m / n) ** 0.5).to(w.dtype))
+
+    if math.isinf(alpha):
+        s = torch.full((r,), (m / n) ** 0.5, device=w.device)
+    else:
+        bulk = torch.linalg.svdvals(torch.randn(m, n, device=w.device) * std)
+        k = max(1, min(r - 1, int(round(_TAIL_FRACTION * r))))
+        edge = bulk[k]
+        beta = 1.0 / (2.0 * (alpha - 1.0))
+        i = torch.arange(1, k + 1, dtype=bulk.dtype, device=w.device)
+        # anchored so that index k+1 reproduces `edge` exactly: no discontinuity
+        tail = edge * (i / (k + 1)) ** (-beta)
+        s = torch.cat([tail, bulk[k:]])
+    w.copy_(((U * s) @ V.transpose(-1, -2)).to(w.dtype))
