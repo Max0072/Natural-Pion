@@ -2336,3 +2336,50 @@ is re-run.
 The fix is one line in `observe`, disabling autocast around the gram. It lives
 in the reference implementation and it changes the trajectory, so it is not
 being made unilaterally.
+
+### Job 253112: the fix works, and immediately exposes `T_fac`
+
+150 steps on rtx6004, 2m23s, 0.04 rtx-hours, against job 253057 at the same
+configuration with the bf16 covariance.
+
+                            bf16 covariance      fp32 covariance
+    n_negative per layer          97-190                       0
+    rows with curv < 0        323 of 504                0 of 224
+    curv    (median)          -5.132e-06              +1.086e-02
+    quad    (median)           3.434e-03               3.523e-03
+    quad/curv (median)          2.72e+32                   0.378
+    alpha   (median)              1.0000                  0.3783
+
+`quad` is unchanged. The entire defect was in `curv`, which flipped sign and
+grew two thousandfold in magnitude, exactly as the diagnosis predicted.
+
+`alpha` now does what `trust_region_alpha`'s docstring has always claimed:
+
+    step   0   alpha [1.0000, 1.0000]     fresh basis
+    step  20   alpha [0.0003, 0.0194]
+    step  80   alpha [0.0004, 0.0226]
+    step 100   alpha [0.9784, 1.0000]     refactorised, fresh again
+    step 120   alpha [0.3617, 0.8374]
+    step 140   alpha [0.0903, 0.6796]
+
+One on a fresh basis, decaying with staleness, one again at the refactor. The
+trust region is measuring something for the first time in this project.
+
+**What that exposes.** `alpha` reaches 3e-4 within twenty steps of a refactor,
+so at `T_fac = 100` the optimizer spends most of its life taking steps three
+thousand times smaller than `eta`. **`T_fac`, not `eta`, is now the dominant
+hyperparameter**, and every learning-rate conclusion recorded in this journal
+was measured with the trust region inert -- including "3e-3 works, 1.0
+detonates". Those runs measured something, but not what they were labelled.
+
+**And the honest part.** Train loss at step 149 is 5.7315, against 5.6619 at
+step 150 for the bf16 run. With a working trust region the model is, at this
+horizon, slightly *worse*. That is not surprising -- the step is now being
+clamped where before it was not -- and 150 steps decides nothing. Recorded
+rather than smoothed over, because the next thing to do is find out whether it
+persists, and a note saying "the fix improved things" would make that question
+invisible.
+
+Next, and in this order: re-run the 500-step pair to replace the numbers this
+journal currently carries, then sweep `T_fac`, which has never been varied and
+is now the parameter that matters.
