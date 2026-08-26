@@ -2026,3 +2026,46 @@ practice, and why is a separate question.
 `qoc` at step 0 was 1.0004 to 1.0297 across layers -- the ratio is 1 on a fresh
 basis, exactly as the algebra says, so the 1e32 readings develop with staleness
 rather than being present from the start.
+
+### Correction: the synchronisation was most of the slowdown, not all of it
+
+The entry above records the device-to-host sync as *the* cause of the 252299
+slowdown. With precise timestamps that is too strong, and the arithmetic is
+worth writing down because it also rules a suspect out.
+
+    run                      startup   step 0   steps 1-49        s/step
+    246666 old code, rtx6002   14.0 s    4.4 s   64.3 s / 50   1.29 -> 0.72
+    252299 with the sync        5.4 s   10.2 s  >1291 s / <49          >26
+    252848 sync removed         5.2 s    3.6 s   >198 s / <49           >4
+
+Removing the sync bought a factor of six, 26 s/step to 4, so that diagnosis was
+right in substance. But 4 s/step is still five times the baseline, and the
+remainder is **not** in `spectral_norm`. Step 0 runs `angle_warmup = 50`, which
+is 101 `unit()` calls per `spectral_norm` against 5 on an ordinary step --
+twenty times the work -- and step 0 came in at 3.6 s against the baseline's
+4.4 s. Whatever costs 4 s on steps 1-49 cannot be the function that step 0 does
+twenty times more of and stays fast.
+
+Two suspects remain, and one short run separates them:
+
+* **The node.** Every historically fast run was on rtx6002. Both slow attempts
+  were on rtx6001, which is also hosting another tenant's vLLM server -- a
+  bursty serving workload that can contend for CPU and bus.
+* **Allocator fragmentation caused by `_floor_share` itself.** At step 0 it
+  transiently allocates `Gb`, `contrib`, `pair` and `denominator`, 7.6 MB each
+  on the 1376-side layers, with 82.5 GB of 97.9 already in use and
+  `expandable_segments` on. That has exactly the signature observed: step 0
+  cheap, everything after it expensive.
+
+Proposed: 60 steps on the idle rtx6004, about 90 seconds and 0.03 rtx-hours.
+Fast means the node, and the real pair goes back in with `--exclude=rtx6001`.
+Slow means the diagnostics, and the next measurement is the same run with
+`diag_every` off.
+
+**The process lesson, which cost more than the finding.** The fix was checked
+for correctness on CPU and not at all for cost, then queued: 0.72 rtx-hours on
+an unverified theory. My own estimate of the sync's price was tens of
+milliseconds per step against an observation of several seconds, and I did not
+notice the two-order gap until afterwards. When an explanation and a
+measurement disagree by orders of magnitude, the explanation is wrong, and that
+check is free.

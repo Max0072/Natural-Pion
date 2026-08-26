@@ -137,10 +137,14 @@ def spectral_norm(
         # Branchless on purpose. The obvious `if dead.any(): ...` costs a
         # device-to-host synchronisation on every call, and this runs five
         # times per `spectral_norm`, twice per layer, 56 layers -- 560 syncs a
-        # step against the 56 the step already had. Measured: 0.72 s/step
-        # became upwards of 24, and jobs 252299 and 252302 were cancelled for
-        # it. The reseed vector is all-ones, whose norm is sqrt(n), so the
-        # replacement needs no second reduction either.
+        # step against the roughly 170 the step already had. Measured: 0.72
+        # s/step became upwards of 26, and jobs 252299 and 252302 were
+        # cancelled for it. Removing it bought a factor of six, to 4 s/step,
+        # which is still five times the baseline -- the remainder is elsewhere,
+        # and is not in this function: step 0 makes 101 `unit()` calls per
+        # `spectral_norm` against 5 on an ordinary step and is faster than the
+        # old baseline. The reseed vector is all-ones, whose norm is sqrt(n),
+        # so the replacement needs no second reduction either.
         root_n = float(z.shape[-1]) ** 0.5
         z = torch.where(alive, z, torch.ones_like(z))
         n = torch.where(alive, n, torch.full_like(n, root_n))
