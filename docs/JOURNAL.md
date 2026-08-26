@@ -2719,3 +2719,175 @@ So **a single 150-step run resolves about 0.05 in loss and no better**. Every
 grid from here should be planned against that number, and any difference below
 it reported as unresolved rather than ranked. Three comparisons tonight were
 made before this existed and two of them survived; the third did not.
+
+## 2026-08-26 evening -- the headline result, and what the literature already says
+
+### `ngd-pion` wins in a regime the baseline cannot enter
+
+`pion_ablated` swept over `eta` with AdamW pinned at 1e-3, against `ngd-pion`
+at the same settings, 150 steps:
+
+    eta       ngd-pion   pion_ablated
+    1e-3            --         6.1729
+    3e-3        6.1498             --
+    0.5         6.0190         6.1143
+    1           6.0241             --
+    3         * 5.9113 *        7.1657
+    10          5.9818        11.5893
+    30              --        10.0755
+
+`pion_ablated` tops out below `eta = 3`. `ngd-pion`'s optimum *is* near 3, and
+it is still healthy at 10 where the baseline is destroyed. Best against best is
+5.9113 versus 6.1143, a difference of 0.203 -- **6 sd** against the measured
+noise floor.
+
+That is the claim the paper needs, and it is qualitative rather than
+quantitative: not "we took a bigger step", but "there is a regime the
+unpreconditioned method cannot enter at all".
+
+Note also what `pion_ablated` does when it breaks: it *thrashes* -- 9.95, 7.52,
+10.95, 8.08, 11.59 -- rather than diverging monotonically. Its retraction is
+Cayley, exactly orthogonal, so the spectrum of its weights cannot explode. What
+fails is coherence, not scale.
+
+### Spectrum drift under AdamW: the premise for excluding the head is half right
+
+2000 steps of pure AdamW, singular values against a reproduced initialisation
+(`scripts/probes/spectrum_drift.py`):
+
+                          ||ds||/||s||   shape drift
+    Pion-owned (n=56)           0.889         0.421
+    excluded   (n= 2)           1.653         1.479
+
+The head and the embedding do move about twice as far, so excluding them is
+justified -- but the inner layers move a great deal too: 89% relative change,
+and 42% of it *after* removing the best uniform rescale. "The inner spectra
+barely move" is not true.
+
+What rescues it: the best uniform rescale is 1.4-1.9 for inner layers, so most
+of the drift is uniform stretching -- and a spectrum-preserving optimizer can
+get that indirectly, through the RMSNorm gains, which belong to AdamW.
+Stretching a weight and stretching the norm after it are the same thing. Only
+the 0.42 of *shape* is genuinely unavailable. That is the real price of
+freezing the spectrum, and it is a third of what the first column suggests.
+
+### Heavy-tailed initialisation: one wrong experiment, then one inconclusive one
+
+First attempt matched the Frobenius norm of the `normal(0, init_std)` it
+replaced. That is the wrong invariant, and wrong in a way that looks like a
+result: holding `||W||_F` fixed, a spikier spectrum puts more of it into the
+leading singular value, so the operator norm grows -- 3.9x above the
+feature-learning condition at `alpha = 2`, 9.8x at `alpha = 1.25`. The measured
+losses ranked monotonically in that violation. It read as "heavy tails hurt"
+and was "the scale was wrong". **That sweep tested nothing about tails.**
+
+Rewritten to set the spectral norm to `sqrt(fan_out/fan_in)` per Yang, Simon and
+Bernstein, so `alpha` varies the shape and nothing else. The second sweep is
+inconclusive for a different reason: `angle_max` across the arms ranges from
+0.55 to 170 radians, so the seven initialisations are in seven different
+regimes and comparing them at a single `eta` measures which one happens to suit
+`eta = 1`. The same trap `sweep.sbatch` warns about, walked into twice in one
+evening. Doing it properly needs a per-initialisation `eta` sweep.
+
+`orthogonal_in` stayed 0/224 even at `alpha = inf`, which was a prediction and
+it failed. Two reasons, both fixable:
+
+* `is_identity` uses `atol = 1e-6`, and a flat-spectrum 512x512 weight built
+  through fp32 QR gives `max|W^T W - I| = 1.073e-06`. **We miss the cheap basis
+  path by seven percent.** The tolerance is an absolute constant where the error
+  grows with dimension.
+* For non-square layers a flat spectrum gives `W^T W = (fan_out/fan_in) I` --
+  proportional to the identity, not equal to it. That case is trivial to
+  support: `C = c I` makes `F(X) = 2c(A X + X A)`, so the scalar just multiplies
+  the operator.
+
+Together those would put *every* layer on `basis_identity_anchor` under a flat
+initialisation, and Cayley would keep it there for the whole run: no
+`B^{-1/2}`, no ill-conditioned `P`, and one place where `eps` acts instead of
+three.
+
+### What the literature says, and where it leaves us
+
+* **Scale.** `||W||_* = Theta(sqrt(fan_out/fan_in))` for feature learning
+  (arXiv:2310.17813), contrasted explicitly with Frobenius or entrywise
+  scalings. Our `normal(0, 0.02)` sits at 0.91 of it for square layers, 1.96 for
+  the down-projections and 0.51 for the embedding and head.
+* **Shape at initialisation: flat.** Dynamical isometry wants every singular
+  value of the Jacobian near 1, achieved by orthogonal initialisation and not
+  achievable by Gaussian (arXiv:1711.04735).
+* **Shape when trained: heavy-tailed.** HT-SR, with the power-law exponent in
+  roughly (2, 2.5) for good generalisation.
+* A normal optimizer has no conflict here: start flat, let the tail emerge.
+  **A spectrum-preserving optimizer has to choose one**, and that bind is not
+  addressed anywhere in that literature because it does not consider such
+  optimizers.
+
+**Prior art we have to answer.** HTMuon (arXiv:2603.10067) argues that Muon's
+orthogonalised update "suppresses the emergence of heavy-tailed weight spectra
+and over-emphasises training along noise-dominated directions", and gains up to
+0.98 perplexity on LLaMA/C4 by inducing heavier tails. That critique applies to
+us **more** strongly than to Muon: Muon sets the singular values of the *update*
+to one, we freeze the singular values of the *weight* forever. Their remedy --
+change the update's spectrum -- is closed to us, because our update is a
+rotation. Initialisation and a learned diagonal are the only routes left, which
+turns both from decorations into answers to a published objection.
+
+**And the reconciliation.** "Small Singular Values Matter" (arXiv:2410.17770)
+finds that large singular directions align with the activation covariance
+within about 1000 updates while the smallest gain overlap only late in
+training. So HTMuon is right early and the small directions matter late, which
+also explains the split in the pruning literature. For us that lands somewhere
+specific: our floor gives the degenerate directions a substantial step from
+step zero, and 55-69% of the out-side predicted decrease comes from them.
+
+Worth putting in the introduction: the quantity that develops during training is
+the **alignment between a weight's singular vectors and the eigenvectors of the
+activation covariance**. That is exactly what this method manipulates
+deliberately -- it rotates the singular vectors, preconditioned by an operator
+built from `A`. Not "converges faster" but "performs explicitly the alignment
+ordinary training finds by itself".
+
+### The effective rank of `A`, and a correction to my own story
+
+The suggestion was that the model should be sized to the effective
+dimensionality of the data -- the non-kernel part of `A`. Measured from the
+long runs' own diagnostics, at `eta = 1.0`:
+
+    step   null_frac   lam_min    cond_A   floor_in  floor_out
+       1      0.0000  5.19e-02  1.33e+03      0.086      0.224
+    1001      0.0000  1.60e-02  7.63e+03      0.160      0.585
+    2001      0.0000  2.06e-02  3.32e+03      0.118      0.556
+    3451      0.0000  2.88e-02  2.71e+03      0.107      0.549
+
+**`A` is full rank throughout, and `cond(A)` is falling** -- 7.6e3 down to
+2.7e3. The activations get *better* conditioned as training proceeds.
+
+This retracts a story told repeatedly in this journal today: that training
+collapses activations onto a low-dimensional manifold, degenerating `A`, and
+that this is the root of the damping trouble. **That was measured at
+`eta = 3e-3`**, the operating point we abandoned this afternoon. There
+`null_frac` was 0.33 with 6253 negative eigenvalues; at `eta >= 0.5` there are
+none. The degeneracy looks like a symptom of training too slowly, not a
+property of the data.
+
+So on the question as asked: by this measure the model is **not** wider than the
+data supports.
+
+**But `floor_share_out` stays at 0.55-0.63 while `A` is healthy**, because the
+out-side degeneracy is not about data at all. The pair is `(I, W A W^T)` and
+`rank(W A W^T) <= min(m, n)` arithmetically, whatever the data does. A
+1376x512 layer has an exact 864-dimensional kernel permanently. The binding
+constraint is the **aspect ratio of the layer**, not the dimensionality of the
+data.
+
+Which answers the question this journal has been circling all day -- floor the
+kernel or suppress it? Neither. **It should not be there.** The out-side
+rotation lives in `so(m)` of dimension `m(m-1)/2`, while the operator has rank
+`min(m, n)`; the meaningful problem is `so(n)` embedded in `so(m)` and the rest
+is not an ill-conditioned region needing damping, it is not part of the problem.
+We created it by solving in a space the problem does not occupy.
+
+That also closes the complexity gap from this morning: working in the range of
+`W` costs `O(m^2 n)` against the present `O(m^3)`, which is Pion's order. It is
+not an optimisation, it is the correct formulation, and the saving comes from
+no longer solving in a dimension the problem does not have.
