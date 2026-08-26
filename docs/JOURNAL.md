@@ -1940,3 +1940,40 @@ it is a diagnostic-only change and has not been made yet.
 Not shown: that this mechanism sums to the observed 1e32 across all layers.
 That needs the real `G`, i.e. a forward/backward, i.e. GPU. Still pending, and
 still requires the user's go-ahead.
+
+### Submitted: the floor probe (jobs 252299, 252302)
+
+Two 500-step runs on rtx, `ngd-pion` at `eta = 3e-3` and `eta = 1.0`, into
+`$DATA_p330/runs/floor`. About 7 minutes each, roughly 0.23 rtx-hours in total.
+Same command as jobs 246701/246702, only the output directory differs, so the
+comparison against those is one move on one axis: the diagnostics changed,
+nothing else did.
+
+    sbatch -p rtx scripts/sbatch/train.sbatch --optimizer ngd-pion --lr 3e-3 \
+           --max-steps 500 --no-resume --out-dir $DATA_p330/runs/floor
+    sbatch -p rtx scripts/sbatch/train.sbatch --optimizer ngd-pion --lr 1.0 \
+           --max-steps 500 --no-resume --out-dir $DATA_p330/runs/floor
+
+Three questions, each with a stated prediction, written down before the numbers
+arrive so that agreeing with them afterwards means something:
+
+1. **Does `floor_share` go to 1 exactly where `quad_over_curv` blows up?** If
+   the floor is the mechanism, the `eta = 3e-3` run should show `floor_share`
+   near 1 together with a ratio in the 1e30s, and the `eta = 1.0` run should
+   show a much smaller share together with its measured 0.13-0.22. If instead
+   `floor_share` is small while the ratio is huge, the floor is not the cause
+   and the missing-Jacobian hypothesis comes back into play.
+2. **Which of `quad` and `curv` degenerates, in absolute terms?** The ratio
+   alone cannot say. The prediction is that `quad` stays ordinary and `curv`
+   collapses, since `curv` is the one measured against the raw operator.
+3. **Does `angle` still reach exactly zero?** The absorbing state in
+   `spectral_norm` is gone, so if the zeros return they are a fact about the
+   rotation rather than about the estimator. The prediction is that they do
+   not return, and that the layer-by-layer spread between steps 450 and 700
+   seen in job 246666 does not reappear.
+
+The trust-region question -- whether `curv` should be measured against the
+floored operator instead, so that `quad` and `curv` describe the same geometry
+-- is deliberately left untouched until these numbers exist. It changes the
+trajectory, and there is no reason to change the trajectory and the diagnostics
+in the same step.
