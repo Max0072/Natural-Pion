@@ -2111,3 +2111,66 @@ which silently assumes at least 3 s/step, and it had no baseline to compare
 against -- a single hard threshold standing in for a measurement. A throughput
 trace compared against the known 0.72 s/step is the right shape for this, and
 is what 253041 collects.
+
+### Resolved: throughput here is a page-cache property, not a code property
+
+Half a day and about 1.6 rtx-hours went into a slowdown that turned out to have
+nothing to do with NGD-Pion. Written up in full because the failure mode will
+recur, and because three of my hypotheses along the way were wrong.
+
+**The mechanism.** `harness.data` memmaps the corpus and samples a *random
+permutation* of windows, so one step is 512 scattered reads of 512 bytes each
+across a 20 GB file -- 262 KB of payload, but 512 separate page faults. When
+those pages are resident the step costs 0.8 s; when they are not, the step is
+bounded by small-random-read IOPS against shared storage. At 42 s/step the
+implied rate is 6 KB/s, which is not a bandwidth number at all: it is roughly a
+hundred IOPS, halved again when two jobs compete.
+
+**The evidence, in the order it actually settled things.**
+
+*Paired control, the one that mattered.* Old checkout `23edea9` and current
+HEAD, submitted together, same node, same minute, 60 steps each:
+
+    OLD 23edea9   step 5   42.600 s/step   loss 7.4932
+    NEW HEAD      step 5   42.540 s/step   loss 7.4932
+
+Identical to within noise, and the losses agree to the last digit, so the two
+are computing the same thing at the same speed. Every previous comparison had
+been separated in time, and the environment moves by the minute.
+
+*Co-tenancy is what differs.* On rtx6001, which has hosted another user's
+`iboa_vllm_qwen7b` since 10:02, every run sat on a flat 5.0-5.7 s/step plateau
+and never improved. On idle rtx6004 the same job started at the same 5.78 and
+accelerated monotonically:
+
+    step  5   5.780      step 30   1.980      step 50   1.360
+    step 10   3.200      step 40   1.580      step 59   1.300  (still falling)
+
+The cache warms only where nothing is evicting it. A 7B inference server
+resident on the node keeps the corpus pages from staying.
+
+**Three hypotheses of mine that were wrong, and why.**
+
+1. *The device-to-host sync is the whole cause.* It was real and worth six of
+   the thirty-odd times, but not the rest. Recorded as settled before it was.
+2. *Allocator fragmentation from `_floor_share`.* The tensors held across steps
+   are zero-dimensional: about 57 KB of a 97 GB pool. One line of arithmetic,
+   not done.
+3. *Re-running warms the cache, so the second run will be fast.* Falsified
+   immediately -- 253044 was slow from step 0 -- because on that node the cache
+   was being evicted between runs.
+
+The common thread is that each was proposed at a magnitude I never checked
+against the observation. Where an explanation predicts milliseconds and the
+measurement shows seconds, the explanation is already dead.
+
+**Standing consequences for this project.**
+
+* Pin long runs to a node with no memory-hungry co-tenant, and check
+  `squeue -w <node>` before submitting rather than after.
+* Budget the first ~100 steps of any fresh run at 2-5x the warm rate. The
+  0.72 s/step figure quoted throughout this journal is a *warm-cache* number and
+  should be labelled as such wherever it is used to price a run.
+* A throughput guard must compare a trace against a known baseline, not test a
+  single hard threshold. The guard that cancelled 252848 demanded step 50 inside
+  150 s, which silently assumed 3 s/step and killed a run that was merely cold.
