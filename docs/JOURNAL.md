@@ -2640,3 +2640,40 @@ as a concept, and the method becomes natural gradient with a fully current
 Fisher and `eta` as its only parameter. If that is also the best arm, the
 paper's statement is that the method works best with its own safeguard
 inactive. Jobs 253138/253139/253140 test `T_fac` in {1, 3, 5}.
+
+### Jobs 253138-253140: the full `T_fac` sweep, and why "shorter is better" is the wrong reading
+
+`eta = 1.0`, AdamW 1e-3, 150 steps:
+
+    T_fac    loss@149   alpha_max   angle_max   s/step   vs T=100
+        1     5.8287       1.000       9.845     1.583     -0.195
+        3     5.8349       1.000       3.908     1.077     -0.189
+        5     5.8613       0.998       3.422     1.010     -0.163
+       10     5.8633       1.000       3.105     0.901     -0.161
+       25     5.8773       0.966       1.708     0.884     -0.147
+      100     6.0241       0.726       2.307     0.856      0.000
+
+Monotone, but the gain saturates immediately: **100 to 25 is worth 0.147, and
+the whole remaining journey from 25 down to 1 is worth 0.049** spread over five
+points. Meanwhile the cost climbs steeply below `T_fac = 10`: 0.884 s/step at
+25 against 1.583 at 1, **seventy-nine percent more**.
+
+**Equal steps is the wrong frame.** In the 237 s that `T_fac = 1` needs for 150
+steps, `T_fac = 25` completes 268, and the loss is still falling steeply at
+that horizon. On a wall-clock budget the short cycle very likely loses.
+
+Confirmed firmly, on five points rather than by argument: `alpha_max` sits at
+1.000 across the entire trace for every `T_fac <= 10`. **With a current basis
+the trust region never engages at all.** And `T_fac = 1` reaches an angle of
+9.85 rad with the loss descending monotonically -- allowing for `Cayley`, that
+is roughly 2.8 rad in the leading plane, an enormous rotation that is
+nevertheless stable.
+
+**What cannot be said.** The spread across `T_fac` 1, 3, 5, 10 and 25 is 0.049
+over five points, and seed noise has still never been measured. It is entirely
+possible that the honest result is "100 is bad, everything else is the same".
+This is the third comparison tonight to run into the missing noise floor;
+proceeding further without one means fitting parameters to fluctuations.
+
+Jobs 253146-253148 measure it: seeds 1, 2, 3 at `eta = 1.0, T_fac = 25`, joining
+seed 0 from job 253137.
