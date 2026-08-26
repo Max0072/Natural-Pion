@@ -2069,3 +2069,45 @@ milliseconds per step against an observation of several seconds, and I did not
 notice the two-order gap until afterwards. When an explanation and a
 measurement disagree by orders of magnitude, the explanation is wrong, and that
 check is free.
+
+### The diagnostics are not the slowdown: measured, old against new, on CPU
+
+Both remaining suspects for the residual 5x were mine, so the cheap thing was to
+settle it without the cluster at all. `scripts/probes/bench_step.py` builds
+`FastNGDPion` over the real 56 weights of LLaMA-60M, feeds random gradients and
+times `step()`, running the old checkout and the current tree as separate
+processes with different `sys.path` order.
+
+    configuration            diag_every   step 0    steps 1-5 mean
+    old 23edea9                     n/a   19.47 s          5.455 s
+    HEAD, diagnostics off             0   20.47 s          5.636 s   (+3.3%)
+    HEAD, diagnostics every 50       50   19.68 s          5.755 s   (+5.5%)
+
+Everything added -- the `spectral_norm` rewrite, storing `quad` and `curv`,
+`_floor_share` on the logging cadence -- costs **five percent**, not five times.
+
+That also kills the allocator-fragmentation hypothesis, and the arithmetic
+should have killed it before it was ever proposed: the 112 extra tensors held
+across steps are zero-dimensional, so at the allocator's 512-byte minimum block
+they occupy about 57 KB of a 97 GB pool. Estimating that magnitude was free and
+would have taken one line.
+
+So the residual is not algorithmic, and it is now established twice over and
+independently: by step 0 on the GPU, which does twenty times as many `unit()`
+calls as an ordinary step and beats the old baseline, and by this comparison on
+CPU. What remains is the execution environment. Hardware is not it -- the nodes
+are identical, per the user -- but the *state* of a node is not its hardware,
+and the leading candidate is page-cache pressure on the C4 windows from a
+co-tenant, against an old note in this journal that a cold cache costs about
+0.42 s/step.
+
+Submitted job 253041 to measure it rather than argue about it: 60 steps with
+`--log-every 5`, giving twelve throughput points instead of one. Steady at 4
+s/step means execution; starting slow and accelerating means the cache, and the
+real pair simply needs to be left alone to finish.
+
+**On the guard that cancelled 252848.** It demanded step 50 within 150 seconds,
+which silently assumes at least 3 s/step, and it had no baseline to compare
+against -- a single hard threshold standing in for a measurement. A throughput
+trace compared against the known 0.72 s/step is the right shape for this, and
+is what 253041 collects.
