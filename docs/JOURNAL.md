@@ -1813,3 +1813,130 @@ not as a footnote and not omitted.
 The control run is not cancelled, only deprioritised. It remains the thing that
 would separate "our harness differs" from "their number is not reproducible
 from the published configuration".
+
+## 2026-08-26 -- where the operator comes from, and what alpha actually measures
+
+### The derivation, from the author rather than from the code
+
+Recorded because the code reads as "Pion with a metric bolted on", and the
+order it was actually arrived at is the reverse. The intent was **K-FAC in a
+Lie group**: do natural gradient descent where the parameter is a rotation, and
+Pion is simply the choice of group.
+
+The chain, verified against `direction.py`:
+
+1. Parametrise by the algebra, `W <- exp(-X_out) W exp(-X_in)`, both `X` skew,
+   so `dW = -(X_out W + W X_in)` to first order.
+2. Push the weight gradient through: `dL = -<G W^T, X_out> - <W^T G, X_in>`.
+3. Substitute the *per-sample* gradient `G = delta x^T`, which is rank one.
+   Then `W^T G = u x^T` with `u = W^T delta`, and `G W^T = delta y^T` with
+   `y = Wx`. The skew parts are the **bivectors** `u ^ x` and `delta ^ y`. This
+   is the step the whole construction rests on: the generator is a wedge of
+   exactly two vectors *because* the layer gradient has rank one.
+4. The Fisher is the covariance of generators. Using `<u^x, X> = 2 u^T X x`,
+       F(X) = 2 E[u u^T X x x^T] - 2 E[x x^T X^T u u^T]
+   and the **single approximation of the entire method** -- K-FAC's
+   independence of `u` and `x` -- factorises both expectations into
+       F(X) = 2 (S X A + A X S),   A = E[x x^T],  S = E[u u^T] = W^T E[dd^T] W
+   Everything else above is an identity.
+
+Note what `S = I` actually sets to the identity: `E[delta delta^T]`, the
+*output-side* backprop covariance. The pull-back through `W` is kept exactly,
+which is why `build_bases` uses the pair `(A, W^T W)` on the in-side and
+`(I, W A W^T)` on the out-side. So `S = I` removes the congruence on the
+out-side always, and on the in-side only when `W^T W = I`.
+
+### Damping: the gradient's own smallness cancels half the divergence
+
+The design argument for the single floor `max(lam, eps lam_max)`, with no
+schedule, was that directions with degenerate eigenvalues also carry small
+gradient, so the division is not as violent as it looks. That is right, and it
+is right by exactly a factor of one half in the exponent.
+
+In the eigenbasis of `A`, `Y_ij = (u~_i x~_j - x~_i u~_j) / (2(lam_i + lam_j))`.
+Since `A = E[x x^T]`, we have `E[x~_i^2] = lam_i`, so the numerator carries
+`sqrt(lam)` while the denominator carries `lam`. Hence `||X|| ~ eps^(-1/2)`,
+not `eps^(-1)`.
+
+Measured (`scripts/probes/damping_scaling.py`, CPU, fp64, `cond(A) = 1e8`,
+against a control with a random skew `G` of equal norm, uncorrelated with `A`):
+
+| eps  | slope, real G | slope, random G | \|\|X\|\| real | \|\|X\|\| random |
+|------|---------------|-----------------|----------------|------------------|
+| 1e-4 | 0.45          | 0.91            | 1.2e+02        | 5.1e+03          |
+| 1e-6 | 0.42          | 0.85            | 8.9e+02        | 2.7e+05          |
+| 1e-7 | 0.39          | 0.76            | 2.2e+03        | 1.6e+06          |
+
+Slope is decades of `||X||` gained per decade of `eps` lowered: 0.5 means the
+cancellation works, 1.0 means it does not. Real gradient sits at 0.42-0.47,
+control at 0.85-0.92; a factor of 720 in step norm at `eps = 1e-7`.
+
+This is worth a sentence in the paper. It explains the four-order plateau in
+`eps` -- a naive `1/lam` analysis predicts a sharpness that is not there.
+
+Second structural point: the denominator is `lam_i + lam_j`, a **sum**. A single
+degenerate direction is harmless; both indices must be degenerate at once.
+
+### alpha >= 1 is produced by the floor, not by a missing Jacobian
+
+`natural_gradient` divides by `basis.denominator`, built from the **floored**
+spectrum. `fisher_apply`, which `curv` calls, uses the **raw** `A` and `W^T W`.
+These are two different operators. Writing `lam` raw and `lamt` floored:
+
+    quad = sum g^2 / lamt          (against the floored operator)
+    curv = sum g^2 lam / lamt^2    (against the raw one)
+
+The floor only raises, so `lam <= lamt`, so `lam/lamt^2 <= 1/lamt` termwise, so
+
+    curv <= quad  identically   =>   alpha = quad/curv >= 1  by construction
+
+`alpha` is pinned at `alpha_max = 1` structurally. It is not evidence that the
+curvature is underestimated, and it does **not** need the missing-Jacobian
+explanation to account for it. Confirmed numerically in
+`scripts/probes/curv_shapes.py`: `quad/curv -> 1.0000` exactly when the floor
+stops being active (`#floored = 0`), for every weight shape.
+
+This corrects the reading in `direction.trust_region_alpha`'s docstring and the
+comment block in `fast._apply`. Staleness is a real second mechanism, but it is
+the one that dominates only when the step is large: at `eta = 1.0` the basis
+falls behind fast, the current `F` outgrows the `F~` that built `X`, `curv`
+overtakes `quad`, and `alpha` sits at 0.13-0.22. Measured. So the trust region
+works exactly as designed in the regime it was designed for, and is masked by
+the floor in the small-step regime where we actually run.
+
+The colleague's H1 stands as a criticism of the Fisher itself -- `tr(D A D^T)`
+is not the true GGN -- but it is not what produces `alpha == 1`.
+
+### What did NOT cause the 1e32, and what did
+
+Refuted (`scripts/probes/curv_shapes.py`): rank-deficient grams from the layer
+shapes. A wide `W` (192x768) has a 576-dimensional exact kernel in `W^T W`; a
+tall `W` (768x192) has one in `W A W^T`. Both were plausible sources of a raw
+operator that annihilates `X`. Neither does anything: `quad/curv` comes out
+1.04, 1.05 and 1.09 for square, wide and tall, and **fp32 agrees with fp64 to
+six digits**, so there is no catastrophic cancellation either.
+
+Found (`scripts/probes/real_spectra.py`, run against
+`runs/qoc/ngd-pion-lr0.003-s0-235faf3851/checkpoint.pt`): the real `A` is
+rank-deficient on **all 56 layers**. `lam_min` is an exact zero everywhere,
+true condition number is infinite, and between 21 and 693 eigenvalues per layer
+sit below the floor -- on layer 52 (n = 1376) that is half the spectrum. No toy
+reproduced this because every toy used a designed spectrum of 6-8 decades with
+no zeros.
+
+With `lam = 0` exactly, `curv` receives `g^2 * 0 / lamt^2 = 0` from those
+directions while `quad` receives `g^2 / lamt > 0`. The gradient is non-zero
+there because `A` and `G` are not sampled from the same tokens: `A` is an EMA
+accumulated from **one micro-batch per step** (`train.py`: `recorder.enabled =
+micro == 0`) and decayed over past steps, while `G` is the full current batch.
+`A` does not know about directions the current batch does have energy in.
+
+**Also**: the logged `cond_A` of 1e5-1e7 is an artefact. `instrument._cond`
+discards every eigenvalue below `lam_max * 1e-12` and reports the condition
+number of what remains, so it cannot report the rank deficiency by
+construction. A day was spent reading a number that hid the phenomenon. Fixing
+it is a diagnostic-only change and has not been made yet.
+
+Not shown: that this mechanism sums to the observed 1e32 across all layers.
+That needs the real `G`, i.e. a forward/backward, i.e. GPU. Still pending, and
+still requires the user's go-ahead.
