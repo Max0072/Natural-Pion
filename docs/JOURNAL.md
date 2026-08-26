@@ -2174,3 +2174,98 @@ measurement shows seconds, the explanation is already dead.
 * A throughput guard must compare a trace against a known baseline, not test a
   single hard threshold. The guard that cancelled 252848 demanded step 50 inside
   150 s, which silently assumed 3 s/step and killed a run that was merely cold.
+
+## 2026-08-26 -- jobs 253057 / 253058: what `alpha == 1` actually is
+
+500 steps each, `eta = 3e-3` and `eta = 1.0`, on idle rtx6004, 8m50s and 8m35s,
+0.27 rtx-hours for the pair. Throughput converged to 0.93 s/step as the cache
+warmed. Losses reproduce the earlier runs, so the diagnostics did not perturb
+the trajectory.
+
+### Prediction 3 confirmed: the `angle = 0` readings were the estimator
+
+`#angle == 0` is **0 of 56 at every logged step in both runs**, where job 246666
+had all 56 layers reading exactly zero from step 700 on. At `eta = 1.0`, step
+500, the smallest angle across layers is 1.155e-06. So the absorbing state in
+`spectral_norm` was the whole of it, and "the rotation collapses at `eta = 1`"
+was an artefact of how it was measured, not a fact about the method.
+
+### Prediction 2 confirmed, and sharper than predicted: `curv` goes *negative*
+
+    eta 3e-3, median over the second half
+    depth      quad         curv          quad/curv
+        1   4.03e-03    -8.20e-06         4.86e+32
+        3   2.19e-03    -3.54e-04         1.64e+35
+        4   1.77e-03    -8.89e-04         1.32e+35
+
+with `curv` reaching **-1.336** across steps. Not underflow: a genuine negative,
+six hundred times `quad` in magnitude.
+
+This contradicts the proof recorded above that `<X, F(X)> = 4||B^1/2 X C^1/2||_F^2
+>= 0`. The proof is correct, and its hypothesis is that `B` and `C` are PSD.
+
+**They are not.** Read straight off the checkpoints without clamping
+(`scripts/probes/negative_eigs.py`):
+
+    eta 3e-3 (working):  6253 negative eigenvalues across 56 layers
+                         layer 2: 190 of 512 negative
+                         layer 3: 119 negative, lam_min = -2.128, lam_max = 446
+    eta 1.0  (broken):   2 negative eigenvalues in total
+
+`A` is an EMA of `x x^T`, a convex combination of PSD matrices, so this is
+accumulated fp32 error -- summing 131072 rows against a trace far larger than
+`lam_max`, compounded by an EMA of horizon 20. The accumulator is otherwise
+careful: `exact_fp32` around the gram, and a dtype check that refuses bf16.
+
+**The chain, complete.** `A` loses positivity -> `floor_eigenvalues` clamps at
+zero and applies the floor, so the *basis* is sanitised -> `fisher_apply` is
+handed the *raw* `A` -> `X` is largest in exactly the floored directions, which
+is where the negative eigenvalues sit -> `curv` goes negative ->
+`curv.clamp_min(tiny)` turns it into `+1.18e-38` -> `quad/curv = 4e-3/1.18e-38
+= 3e35` -> `alpha` clamps to 1.
+
+So `alpha == 1` in the working regime means neither "the basis is fresh" nor
+"the curvature is underestimated". It means the curvature came out negative and
+was silently replaced by plus-epsilon. **The trust region does not operate at
+all in the regime we actually train in**, and the missing-Jacobian hypothesis
+is not needed to explain any part of this.
+
+The defect is one asymmetry: the step is built in a geometry that has been
+cleaned (clamp, then floor) and judged in one that has not.
+
+### Prediction 1 not confirmed as stated
+
+`floor_share` does not track `quad/curv` step by step. On the out-side it sits
+at 0.77-0.80 throughout the trained phase, at steps where the ratio is 1e35 and
+equally at steps where it is 0.17. What does track the ratio is the
+refactorisation cycle: steps 101, 201, 301, 401 -- one step past each refactor,
+`t_fac = 100` -- carry the huge ratios and negative `curv`, while 151, 251, 351,
+451 are moderate and positive. So the floor is the standing condition that puts
+`X` into the degenerate directions, and the refactor cycle is what decides
+whether the sign flips there. Necessary, not sufficient.
+
+### The counterintuitive one, worth a line in the paper
+
+The *working* run has the degenerate covariance and the *diverging* one does
+not: `null_frac` 0.24-0.31 against ~0.00, and 6253 negative eigenvalues against
+2. At `eta = 1.0` the weights thrash, activations stay large and diverse, and
+`A` keeps full rank. At `eta = 3e-3` the model actually learns, activations
+collapse onto a low-dimensional manifold, and `A` degenerates. **The better the
+optimisation works, the more degenerate its own curvature estimate becomes.**
+
+### My diagnostics hid this twice
+
+`instrument._cond` discarded everything below `lam_max * 1e-12` and reported the
+condition number of the rest. Then `_spectrum`, written to replace it, called
+`.clamp_min(0.0)` on the same reasoning `floor_eigenvalues` uses -- that `A` is
+PSD by construction -- and so reported `lam_min = 0` for every layer while the
+truth was thousands of negatives. Both are now fixed; `lam_min` is raw and
+`n_negative` and `neg_frac` are logged. A diagnostic that sanitises its input
+cannot find a sanitation bug.
+
+### Open, and it is a trajectory decision
+
+`quad` and `curv` must be evaluated against the same operator. Doing that makes
+`alpha` mean what its docstring claims -- a staleness readout -- and makes the
+trust region live for the first time in this regime, which changes the
+trajectory. Not touched pending a decision on which operator is the right one.

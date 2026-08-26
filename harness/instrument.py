@@ -62,6 +62,8 @@ def layer_diagnostics(optimizer, names: dict | None = None) -> list[dict]:
                     "lam_min_A": spec["lam_min"],
                     "n_below_floor": spec["n_below_floor"],
                     "null_frac": spec["null_frac"],
+                    "n_negative": spec["n_negative"],
+                    "neg_frac": spec["neg_frac"],
                     "floored_in": fl_in,
                     "floored_frac_in": fl_in / n_in,
                     "floored_frac_out": fl_out / n_out,
@@ -123,13 +125,23 @@ def _spectrum(A: torch.Tensor, eps: float) -> dict:
     `quad` and `curv` disagree, and precisely the thing this number cannot
     show. `n_below_floor` and `lam_min` are the honest ones.
     """
-    w = torch.linalg.eigvalsh(A.float()).clamp_min(0.0)
+    # Not clamped. An earlier version wrote `.clamp_min(0.0)` here, on the same
+    # reasoning as `floor_eigenvalues` -- that `A` is PSD by construction and a
+    # negative value is rounding -- and so reported `lam_min = 0` for every
+    # layer of the working run while the truth was 6253 negative eigenvalues
+    # across 56 layers, one of them at -2.13 against a `lam_max` of 446. That
+    # is the quantity that sends `curv` negative, and the diagnostic that was
+    # supposed to find it was hiding it.
+    w = torch.linalg.eigvalsh(A.float())
     lam_max = float(w.max())
-    kept = w[w > lam_max * 1e-12]
+    pos = w.clamp_min(0.0)
+    kept = pos[pos > lam_max * 1e-12]
     return {
         "cond_trunc": float(lam_max / kept.min()) if kept.numel() else float("inf"),
         "lam_max": lam_max,
         "lam_min": float(w.min()),
+        "n_negative": int((w < 0).sum()),
+        "neg_frac": float((w < 0).sum()) / w.numel(),
         "n_below_floor": int((w < lam_max * eps).sum()),
         "null_frac": float((w < lam_max * eps).sum()) / w.numel(),
     }
@@ -149,11 +161,13 @@ def summarise(rows: list[dict]) -> dict:
     c_lo, c_hi = stat("cond_A")
     n_lo, n_hi = stat("null_frac")
     f_lo, f_hi = stat("floored_frac_in")
+    g_neg_lo, g_neg_hi = stat("neg_frac")
     return {
         "alpha_min": a_lo, "alpha_max": a_hi,
         "angle_min": g_lo, "angle_max": g_hi,
         "condA_min": c_lo, "condA_max": c_hi,
         "nullfrac_min": n_lo, "nullfrac_max": n_hi,
+        "negfrac_min": g_neg_lo, "negfrac_max": g_neg_hi,
         "floored_min": f_lo, "floored_max": f_hi,
         "skew_ratio_min": s_lo, "skew_ratio_max": s_hi,
         "qoc_min": q_lo, "qoc_max": q_hi,
