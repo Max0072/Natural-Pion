@@ -2514,3 +2514,39 @@ Then the sweep that has never actually been run: `eta` varied with AdamW pinned
 at a sane, fixed value. Only after that does any statement about NGD-Pion's
 learning rate mean anything -- including the angle cap, whose test needs
 repeating on an uncontaminated arm.
+
+### Job 253129: `eta = 1.0` does not diverge, and the rotation reaches 2.31 rad
+
+The first run in this project where the rotational learning rate is varied and
+AdamW is not. 150 steps, `--lr 1.0 --adamw-lr 1e-3`:
+
+    eta 1,    adamw 1e-3   10.4924  7.2797  7.2213  7.0416  6.7534  6.4959  6.1776  6.0299  6.0241
+    eta 1,    adamw 1.0    10.4924 49.7066  9.0467  9.5823  8.2705  9.9630  8.7585  8.9981  8.1820
+    eta 3e-3, adamw 3e-3   10.4924  7.3516  7.1256  6.5301  6.1524  5.9799  5.7922  5.7020  5.7315
+
+Monotone descent, no spike anywhere. **"NGD-Pion detonates at large `eta`" was
+AdamW throughout**, and every conclusion drawn from that -- the cold-Fisher
+warmup experiment, the trust-region urgency, the angle cap's motivation --
+rested on it.
+
+And the number this project exists for:
+
+    eta 1,    adamw 1e-3:   angle up to 2.31 rad,  alpha [4.6e-04, 7.3e-01]
+    eta 3e-3, adamw 3e-3:   angle up to 0.0569 rad
+
+**A 2.31 radian rotation with the loss descending monotonically**, forty times
+the largest rotation the previous best arm ever took. `spectral_norm` returns a
+Rayleigh quotient, so the true angle is at least that. This is the first direct
+measurement of the claim the method is built on: `F^-1` preconditioning makes a
+large step *survivable*, not merely representable. `alpha` spans three orders
+across layers meanwhile, so the trust region is working rather than saturated.
+
+**The loss comparison is still confounded and is not being made.** The
+`eta = 3e-3` arm ran AdamW at 3e-3, this one at 1e-3. On a 150-step horizon the
+embedding and head are most of what moves, so a threefold difference in their
+learning rate explains 6.0241 against 5.7315 at least as well as `eta` does.
+That is yesterday's mistake mirrored, and job 253132 -- `eta = 3e-3` with AdamW
+pinned at 1e-3 -- is the control that makes the two arms differ in one thing.
+
+Note also that the ceiling is unknown again. `eta = 1` was the largest rate ever
+tried, it is comfortable, and nothing here says where the limit is.
