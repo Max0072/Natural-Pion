@@ -99,6 +99,18 @@ class RunConfig:
     # what is being compared
     optimizer: str = "ngd-pion"     # ngd-pion | ngd-pion-ref | pion | pion_ablated | adamw
     lr: float = 1e-3
+    # AdamW's learning rate. `0` means "follow `lr`", which is what their
+    # published configuration does -- one rate for both optimizers, 1e-3 --
+    # so the anchor and every configuration written before this field existed
+    # are unaffected.
+    #
+    # Setting it is what any statement about the *rotational* optimizer's
+    # learning rate requires. Tied together, raising `lr` also raises AdamW's
+    # rate on the embedding, the output head, the norm gains and the biases,
+    # and AdamW detonates there long before the rotation does anything at all.
+    # The `eta` sweep recorded in docs/JOURNAL.md before 2026-08-26 varied both
+    # at once and measured AdamW.
+    adamw_lr: float = 0.0
     seed: int = 0
 
     # the model, as their script configures it

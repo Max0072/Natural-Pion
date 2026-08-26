@@ -33,13 +33,22 @@ from .model import Transformer
 __all__ = ["build_optimizers", "lr_at", "train"]
 
 
-def lr_at(step: int, cfg: RunConfig) -> float:
-    """Cosine decay to `lr_min`. Their script warms up over zero steps."""
+def lr_at(step: int, cfg: RunConfig, base: float | None = None) -> float:
+    """Cosine decay to `lr_min`. Their script warms up over zero steps.
+
+    `base` overrides the peak so a second optimizer can share the schedule's
+    *shape* without sharing its scale. The floor is scaled by the same factor,
+    which keeps `lr_min / lr` -- the depth of the decay -- identical between
+    them; a fixed absolute floor would otherwise mean something quite different
+    to a rate three hundred times smaller.
+    """
+    peak = cfg.lr if base is None else base
+    floor = cfg.lr_min * (peak / cfg.lr) if cfg.lr else cfg.lr_min
     if step < cfg.warmup_steps:
-        return cfg.lr * (step + 1) / cfg.warmup_steps
+        return peak * (step + 1) / cfg.warmup_steps
     progress = (step - cfg.warmup_steps) / max(1, cfg.train_steps - cfg.warmup_steps)
     progress = min(1.0, max(0.0, progress))
-    return cfg.lr_min + 0.5 * (cfg.lr - cfg.lr_min) * (1.0 + math.cos(math.pi * progress))
+    return floor + 0.5 * (peak - floor) * (1.0 + math.cos(math.pi * progress))
 
 
 # Two names for NGD-Pion, and the split is about provenance rather than taste.
@@ -144,7 +153,7 @@ def _adamw(params, cfg: RunConfig) -> torch.optim.AdamW:
             {"params": rest, "weight_decay": cfg.weight_decay},
             {"params": flat, "weight_decay": 0.0},
         ]
-    return torch.optim.AdamW(groups, lr=cfg.lr, betas=betas, eps=cfg.adam_eps)
+    return torch.optim.AdamW(groups, lr=cfg.adamw_lr or cfg.lr, betas=betas, eps=cfg.adam_eps)
 
 
 def _autocast(cfg: RunConfig, device: str):
@@ -330,11 +339,16 @@ def train(
     window_time, window_step = time.time(), first
     for step in range(first, steps):
         lr = lr_at(step, cfg)
-        for opt in (rot, adamw):
-            if opt is None:
-                continue
-            for group in opt.param_groups:
+        # Two schedules when `adamw_lr` is set, one when it is not. Sharing the
+        # rate is their published design and stays the default; decoupling is
+        # what makes a sweep over `lr` a sweep over the rotational optimizer
+        # rather than over AdamW.
+        adamw_lr = lr if not cfg.adamw_lr else lr_at(step, cfg, cfg.adamw_lr)
+        if rot is not None:
+            for group in rot.param_groups:
                 group["lr"] = lr
+        for group in adamw.param_groups:
+            group["lr"] = adamw_lr
 
         model.zero_grad(set_to_none=True)
         loss_sum = 0.0
