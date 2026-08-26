@@ -2455,3 +2455,62 @@ Two things worth keeping.
 *smaller* actual rotation, because `alpha` crushes it harder. Step size is
 `eta * alpha` and that product is not monotone in `eta`, so `eta` alone cannot
 be read as step size anywhere in this project's records.
+
+## 2026-08-26 -- the learning-rate sweep never varied only `eta`
+
+Jobs 253124/253125/253126 capped the rotation at 0.1 rad. The control behaved
+exactly as predicted -- `eta = 3e-3` went 5.7315 to 5.7320, the cap never
+binding at a measured `angle_max` of 0.057 -- and the other two did not:
+
+    eta 0.5   cap off 6.7215   cap 0.1  7.1253    worse
+    eta 1.0   cap off 8.1820   cap 0.1  7.7970    marginally better
+
+The number that matters is neither of those. At `eta = 1.0` the cap cuts the
+first step from 5.66 rad to 0.1, a factor of 57, and the loss at step 20 is
+**46.81 against 49.71**. Cutting the rotation fifty-sevenfold changed almost
+nothing, so the blow-up was never the rotation.
+
+**One learning rate drives both optimizers.**
+
+    _adamw(groups, lr=cfg.lr, ...)
+    lr = lr_at(step, cfg)
+    for opt in (rot, adamw): ... group["lr"] = lr
+
+`--lr 1.0` therefore runs **AdamW at 1.0** on the embedding, the output head,
+the norm gains and the biases. That detonates on its own and says nothing
+whatever about NGD-Pion.
+
+### What this invalidates
+
+* **The whole `eta` sweep.** 1e-3, 3e-3, 0.5, 1.0 varied AdamW's learning rate
+  in lockstep. The two arms that "diverged" had AdamW at 0.5 and 1.0. The
+  conclusion "3e-3 works, 1.0 detonates" is a statement about AdamW.
+* **The cold-Fisher warmup experiment**, which found warmup made `eta = 1`
+  worse and moved the blow-up to where warmup ended. Same contamination.
+* **Today's angle-cap test**, for the two large-`eta` arms. The cap can only
+  bound the rotation of the weights Pion owns; the damage was in AdamW's
+  parameters, which it cannot touch. The `eta = 3e-3` control stands.
+* **`pion_ablated`'s optimum**, which was never explorable: raising `lr` to
+  find it would have blown up AdamW first. Its toy optimum was 2.2e+01.
+
+### What survives, and the distinction matters
+
+The algebra does. `alpha` is identically 1 on a fresh basis because
+`curv = <X, F(X)> = <X, G> = quad` is an identity, so it measures staleness and
+cannot measure step size. That is a proof, and it does not depend on any run.
+
+What does not survive is the *demonstration* I attached to it. I used the
+`eta = 1.0` blow-up as evidence that the missing bound has teeth, and that
+evidence was contaminated. The gap is still real; its consequences are now
+unmeasured.
+
+### The fix, and what has to be re-run
+
+Add `adamw_lr` to `RunConfig`, defaulting to `0.0` meaning "follow `lr`", so
+the anchor and every existing configuration reproduce bit-for-bit and only an
+explicit setting decouples the two.
+
+Then the sweep that has never actually been run: `eta` varied with AdamW pinned
+at a sane, fixed value. Only after that does any statement about NGD-Pion's
+learning rate mean anything -- including the angle cap, whose test needs
+repeating on an uncontaminated arm.
