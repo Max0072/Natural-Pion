@@ -1759,3 +1759,57 @@ about the usable range of `eta` was unfounded.
   Comparing the arms while one of them has never been given its own regime
   measures nothing, and at `1e-3` they are tied to 0.016, which is what that
   looks like.
+
+---
+
+## 2026-08-26 — anchor round 3, and the decision to accept it
+
+Jobs 246482/246483 finished.
+
+| | target | measured | delta | relative |
+|---|---|---|---|---|
+| bilateral | 3.3575 | **3.3805** | 0.0230 | 0.69% |
+| alternate | 3.3654 | **3.3954** | 0.0300 | 0.89% |
+
+Gap between the arms **0.0149** against their published 0.0079.
+
+| round | bilateral | alternate | gap | level delta |
+|---|---|---|---|---|
+| 1 | 3.3997 | 3.4352 | 0.0355 | 0.042 / 0.070 |
+| 2 | 3.4021 | 3.4161 | 0.0140 | 0.045 / 0.051 |
+| **3** | **3.3805** | **3.3954** | **0.0149** | **0.023 / 0.030** |
+
+Round 3's two fixes — AdamW betas `(0.9, 0.999) -> (0.9, 0.95)` and no weight
+decay on 1-D parameters — **halved the level error** and **left the gap
+untouched**. That is consistent with what they change: both act on the half of
+the model Pion does not own, and both act on the two arms identically. So
+whatever remains of the gap discrepancy sits on the Pion side, not the AdamW
+side. Worth knowing if anyone returns to this.
+
+### Accepted, against the pre-registered criteria, deliberately
+
+`docs/RESUME.md` fixed the criteria before the numbers existed: gap within
+0.005 of 0.0079, and `matched: true` on both levels. Round 3 meets neither —
+the gap is off by 0.0070, and the 0.02 absolute tolerance is exceeded by both
+levels. The pre-decided fallback was to stop looking for a fifth difference and
+run their unmodified code as a control.
+
+**The user overrode that and accepted the anchor**, on the grounds that the
+level reproduces to under 1% and the arm ordering and gap are qualitatively
+right. Recorded as an override rather than quietly folded in, because the
+criteria were written down in advance precisely so that accepting a miss would
+have to be a decision someone makes rather than a threshold that drifts.
+
+What it licenses: internal comparisons in this harness. `ngd-pion` against
+`pion_ablated` never depended on the anchor anyway — both arms share the
+implementation, the data and the sampler, so a common offset is common.
+
+What it does not license: quoting our numbers as reproductions of theirs, or
+any claim resting on the *magnitude* of the bilateral/alternate gap, which
+comes out 1.9x theirs. In the paper this belongs in the text as a stated
+limitation — "reproduced to 0.7% on the level; the arm gap comes out 1.9x" —
+not as a footnote and not omitted.
+
+The control run is not cancelled, only deprioritised. It remains the thing that
+would separate "our harness differs" from "their number is not reproducible
+from the published configuration".
