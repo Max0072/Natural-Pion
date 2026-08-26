@@ -133,10 +133,17 @@ def spectral_norm(
         instead of latching, so the next run distinguishes the two.
         """
         n = z.norm(dim=-1, keepdim=True)
-        dead = n <= tiny
-        if bool(dead.any()):
-            z = torch.where(dead, torch.ones_like(z), z)
-            n = z.norm(dim=-1, keepdim=True)
+        alive = n > tiny
+        # Branchless on purpose. The obvious `if dead.any(): ...` costs a
+        # device-to-host synchronisation on every call, and this runs five
+        # times per `spectral_norm`, twice per layer, 56 layers -- 560 syncs a
+        # step against the 56 the step already had. Measured: 0.72 s/step
+        # became upwards of 24, and jobs 252299 and 252302 were cancelled for
+        # it. The reseed vector is all-ones, whose norm is sqrt(n), so the
+        # replacement needs no second reduction either.
+        root_n = float(z.shape[-1]) ** 0.5
+        z = torch.where(alive, z, torch.ones_like(z))
+        n = torch.where(alive, n, torch.full_like(n, root_n))
         return z / n.clamp_min(tiny)
 
     if v is None:

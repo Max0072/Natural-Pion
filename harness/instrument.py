@@ -49,6 +49,8 @@ def layer_diagnostics(optimizer, names: dict | None = None) -> list[dict]:
             lam = basis_in.lam
             positive = lam[lam > 0]
             spec = _spectrum(state["cov"].matrix, group["eps"])
+            fl_in, n_in = _at_floor(basis_in, group["eps"])
+            fl_out, n_out = _at_floor(basis_out, group["eps"])
             rows.append(
                 {
                     "name": (names or {}).get(id(p), f"{tuple(p.shape)}"),
@@ -60,6 +62,10 @@ def layer_diagnostics(optimizer, names: dict | None = None) -> list[dict]:
                     "lam_min_A": spec["lam_min"],
                     "n_below_floor": spec["n_below_floor"],
                     "null_frac": spec["null_frac"],
+                    "floored_in": fl_in,
+                    "floored_frac_in": fl_in / n_in,
+                    "floored_frac_out": fl_out / n_out,
+                    "orthogonal_in": bool(basis_in.orthogonal),
                     "skew_ratio": float(state.get("skew_ratio", float("nan"))),
                     "quad": float(state.get("quad", float("nan"))),
                     "curv": float(state.get("curv", float("nan"))),
@@ -86,6 +92,23 @@ def _depth(names: dict | None, p: torch.Tensor) -> int:
         if part.isdigit():
             return int(part)
     return -1
+
+
+def _at_floor(basis, eps: float) -> tuple[int, int]:
+    """How many of a basis's eigenvalues the floor actually raised.
+
+    Not the same question as `_spectrum`'s `n_below_floor`, and the difference
+    is not academic. `n_below_floor` counts the degenerate directions of `A`,
+    but on the in-side `build_bases` takes the congruence path whenever
+    `W^T W != I`, and what gets floored there is the spectrum of the pencil
+    `A^-1/2 (W^T W) A^-1/2`, not of `A`. Job 252299 showed `blocks.0.attn.wq`
+    with `cond(A) = 86` and nothing below the floor, while the basis it was
+    solved in had been floored to a ratio of exactly `1/eps`. Measuring the
+    covariance alone would have reported that layer as healthy.
+    """
+    lam = basis.lam
+    hit = lam <= lam.amax(dim=-1, keepdim=True) * eps * (1.0 + 1e-5)
+    return int(hit.sum()), int(lam.numel())
 
 
 def _spectrum(A: torch.Tensor, eps: float) -> dict:
@@ -125,11 +148,13 @@ def summarise(rows: list[dict]) -> dict:
     g_lo, g_hi = stat("angle")
     c_lo, c_hi = stat("cond_A")
     n_lo, n_hi = stat("null_frac")
+    f_lo, f_hi = stat("floored_frac_in")
     return {
         "alpha_min": a_lo, "alpha_max": a_hi,
         "angle_min": g_lo, "angle_max": g_hi,
         "condA_min": c_lo, "condA_max": c_hi,
         "nullfrac_min": n_lo, "nullfrac_max": n_hi,
+        "floored_min": f_lo, "floored_max": f_hi,
         "skew_ratio_min": s_lo, "skew_ratio_max": s_hi,
         "qoc_min": q_lo, "qoc_max": q_hi,
     }

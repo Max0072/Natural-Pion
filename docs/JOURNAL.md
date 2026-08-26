@@ -1977,3 +1977,52 @@ floored operator instead, so that `quad` and `curv` describe the same geometry
 -- is deliberately left untouched until these numbers exist. It changes the
 trajectory, and there is no reason to change the trajectory and the diagnostics
 in the same step.
+
+### Cancelled: 252299 and 252302, on a synchronisation I introduced
+
+Both jobs were cancelled after 21.7 minutes each -- **0.72 rtx-hours spent for
+nothing**, and the fault was in the diagnostic patch, not in the cluster.
+
+The reseed added to `spectral_norm` was written as `if bool(dead.any()):`,
+which forces a device-to-host synchronisation on every call. It runs five times
+per `spectral_norm` at `angle_iters = 2`, twice per layer, across 56 layers:
+560 synchronisations a step, against roughly 170 the step already had, and
+11 312 on the steps where `angle_warmup = 50` applies. Throughput went from
+0.72 s/step to upwards of 24; step 0 completed and step 50 had not arrived
+twenty minutes later.
+
+Rewritten branchless -- `torch.where` on both the vector and its norm, using
+`sqrt(n)` for the all-ones reseed so no second reduction is needed. Behaviour
+is unchanged: the fp32 sweep over `||X||_2` gives the same estimates as before,
+correct to `1e-20` where the old code silently inflated `sigma` by eleven
+orders at `1e-16`.
+
+The lesson worth keeping: this patch was submitted to the queue having been
+checked for correctness on CPU and not at all for cost. Correctness tests
+cannot see a synchronisation. Anything added inside `_apply` runs 56 times a
+step and needs a throughput check before it needs a GPU-hours budget.
+
+### What the cancelled runs did show, at step 1
+
+Worth recording, because it changes a diagnostic. `blocks.0.attn.wq`, a square
+512x512 weight:
+
+    cond_A = 85.7    lam_min_A = 0.256    n_below_floor = 0    null_frac = 0
+    floor_share_in = 0.120    floor_share_out = 0.073    lam_ratio = 10000.0
+
+`A` is in excellent condition and has nothing below the floor -- and the floor
+is nevertheless fully active, `lam_ratio` being exactly `1/eps`. The reason is
+that `build_bases` takes the congruence path whenever `W^T W != I`, and what
+`basis_congruence` floors is the spectrum of the pencil
+`A^-1/2 (W^T W) A^-1/2`, not the spectrum of `A`.
+
+So `n_below_floor`, added yesterday and measured on `A`, is the wrong matrix
+for the in-side: it would have reported this layer as healthy. `_at_floor` now
+counts the floor on `basis.lam` directly, and `orthogonal_in` records which
+path built the basis. Also worth noting for its own sake: the in-side is on the
+congruence path even for square weights, so `W^T W = I` is not holding in
+practice, and why is a separate question.
+
+`qoc` at step 0 was 1.0004 to 1.0297 across layers -- the ratio is 1 on a fresh
+basis, exactly as the algebra says, so the 1e32 readings develop with staleness
+rather than being present from the start.
