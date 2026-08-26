@@ -2550,3 +2550,48 @@ pinned at 1e-3 -- is the control that makes the two arms differ in one thing.
 
 Note also that the ceiling is unknown again. `eta = 1` was the largest rate ever
 tried, it is comfortable, and nothing here says where the limit is.
+
+### Jobs 253132 / 253133: the first honest `eta` curve, and it reverses the ranking
+
+AdamW pinned at 1e-3 in all three, `eta` the only variable, 150 steps:
+
+    eta        0       20       40       60       80      100      120      140      149   angle_max
+    3e-3  10.4924   7.4204   7.2563   7.1482   6.9389   6.6273   6.3145   6.1570   6.1498   4.39e-02
+    0.5   10.4924   7.2726   7.2315   7.0554   6.7198   6.4615   6.1709   6.0116   6.0190   8.39e-01
+    1.0   10.4924   7.2797   7.2213   7.0416   6.7534   6.4959   6.1776   6.0299   6.0241   2.31e+00
+
+**`eta = 3e-3` is the worst of the three.** 0.5 and 1.0 are indistinguishable
+from each other and both beat it by about 0.13. The optimum this project has
+used since the beginning was AdamW's optimum, found honestly and attributed to
+the wrong optimizer.
+
+The size of that confound, measured directly: the same `eta = 3e-3` arm gives
+5.7315 with AdamW at 3e-3 and 6.1498 with AdamW at 1e-3. A threefold change in
+AdamW's rate moves the 150-step loss by 0.42, three times what a
+three-hundredfold change in `eta` moves it. At this horizon the embedding and
+head are most of what is learning.
+
+The angle grows with `eta` but sublinearly -- 0.044, 0.84, 2.31 rad for a
+`1 : 167 : 333` ratio of rates -- so `alpha` compensates partially and not
+nearly fully.
+
+(An earlier reading of "the angle at `eta = 0.5` is two orders smaller" was a
+mid-run point at step 40 misread as a final. There is no non-monotonicity.)
+
+### What cannot be concluded, and why that is a hole in the method
+
+**Seed noise has never been measured in this project.** The gap between 0.5 and
+1.0 is 0.005 and means nothing. Whether the 0.13 over `eta = 3e-3` means
+anything is also unknown. Every comparison from here needs a noise floor and
+there isn't one.
+
+**150 steps is very early.** The loss is 6.0 against the anchor's 3.36 at
+73 242 steps. Rankings at this horizon invert routinely.
+
+The defensible statement is narrow: **the optimum `eta` is not below 0.5, and
+3e-3 was AdamW's optimum.** Everything finer is below the resolution of what
+has been run.
+
+Next, in this order: one repeat seed at `eta = 1.0` to price a comparison, then
+upward -- 3, 10, 30 -- because a plateau at 0.5 to 1.0 says the ceiling is
+higher than anything tried and it has never been seen.
