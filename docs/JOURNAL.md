@@ -2383,3 +2383,46 @@ invisible.
 Next, and in this order: re-run the 500-step pair to replace the numbers this
 journal currently carries, then sweep `T_fac`, which has never been varied and
 is now the parameter that matters.
+
+### Job 253116: the trust region does not rescue `eta = 1.0`, and cannot
+
+Prediction, written before the run: with `alpha` alive, `eta * alpha` would be
+normalised and `eta = 1.0` would behave close to `eta = 3e-3`. **Refuted.**
+
+    step |  eta 3e-3 loss   alpha            |  eta 1.0 loss    alpha
+       0 |    10.4924  [1.00e+00, 1.00e+00]  |   10.4924  [1.00e+00, 1.00e+00]
+      20 |     7.3516  [2.96e-04, 1.94e-02]  |   49.7066  [6.96e-08, 5.36e-03]
+      80 |     6.1524  [4.29e-04, 2.26e-02]  |    8.2705  [1.53e-08, 3.26e-03]
+     100 |     5.9799  [9.78e-01, 1.00e+00]  |    9.9630  [6.34e-01, 9.40e-01]
+     149 |     5.7315  [9.14e-02, 5.84e-01]  |    8.1820  [1.85e-02, 2.47e-01]
+
+The reason is in the `alpha` column and it is structural, not a defect.
+**`alpha` is identically 1 on a fresh basis** -- `X = F^-1 G` gives
+`curv = <X, F(X)> = <X, G> = quad` as an identity -- so the step immediately
+after every refactorisation is `c = eta * 1`. At `eta = 1.0` that is a rotation
+of order a radian, the model is wrecked in the first twenty steps (loss 49.7),
+and everything after is thrashing in the wreckage. It recurs on schedule: at
+step 100 `alpha` is back to 0.63-0.94 and the loss jumps from 8.27 to 9.96.
+
+**The trust region bounds staleness, not step size, and cannot bound step
+size.** On a fresh basis the quadratic model is self-consistent by
+construction, at any radius whatever. Self-consistency of the model says
+nothing about whether the model is valid at that radius. So `eta` remains a
+genuine hyperparameter and this mechanism cannot replace it -- which is what
+`ALGORITHM.md` says, and now there is a reason for it.
+
+**This is the colleague's H1, arriving from the other side.** His point was
+that `tr(D A D^T)` is not the true GGN. The consequence is exactly the above:
+the quantity called curvature is the curvature of *our model*, not of the loss,
+so it cannot detect that the step has left the region where the model holds.
+Recorded earlier in this journal is a claim that H1 was not needed to explain
+`alpha == 1` -- that stands, since that was the dtype bug -- but H1 *is* what
+explains this, and he was right on the substance.
+
+**One observation, not a conclusion.** With the covariance fixed, the `eta = 1`
+peak is *higher* than it was with the corrupted one: 49.7 here against 8.44 at
+step 100 for job 246666. The plausible reading is that bf16 noise was
+accidentally damping the inverse, making `X` smaller -- which rhymes with the
+earlier measurement that `S = I` beats the measured `S` because inverting a
+finite-sample covariance amplifies estimation noise. One run at 150 steps
+decides nothing; logged so the question stays visible.
