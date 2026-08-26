@@ -2269,3 +2269,70 @@ cannot find a sanitation bug.
 `alpha` mean what its docstring claims -- a staleness readout -- and makes the
 trust region live for the first time in this regime, which changes the
 trajectory. Not touched pending a decision on which operator is the right one.
+
+### Root cause: the covariance is accumulated in bf16, because autocast outranks `exact_fp32`
+
+The negative eigenvalues are not accumulated rounding. `A` is **stored in
+bf16**, and has been for every NGD-Pion run this project has produced. Read
+straight off the checkpoint:
+
+    layer 0  dtype torch.bfloat16   count 68157440   beta 0.95
+
+`observe` is called from a `register_forward_pre_hook`, so it executes inside
+the `_autocast` block of the forward pass. Autocast intercepts `matmul` by
+*operation*: fp32 operands and an enclosing `exact_fp32()` make no difference,
+the product is computed in bf16 and **returned as bf16**. The first
+`self._matrix = gram` fixes the dtype, `mul_().add_()` preserves it, and the
+covariance stays bf16 for the rest of the run. Demonstrated in
+`scripts/probes/autocast_bug.py`:
+
+    matmul outside autocast              torch.float32
+    matmul inside exact_fp32()           torch.float32
+    matmul inside autocast + exact_fp32  torch.bfloat16
+    observe() inside autocast            torch.bfloat16
+
+**Why this destroys positive definiteness, and quantising activations does
+not.** Rounding the *inputs* is harmless: the gram of bf16 vectors is still a
+gram, hence PSD, and measured it actually lifts `lam_min` because the
+quantisation noise contributes `E[e e^T] >= 0`. What happens here is different
+in kind -- the assembled matrix is rounded entrywise, *after* the outer
+product, and that perturbation has no sign constraint.
+
+The magnitude confirms it. Layer 3: largest diagonal entry 12.0, so the bf16
+step is `3.9e-3 * 12 = 0.047` per entry, and a random symmetric error of that
+size at `n = 512` has spectral norm about `2 * sqrt(512) * 0.047 = 2.1`.
+Measured `lam_min = -2.128`. The spectrum shape agrees too: a broad negative
+tail, 119 eigenvalues averaging -0.32, not a cluster of plus-or-minus delta at
+zero.
+
+And it explains why the *working* run is the degenerate one. Negative
+eigenvalues need eigenvalues near zero for the perturbation to push across, and
+only a trained model has them -- its activations collapse onto a
+low-dimensional subspace. At `eta = 1.0` nothing is learned, `A` keeps full
+rank, and there are 2 negatives in total against 6253.
+
+**The module warned about exactly this and guarded the wrong two doors.**
+`covariance.py` states that "perturbing `A` at bf16 level produces a step wrong
+by three to four orders of magnitude" and that "fp32 is the floor regardless of
+what precision the surrounding model trains in". It defends that with an
+`_ALLOWED` dtype check and with `exact_fp32` around the gram, and even notes
+"the dtype check above would not have caught it" about TF32. Autocast passes
+both, because it acts on the operation rather than on the requested dtype or
+the TF32 flags, and `self.dtype` is honestly fp32 the whole time -- it is the
+*output* of the matmul that disagrees with its operands.
+
+**Consequence for what is already recorded.** The `alpha == 1` account above
+stands as a description: `curv` really is negative, the trust region really is
+inert. Its root cause changes. It is not the architectural asymmetry between a
+sanitised basis and a raw `fisher_apply` -- that asymmetry is real but with an
+honest fp32 covariance it operates at the `1e-8` level and is harmless. It is a
+dtype bug, and fixing the dtype most likely repairs the trust region for free.
+
+Every NGD-Pion number this project has produced -- the learning-rate sweep, the
+`ngd-pion` against `pion_ablated` comparison, the whole `alpha`/`curv` story --
+was produced with a bf16 covariance. None of it is safe to quote until the pair
+is re-run.
+
+The fix is one line in `observe`, disabling autocast around the gram. It lives
+in the reference implementation and it changes the trajectory, so it is not
+being made unilaterally.
