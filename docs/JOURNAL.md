@@ -2426,3 +2426,32 @@ accidentally damping the inverse, making `X` smaller -- which rhymes with the
 earlier measurement that `S = I` beats the measured `S` because inverting a
 finite-sample covariance amplifies estimation noise. One run at 150 steps
 decides nothing; logged so the question stays visible.
+
+### Jobs 253119 / 253120: shortening `T_fac` does nothing, and refactorisation is free
+
+150 steps each at `eta = 0.5`, one at the default `T_fac = 100` and one at 25,
+against the two runs already in hand.
+
+    eta 3e-3  T_fac 100    loss 5.7315   alpha[9.1e-02,5.8e-01]  angle_max 5.69e-02  0.859 s/step
+    eta 0.5   T_fac 100    loss 6.7215   alpha[1.0e-02,1.3e-01]  angle_max 8.54e-03  0.858
+    eta 0.5   T_fac  25    loss 6.7880   alpha[2.7e-02,1.5e-01]  angle_max 2.15e-02  0.854
+    eta 1.0   T_fac 100    loss 8.1820   alpha[1.8e-02,2.5e-01]  angle_max 7.26e-03  0.858
+
+`T_fac = 25` is a hair *worse*, 6.7880 against 6.7215. The two effects cancel,
+as predicted before the run: the preconditioner really is more current --
+`alpha` holds at 7e-3 to 0.51 mid-cycle instead of 2e-7 to 1e-2, fifty times
+higher -- and it buys nothing, because the same change quadruples how often the
+unprotected fresh-basis step fires. The two runs agree to the digit at step 20
+(15.4499), before the first `T_fac = 25` refactor, and split at step 40 where
+the short-cycle arm is worse.
+
+Two things worth keeping.
+
+**Refactorisation is free.** 0.854 s/step against 0.858 for four times as many
+`eigh` calls. `T_fac` is not cost-constrained; it is simply not much of a lever.
+
+**The best arm takes the largest rotations.** `angle_max` 5.69e-02 at
+`eta = 3e-3` against 7.26e-03 at `eta = 1.0`. A larger `eta` produces a
+*smaller* actual rotation, because `alpha` crushes it harder. Step size is
+`eta * alpha` and that product is not monotone in `eta`, so `eta` alone cannot
+be read as step size anywhere in this project's records.
