@@ -3312,3 +3312,145 @@ One run, one seed. The `S` table is at step 150, by which point the model has
 moved and angles are 13x smaller than at step 0. `rho = 0.634` is a decent rank
 correlation, not an overwhelming one, and a scale law deserves a direct test
 rather than a correlation across a heterogeneous set of layers.
+
+## 2026-08-27 -- the measured `S` was never given its own `eta`, and `alpha` is not vestigial
+
+Read entirely off logs already on disk. No compute was spent on any of it.
+
+### The starting question
+
+"There is a run where `S = I` works fine at `eta = 1`; what broke when we put
+the real `S` in?" The premise needed checking before the question could be
+answered, and checking it inverted the question.
+
+### `eta = 1` is the `S = I` optimum, and it is the only `eta` the `S` variant
+### was ever run at
+
+`with_s.py` says in its own docstring that `eta` does not carry over -- `F`
+scales with `||D||`, which is `1e-18` to `1e-12` here -- and that it has to be
+swept from scratch. It never was. Every `ngd-pion-s` run without MC sampling
+sits at `eta = 1`:
+
+    ngd-pion-s  eta 1     with-s2 / speed2 / speed3 / speed4 / rho   6.1019 - 6.1226
+    ngd-pion    eta 1     htinit / initgrid / speed2 / speed3        5.8308
+
+The `eta` sweep that was launched for it -- `with-s`, `eta` in
+`{1e-8, 1e-10, 1e-12, 1e-14}` -- has `steps = 0` and `val = nan` in all four
+directories. It died before producing a single logged step, and nothing was
+put in its place.
+
+So "the measured `S` is worse" rests on one point, at the one `eta` the module
+itself says will be wrong.
+
+### Where an `S` variant did get a sweep, it produced the best number we have
+
+`mcfisher2`, `eta` in `{0.01, 0.5, 2, 8}`, 150 steps, seed 0, `T_fac = 25`,
+AdamW pinned at 1e-3:
+
+    eta 0.01   5.5517      <- best 150-step val in the project
+    eta 0.5    6.1535
+    eta 2      6.2060
+    eta 8      6.4689
+
+Against `ngd-pion`'s best over a far denser sweep (`eta` from 0.003 to 300),
+which lands at 5.74-5.83. The difference is about 0.28, and the seed spread on
+this configuration is 0.02-0.07, so it is not noise.
+
+**But `eta = 0.01` is the bottom of that grid.** The optimum is not bracketed
+and could be lower and better.
+
+### A confound found while checking, and it matters for how that number reads
+
+`mcfisher2`'s manifest records `ngd_power: 0.5`. **It had no effect.**
+`build_optimizers` passes `power` only for `ngd-pion-pow`:
+
+    if cfg.optimizer == "ngd-pion-pow":
+        kw["power"] = cfg.ngd_power
+
+`FastNGDPionS` never receives it, and `Basis.power` defaults to `1.0`. So the
+`mcfisher2` runs are `S` measured at power 1 with MC sampling on, not the
+powered variant their configuration claims. A config field that reaches the
+manifest, the run hash and the filename without reaching the optimizer is worse
+than a missing one -- it reads as a controlled variable and is not.
+
+Which also means the comparison this entry started out wanting to make --
+`ngd-pion-pow` (5.8240) against `mcfisher2` (5.5517) at a shared `eta = 0.01`
+-- is **not** one variable. It is four: `S`, the power, where the floor sits
+(operator against pencil, `ngd-pion-pow` inherits `OpDampedNGDPion`), and MC
+sampling.
+
+The genuinely one-variable pair is `ngd-pion` against `ngd-pion-s`: same floor,
+same power, same everything, `S = I` against `S` measured. That pair exists
+only at `eta = 1`.
+
+### The mechanism is confirmed, and it is an inversion rather than a fix
+
+`RESUME.md` presents `S = I` as getting the sign wrong:
+
+    S = I         :  ||X|| ~ ||delta|| / (||W|| ||x||)
+    S measured    :  ||X|| ~ 1 / (||W|| ||delta|| ||x||)
+
+Read as a statement about the spread across layers, this does not narrow
+anything -- it inverts it. `delta_rms` spans about 1200x across the 56 weights
+in **every** run measured, whatever the optimizer, because it is a property of
+the model. Predicted before looking: the correlation between per-layer angle
+and `delta_rms` must change sign. Measured, at the last logged step of each
+run, over all 56 weights:
+
+    family                              rho(log angle, log delta_rms)
+    ngd-pion / -op / -pow  (S = I)              +0.81 .. +0.92
+    ngd-pion-s             (S measured)         -0.37 .. -0.65
+
+Sign flipped, as predicted. The magnitude also fell, which is consistent with
+the inverse relation being the noisier of the two: under measured `S` the
+largest steps go to the layers with the weakest backward signal, which are the
+layers whose `D` is estimated worst.
+
+What this does **not** show is that the inversion is harmful. The one `eta`
+sweep an `S` variant received says the opposite.
+
+### `alpha` is not vestigial, and the entry saying so is wrong for this configuration
+
+`RESUME.md`, under "decided, do not re-litigate", states that `alpha` sits at
+1.000 for every `T_fac <= 10` and measures staleness rather than step size.
+For `ngd-pion-s` at `T_fac = 25` it does not:
+
+    step   alpha_min   alpha_max      rho    angle_max
+       0      1.0000      1.0000    0.083         67
+      90      2.6e-04      0.088    0.282        6.5
+     120      4.7e-04      0.194    0.226       12.4
+     149      7.2e-04      0.185    0.204        5.1
+
+The trust region is cutting the step by three to four orders every step.
+
+### The number that actually needs explaining
+
+**At step 0, `rho = 0.083`.**
+
+Step 0 has a fresh basis and `alpha = 1.000` exactly, and there
+`quad = curv` is an algebraic identity, not an approximation. The descent
+lemma predicts a decrease of `1/2 eta alpha quad`, which is what `pred_drop`
+records. The measured decrease is 8% of it.
+
+And `rho` is an over-estimate of the rotational part: `train.py` divides the
+**whole model's** decrease, AdamW's step on embeddings, head and norms
+included, by the rotational prediction alone.
+
+No staleness, no degeneracy, no damping and no choice of `S` is involved at
+step 0. The quadratic model is simply wrong by a factor of twelve on the first
+step, with `angle_max = 67` radians -- and a second-order expansion of the loss
+in a rotation of 67 radians has no validity to lose.
+
+`alpha` cannot repair that. It is one scalar per layer: it shortens the whole
+step uniformly, while the problem is that the *direction* is dominated by the
+flattest directions of `F`. Cutting by `1e-4` destroys the well-determined
+directions in order to tame the runaway ones, which is exactly the shape of
+`alpha = 2.6e-4` still leaving `rho = 0.2`.
+
+### Next, and why
+
+`ngd-pion-s` with MC sampling **off**, swept over `eta` around 0.01, against
+`ngd-pion`'s existing `eta` curve. One variable, `S`. It also brackets the
+optimum, which `mcfisher2` did not, and it separates `S` from MC sampling,
+which `mcfisher2` also did not.
+
