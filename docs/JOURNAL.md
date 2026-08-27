@@ -3099,3 +3099,100 @@ Two rules fall out, and both are about the setup rather than the numbers:
   method; keep `s/step` for planning wall clock.
 * **Check that the event being timed occurs inside the timing window.** Thirteen
   steps at a period of twenty-five is not "cheap", it is "never".
+
+## The true Fisher does not rescue `eta = 2` -- the step is noise, not curvature
+
+**Jobs 270051--270054** (rtx6002, ~4.5 min each), `ngd-pion-s` with
+`--ngd-fisher-mc-every 5`: every fifth step, `E[dd^T]` is accumulated from
+labels **drawn from the model** rather than from the data. That makes `F` the
+true Fisher, which for a Newton step on the population loss is genuine
+curvature, so `eta = 2` should have been the right step.
+
+An earlier attempt (270046--270049) died at 16 s on CUDA OOM. The cause was in
+the sampler I had just written: `logits.reshape(-1, V).float()` materialises a
+fp32 copy of a `131072 x 32100` bf16 tensor, 16.8 GB, and the softmax another
+16.8, against a step already peaking at 83 of 95 GB. Fixed by sampling in
+chunks of 8192 rows and dropping the activations before the real forward.
+
+| `eta` | final loss | `angle@0` | `angle@end` | `alpha@end` | `rho` med |
+|---|---|---|---|---|---|
+| 0.01 | **5.5725** | 6.715e+01 | 5.074e+00 | 7.153e-04 | 0.282 |
+| 0.5 | 6.1666 | 3.358e+03 | 8.533e+01 | 2.867e-06 | 0.000 |
+| 2 | 6.2784 | 1.343e+04 | 1.128e+02 | 7.004e-07 | 0.002 |
+| 8 | 6.4615 | 5.372e+04 | 4.147e+02 | 1.401e-06 | 0.001 |
+
+The angle is exactly linear in `eta`, so `eta = 1` would give `angle@0 = 6.7e3`
+radians. With the **empirical** Fisher the same variant at `eta = 1` gave
+`3.6e3`. The true Fisher made the step about **twice as large**, not three
+orders of magnitude smaller. The prediction was that `eta*` would move toward
+2; it did not move at all.
+
+### Why the hypothesis was wrong, and what actually sets the scale
+
+The empirical-vs-true distinction was the wrong axis. Both are averages of
+per-sample outer products, and **neither has any cancellation across samples**:
+
+```
+G = (1/N) sum_n  d_n x_n^T          <- terms nearly independent, so ||G|| ~ ||d x|| / sqrt(N)
+F = (1/N) sum_n (d_n x_n^T)^{(x)2}  <- terms all positive, so ||F|| ~ ||d x||^2
+```
+
+Hence
+
+```
+||F^-1 G||  ~  (||d x|| / sqrt(N)) / ||d x||^2  =  1 / (sqrt(N) ||d x||)
+```
+
+The huge step is not a bug and not a bad Fisher. It is that the minibatch
+gradient is `grad L_pop + noise`, so
+
+```
+F^-1 G  =  F^-1 grad L_pop  +  F^-1 noise
+```
+
+and when the population gradient is small relative to per-sample gradient
+noise, **the second term dominates**. What we compute is a Newton step taken
+mostly on the noise. Switching to the true Fisher changes the curvature
+estimate but does nothing to the numerator, which is where the problem lives.
+
+This is the same quantity already measured directly: per-component
+`|E[g]| / sqrt(E[g^2])` peaks at **0.035** on a fresh basis, against
+`1/sqrt(N) = 2.8e-3` for `N = 512 x 256 = 131072` tokens. Squared, that is the
+three orders of magnitude, and it was measured before this run rather than
+inferred from it.
+
+### What `eta` has actually been doing
+
+Not a learning rate and not a correction to a mis-derived factor. It is a
+**signal-to-noise shrinkage**, the classic form
+
+```
+eta*  ~  2 * ||grad L_pop||^2 / (||grad L_pop||^2 + noise^2)  ~  2 * SNR^2
+```
+
+which at `SNR = 0.035` gives `eta* ~ 2.5e-3`. The measured optimum is at or
+below 0.01 -- **the sweep does not bracket it**, 0.01 was the smallest value
+tried and it won. That has to be fixed before the number means anything.
+
+The derivation of `eta = 2` is not in question. It is the Newton step for a
+quadratic model of the *population* loss, and it stays correct there. What is
+wrong is the implicit assumption that a minibatch gradient can be fed to it.
+
+### The two things this makes testable
+
+1. **Bracket the optimum.** Sweep `eta` down through `3e-3, 1e-3, 3e-4`. If it
+   turns over near `2.5e-3`, the shrinkage formula is quantitative, not just
+   directional.
+2. **Batch-size scaling, the sharp one.** In the noise-dominated regime
+   `noise^2 ~ 1/N`, so `eta* ~ N`. Quadrupling the batch should move `eta*` up
+   by about four. Nothing else in the method predicts that, and a wrong
+   derivation would not produce a clean linear law. This is the experiment that
+   decides whether the account above is right.
+
+It also says what damping should be, which the whole `eps` line of work has
+been circling without a principle: not a numerical floor on `d_ij`, and not
+`max(x, eps)`, but the **per-component noise variance added to the curvature**.
+That is Bayesian shrinkage per eigendirection, and it is what makes Adam's
+`sqrt(E[g^2])` work -- Adam divides by the noise RMS because for a pure-noise
+component that is exactly the right shrinkage. The `power = 1/2` family was
+probing this empirically from the wrong end.

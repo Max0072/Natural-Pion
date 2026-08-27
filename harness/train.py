@@ -415,12 +415,23 @@ def train(
                 backward.enabled = True
                 with _autocast(cfg, device):
                     logits, _ = model(x)
+                flat = logits.reshape(-1, logits.shape[-1])
                 with torch.no_grad():
-                    flat = logits.reshape(-1, logits.shape[-1]).float()
-                    drawn = torch.multinomial(flat.softmax(-1), 1).squeeze(-1)
-                mc = F.cross_entropy(logits.reshape(-1, logits.shape[-1]), drawn)
+                    # In chunks, and never in fp32 across the whole batch:
+                    # `flat.float()` alone is 131072 x 32100 x 4 = 16.8 GB here,
+                    # and the softmax another, against a step that already
+                    # peaks at 83 of 95 GB.
+                    drawn = torch.empty(flat.shape[0], dtype=torch.long, device=flat.device)
+                    for i in range(0, flat.shape[0], 8192):
+                        piece = flat[i : i + 8192].float().softmax(-1)
+                        drawn[i : i + 8192] = torch.multinomial(piece, 1).squeeze(-1)
+                        del piece
+                mc = F.cross_entropy(flat, drawn)
                 mc.backward()
                 model.zero_grad(set_to_none=True)
+                # the graph is gone with the backward; drop the activations too,
+                # or the real forward starts on top of them
+                del logits, flat, drawn, mc
                 backward.enabled = False
                 if recorder is not None:
                     recorder.enabled = True
