@@ -276,3 +276,17 @@ def test_changing_a_field_changes_the_step():
             opt.step()
         out.append(p.detach().clone())
     assert not torch.allclose(out[0], out[1], atol=1e-8)
+
+
+def test_plane_angles_via_eigvalsh_match_svdvals():
+    """The diagnostic's cheaper, better-conditioned route gives the same numbers.
+
+    `X X^T` for skew `X` has eigenvalues `th^2`, the squared plane angles, each
+    twice. Going through `eigvalsh` avoids handing an iterative SVD a spectrum
+    of exactly repeated singular values -- which is what made cusolver fall
+    back to an exact method on the first real run.
+    """
+    X = _skew(N, 11)
+    via_eigh = torch.linalg.eigvalsh(gram(X)).clamp_min(0.0).sqrt()
+    via_svd = torch.linalg.svdvals(X)
+    assert torch.allclose(via_eigh.sort().values, via_svd.sort().values, atol=1e-10)

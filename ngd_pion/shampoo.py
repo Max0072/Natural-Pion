@@ -377,7 +377,14 @@ class ShampooPion(torch.optim.Optimizer):
         4658x-36496x cross-layer spread was a symptom of.
         """
         for side, X in (("in", X_in), ("out", X_out)):
-            s = torch.linalg.svdvals(X.float())
+            # Via `eigvalsh(X X^T)` rather than `svdvals(X)`. A skew matrix has
+            # its singular values in exact pairs, which is precisely the
+            # degenerate case an iterative SVD struggles with: cusolver failed
+            # to converge on the first real run (job 276154) and torch fell
+            # back to an exact method, silently and expensively. `X X^T` is
+            # symmetric PSD with eigenvalues `th^2`, so the same numbers come
+            # out of a solver that is happy with repeated eigenvalues.
+            s = torch.linalg.eigvalsh(gram(X.float())).clamp_min(0.0).sqrt()
             s = s[s > 0]
             state[f"plane_ratio_{side}"] = (
                 float(s.max() / s.min()) if s.numel() else float("nan")

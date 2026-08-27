@@ -3914,3 +3914,107 @@ sits on the floor; on the real model it is the quantity to watch.
 sides, against `pion_ablated` at its own optimum. `pion_ablated` at full length
 is unaffected by this pivot and becomes more necessary, not less: whatever
 drives the rotation, that is the isolating baseline.
+
+
+## 2026-08-27, night -- 276154: the first GPU reading, and prediction 1 lands
+
+One point, `eta = 1e-2`, on the real model: `shampoo-pion`, `T_fac = 25`, AdamW
+pinned at 1e-3, seed 0, 150 steps, `shampoo_plane_every = 30`. Deliberately a
+single arm -- the sweep comes after, and a single point cannot rank anything
+against a swept optimum.
+
+### The cross-layer spread of rotation angle: 4658x-36496x becomes 2x-7x
+
+    step   angle_min    angle_max   spread
+       0   9.99810e-03  1.00003e-02   1.0002x
+      30   2.21253e-02  1.55483e-01   7.03x
+      60   5.29266e-03  3.31392e-02   6.26x
+      90   7.33655e-03  3.34591e-02   4.56x
+     120   5.99002e-03  1.29140e-02   2.16x
+     149   2.64565e-03  7.05617e-03   2.67x
+
+Pre-registered as "order 1e1 or below". It lands at **2x to 7x**, sustained,
+against the Fisher variant's 4658x to 36496x -- three to four orders tighter.
+This is the defect the full-length run diagnosed, and it is fixed structurally
+rather than by fiat.
+
+**Step 0 is not the evidence; steps 30 onward are.** At step 0 the accumulator
+holds one gradient, so the sandwich orthogonalises the generator exactly,
+`||X||_2 = 1`, and `angle = eta` in every layer *by algebra*. Measured
+9.99810e-03 to 1.00003e-02 against `eta = 1e-2`, agreeing to 2e-4 relative --
+which confirms the implementation reproduces the mathematics on 56 real
+weights, and confirms nothing about training. The claim rests on the later
+rows, where the accumulator holds 30 to 150 mixed gradients and the equality is
+no longer automatic.
+
+`eta` also has a direct physical reading now: it *is* the first step's rotation
+angle in radians. Nothing else in this project has had that.
+
+### Within a layer the planes are not equalised, and the reason is measured
+
+    step   plane_ratio_in med   plane_ratio_out med   nullfrac med   nullfrac max
+       1               991               3108              0.506         0.878
+      31           3.32e+06           4.44e+06              0.784         0.950
+      61           1.73e+05           4.44e+05              0.766         0.915
+      91           9.85e+04           1.78e+05              0.696         0.885
+     121           6.87e+04           1.07e+05              0.644         0.859
+
+The exact orthogonalisation is a step-0 phenomenon. Once the accumulator mixes
+directions, `P` becomes badly rank deficient -- a median 62% to 78% of its
+spectrum sits **on the relative floor** -- and those directions receive the
+constant `(eps lam_max)^-1/4` instead of `th^-1/2`, so their planes turn far
+less. The top eigenvalue is never floored, which is why `angle` still tracks
+`eta`.
+
+Part of that deficiency is structural and not a defect: `G_out = G W^T - W G^T`
+for a `(1376, 512)` weight has rank at most `2 x 512 = 1024` inside
+`so(1376)`, so at least 25.6% of the spectrum is null by construction.
+
+**The consequence is a knob promotion.** In the Fisher path the relative floor
+was measured to be nearly inert -- every `eps` sweep came back null. Here it
+governs the majority of the spectrum. `shampoo_eps` is the second thing to
+sweep after `eta`, not a default to leave alone quietly.
+
+### The loss, stated with the asymmetry it carries
+
+`val@150 = 5.9795`, against the three numbers on the board, **each at its own
+swept optimum**: `pion_ablated` 6.1143, `ngd-pion` 5.9113, `ngd-pion-s` 5.5068.
+
+So one un-swept point already beats `pion_ablated`'s optimum by 0.13 and sits
+within the 0.07 practical floor of `ngd-pion`'s optimum, while trailing
+`ngd-pion-s` by 0.47. That is a comparison of one arbitrary point against three
+optima and it is not a ranking. Where Shampoo's own optimum sits, this run does
+not say.
+
+### Throughput: not measured, and the reasons are worth writing down
+
+Steady-window `tokens_per_sec`: `shampoo-pion` 18308, `ngd-pion-exact` 25629,
+`ngd-pion-s` 25629 on its first arm and about 134000 on its remaining five.
+
+That last split is the tell: the same optimizer, the same configuration, 5.2x
+apart between the first arm of a job and the rest. Whatever that is -- warm
+caches, allocator state -- it is not the code, and it means **none of these
+numbers compare**. On top of it, this run carried `plane_every = 30` whose
+`svdvals` hit a cusolver convergence failure and fell back to an exact method,
+and rtx6001 had a co-tenant. Three confounds; the honest statement is that step
+cost is unmeasured. A clean reading needs `plane_every = 0` on an idle node,
+run in the same position of a job as whatever it is compared against.
+
+### Fixed here
+
+The plane diagnostic now goes through `eigvalsh(X X^T)` rather than
+`svdvals(X)`. A skew matrix's singular values come in exact pairs, which is the
+degenerate case for an iterative SVD; cusolver gave up and torch silently fell
+back to an exact method. `X X^T` is symmetric PSD with eigenvalues `th^2`, so
+the same numbers come from a solver that is content with repeated eigenvalues.
+Pinned by a test that the two routes agree. 18 tests in the file, 205 in total.
+
+### Next
+
+1. The `eta` sweep, bracketed both sides. `scripts/sbatch/shampoo.sbatch` holds
+   the grid `3e-4 1e-3 3e-3 1e-2 3e-2 1e-1`; `1e-2` is done, so the remaining
+   five are one `ARMS` override.
+2. Then `shampoo_eps`, which the null fractions above promoted from a default
+   to a lever.
+3. `pion_ablated` at full length, unchanged in priority and still the only
+   thing that makes a full-length number mean anything.
