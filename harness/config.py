@@ -175,6 +175,9 @@ class RunConfig:
     # loss surface and on everything downstream of a layer, so it moves faster
     # than the activation statistics do.
     ngd_beta_backward: float = 0.5
+    # Exponent on the operator's eigenvalues for `ngd-pion-pow`: 1.0 is the
+    # natural gradient, 0.5 is what Adam does to its second moment.
+    ngd_power: float = 0.5
     # 0 disables. A cap on the rotation applied per step, in radians, which is
     # the bound `alpha` structurally cannot provide: `alpha` is identically 1
     # on a fresh basis, so the step after each refactorisation is unbounded.

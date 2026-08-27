@@ -46,6 +46,10 @@ class Basis:
     # own spectrum, applied here. See `damp_op.py` for why that is not the same
     # thing.
     eps: float | None = None
+    # Exponent on the operator's eigenvalues. `1.0` is the natural gradient,
+    # `0.5` is what Adam does to its second moment, `0.0` is no
+    # preconditioning at all. See `powered.py`.
+    power: float = 1.0
 
     @property
     def denominator(self) -> torch.Tensor:
@@ -58,9 +62,9 @@ class Basis:
         pair was split.
         """
         d = 2.0 * (self.lam.unsqueeze(-1) + self.lam.unsqueeze(-2))
-        if self.eps is None:
-            return d
-        return torch.maximum(d, self.eps * d.amax(dim=(-2, -1), keepdim=True))
+        if self.eps is not None:
+            d = torch.maximum(d, self.eps * d.amax(dim=(-2, -1), keepdim=True))
+        return d if self.power == 1.0 else d.pow(self.power)
 
 
 def basis_identity_anchor(C: torch.Tensor, eps: float) -> Basis:

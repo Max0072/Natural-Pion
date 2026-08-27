@@ -27,6 +27,7 @@ from ngd_pion.pion_baseline import Pion
 from ngd_pion.with_s import NGDPionS, attach_backward
 from ngd_pion.with_s_fast import FastNGDPionS
 from ngd_pion.op_damped import OpDampedNGDPion
+from ngd_pion.powered import PoweredNGDPion
 from ngd_pion.linalg import EIGH_FALLBACKS
 
 from .config import RunConfig
@@ -84,6 +85,7 @@ NGD_IMPLEMENTATIONS = {
     "ngd-pion-s": FastNGDPionS,
     "ngd-pion-s-ref": NGDPionS,
     "ngd-pion-op": OpDampedNGDPion,
+    "ngd-pion-pow": PoweredNGDPion,
 }
 
 
@@ -102,11 +104,13 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
 
     if cfg.optimizer in NGD_IMPLEMENTATIONS:
         kw = {}
-        if cfg.optimizer in ("ngd-pion", "ngd-pion-op"):
+        if cfg.optimizer in ("ngd-pion", "ngd-pion-op", "ngd-pion-pow"):
             # the diagnostics and the angle cap live in the fast variant only;
             # the reference and the S variant take neither, on purpose
             kw["diag_every"] = cfg.log_every
             kw["angle_max"] = cfg.ngd_angle_max
+        if cfg.optimizer == "ngd-pion-pow":
+            kw["power"] = cfg.ngd_power
         if cfg.optimizer in ("ngd-pion-s", "ngd-pion-s-ref"):
             kw["beta_backward"] = cfg.ngd_beta_backward
         rot = NGD_IMPLEMENTATIONS[cfg.optimizer](
