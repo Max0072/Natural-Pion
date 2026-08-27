@@ -33,11 +33,52 @@ from __future__ import annotations
 
 import torch
 
-__all__ = ["layer_diagnostics", "summarise"]
+__all__ = ["layer_diagnostics", "summarise", "BackwardProbe"]
+
+
+class BackwardProbe:
+    """Records the size of each layer's output gradient. Measurement only.
+
+    Exists to test one prediction. With `S = E[delta delta^T]` set to the
+    identity, the natural gradient's magnitude comes out proportional to
+    `||delta||`; with the true `S` it comes out inversely proportional. The
+    difference between the two is a factor of `||delta||^2` per layer, and
+    `||delta||` varies widely with depth, so `S = I` should leave the per-layer
+    step scale spread by roughly the square of the spread in `||delta||`.
+
+    Measured in the eta = 1.0 run: the rotation angle spans 4 658x to 36 496x
+    across layers within a single step. If the spread in `||delta||` squares to
+    about that, `S = I` is the cause and restoring `S` is the fix.
+
+    This changes nothing in the optimizer. It registers a backward hook,
+    records an RMS, and is attached only when diagnostics are being written.
+    """
+
+    def __init__(self, modules) -> None:
+        self.enabled = True
+        self.stats: dict[int, torch.Tensor] = {}
+        self._handles = [m.register_full_backward_hook(self._make(m)) for m in modules]
+
+    def _make(self, module):
+        def hook(mod, grad_input, grad_output):
+            if not self.enabled or not grad_output or grad_output[0] is None:
+                return None
+            # kept as a device tensor; `layer_diagnostics` calls float() on it
+            # every few hundred steps, so there is no reason to sync here.
+            g = grad_output[0].detach().float()
+            self.stats[id(mod.weight)] = g.pow(2).mean().sqrt()
+            return None
+
+        return hook
+
+    def remove(self) -> None:
+        for h in self._handles:
+            h.remove()
+        self._handles = []
 
 
 @torch.no_grad()
-def layer_diagnostics(optimizer, names: dict | None = None) -> list[dict]:
+def layer_diagnostics(optimizer, names: dict | None = None, probe=None) -> list[dict]:
     """One row per parameter the optimizer holds."""
     rows = []
     for group in optimizer.param_groups:
@@ -75,6 +116,7 @@ def layer_diagnostics(optimizer, names: dict | None = None) -> list[dict]:
                     "quad_over_curv": float(state.get("quad_over_curv", float("nan"))),
                     "floor_share_in": float(state.get("floor_share_in", float("nan"))),
                     "floor_share_out": float(state.get("floor_share_out", float("nan"))),
+                    "delta_rms": float(probe.stats[id(p)]) if probe and id(p) in probe.stats else float("nan"),
                     "depth": _depth(names, p),
                     "lam_ratio": float(positive.max() / positive.min()) if positive.numel() else float("nan"),
                     "step": int(state.get("step", 0)),

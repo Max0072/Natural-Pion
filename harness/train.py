@@ -27,7 +27,7 @@ from ngd_pion.pion_baseline import Pion
 
 from .config import RunConfig
 from .data import TokenCorpus
-from .instrument import layer_diagnostics, summarise
+from .instrument import BackwardProbe, layer_diagnostics, summarise
 from .model import Transformer
 
 __all__ = ["build_optimizers", "lr_at", "train"]
@@ -302,6 +302,8 @@ def train(
     # depth, does the antisymmetric part of the gradient survive bf16 -- cannot
     # be answered from two order statistics over 56 weights.
     diagnostics = (out / "diagnostics.jsonl").open("a") if isinstance(rot, NGDPion) else None
+    # Measurement only, attached alongside the diagnostics file and nowhere else.
+    probe = BackwardProbe(model.parameter_split()[0]) if diagnostics is not None else None
     names = {id(m.weight): n for n, m in model.named_modules() if isinstance(m, nn.Linear)}
 
     train_data = TokenCorpus(cfg.data_path, cfg.model.seq_len, seed=cfg.seed)
@@ -334,6 +336,8 @@ def train(
             lock.release()
             if recorder is not None:
                 recorder.remove()
+            if probe is not None:
+                probe.remove()
             return out
 
     window_time, window_step = time.time(), first
@@ -356,6 +360,8 @@ def train(
             # one micro-batch per step feeds the covariance; see ActivationRecorder
             if recorder is not None:
                 recorder.enabled = micro == 0
+            if probe is not None:
+                probe.enabled = micro == 0
             x, y = train_data.batch(cfg.micro_batch, device)
             with _autocast(cfg, device):
                 _, loss = model(x, y)
@@ -394,7 +400,7 @@ def train(
                 torch.cuda.reset_peak_memory_stats()
             window_time, window_step = now, step
             if isinstance(rot, NGDPion):
-                rows = layer_diagnostics(rot, names)
+                rows = layer_diagnostics(rot, names, probe)
                 row.update(summarise(rows))
                 if diagnostics is not None:
                     for r in rows:
@@ -416,4 +422,6 @@ def train(
     lock.release()
     if recorder is not None:
         recorder.remove()
+    if probe is not None:
+        probe.remove()
     return out
