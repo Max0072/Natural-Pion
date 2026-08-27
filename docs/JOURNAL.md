@@ -2983,3 +2983,59 @@ steps only, which is the better implementation regardless -- it delivers the
 same `dL/d(output)` without materialising `grad_input` -- but the factor of
 twelve was not its doing. That is twice now that a slowdown of mine was really
 another job of mine on the same node.
+
+### `S = I` confirmed as the source of the per-layer scale error, with a correction
+
+`BackwardProbe` over 150 steps at `eta = 1.0`:
+
+    step   spread ||d||   spread angle   corr(log angle, log ||d||)
+       1         1169          36 496                        0.951
+      61         1308           2 236                        0.930
+     121         1147             963                        0.920
+     150         1205           1 689                        0.923
+
+**Correlation 0.92 to 0.98.** The per-layer step scale tracks the backward
+signal almost exactly, which is what `S = I` predicts.
+
+**But the prediction was stated wrongly here yesterday.** The entry above says
+the angle spread should be the *square* of the `||delta||` spread. It should
+not. Under `S = I` the step goes as `||delta||`, so the observable is the
+spread in `||delta||` itself -- 1147 to 1308 against a measured angle spread of
+963 to 2962 at settled steps, the same order. The `||delta||^2` is the
+difference *between* `S = I` and the true `S`, not something visible in a run
+of either.
+
+**And the conclusion needs correcting too.** Restoring `S` does not *equalise*
+the layers, it **inverts** the dependence:
+
+    S = I        ->  ||X|| ~  ||delta||
+    true S       ->  ||X|| ~ 1/||delta||
+
+Which is correct, and not the same as equal. The natural gradient is not
+supposed to give every block the same step; it is supposed to give each the
+right one. Curvature goes as `delta^2`, so the right step goes as
+`G/F ~ 1/(||delta|| ||x|| ||W||)` -- **larger where the signal is weaker**. We
+currently do the opposite, handing the widest step to the layers whose signal
+is already strongest. The defect is not that the spread is large but that its
+sign is reversed, and the size of the error is `||delta||^2`.
+
+That also explains the constant 0.28 gap against `pion` from step 500 to
+25 000: a systematically misallocated step across blocks is a fixed handicap,
+neither accumulating nor healing.
+
+**Which layers.** The widest are the output projections -- `attn.wo` and
+`ffn.down`; the narrowest are `attn.wq` and `attn.wk`:
+
+    layer                  angle   ||delta||   lam_max(A)
+    blocks.0.attn.wo    1.71e+00    3.81e-06         3.58
+    blocks.1.ffn.down   1.42e+00    6.16e-07         6.08
+    blocks.4.attn.wq    1.35e-03    5.71e-09       189.6
+    blocks.6.attn.wk    1.19e-03    3.48e-09       191.5
+
+Two factors, both pulling the same way. `angle ~ ||delta|| / sqrt(lam_max(A))`,
+and the output projections have both a larger backward signal and a much
+smaller input covariance -- their inputs are the attention output and the
+SwiGLU output, where `lam_max` is 4 to 6, against 190 for the normalised
+residual stream that feeds `wq` and `wk`. Predicted ratio 4900 against a
+measured 1269: same order. So the activation scale contributes as well as
+`||delta||`, though `||delta||` dominates at a correlation of 0.92.
