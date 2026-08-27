@@ -4121,3 +4121,117 @@ one-dimensional sweep measures a rescaling that `eta` then re-absorbs -- which
 is precisely why the `ngd-pion-op` damping sweep came back null and was
 misread as "damping is not a lever". The grid has to be two-dimensional,
 `eps x eta`, or `eta` re-swept per `eps`.
+
+
+## 2026-08-27, night -- the control nobody had run: at 150 steps the rotation mostly hurts
+
+### The measurement
+
+Two controls, identical to every arm on the board in `adamw_lr` (1e-3), seed,
+precision, batch and length, differing only in whether the rotation does
+anything:
+
+| run | val@150 |
+|---|---|
+| `ngd-pion-s`, `eta = 1e-2` | **5.5068** |
+| `shampoo-pion`, `eta = 1e-12` -- **rotation off, matrices frozen at init** | **5.7071** |
+| `adamw` owning every parameter | 5.8213 |
+| `ngd-pion`, `eta = 3` | 5.8786 |
+| `shampoo-pion`, best of the whole `eps x eta` grid | 5.9415 |
+| `pion_ablated`, `eta = 0.5` | 6.1090 |
+
+The inert arm is genuinely inert, checked rather than assumed: per-layer
+rotation angle runs 1e-12 to 2e-10 radians over the run, and
+`spectrum_preserved.py` puts the relative spectrum drift at 1.3e-13, i.e. the
+matrices sit on their initialisation to thirteen digits.
+
+### What it means, and it is not small
+
+**At 150 steps, freezing the matrices beats every rotational arm except
+`ngd-pion-s`.** `shampoo-pion` at its best is 0.23 *worse* than doing nothing.
+`ngd-pion` is 0.17 worse. `pion_ablated` is 0.40 worse. Only `ngd-pion-s`
+clears the bar, by 0.20.
+
+So a great many statements in this journal have to be re-read. "`ngd-pion` beats
+`pion_ablated` by 6 sd" is true and means *hurts less*. "`shampoo-pion` beats the
+isolating baseline by 0.13" likewise. `pion_ablated` is not an isolating
+baseline at this horizon; it is worse than a zero, and the actual zero had never
+been measured. Every `eta` sweep in this project -- the initialisation sweep,
+the heavy-tail sweep, the `S` sweep, today's `eta` and `eps x eta` grids -- was
+run at 150 steps, and most of them were ranking arms that all sit below the
+do-nothing line.
+
+**This is a statement about the proxy, not a refutation of the method.** Frozen
+matrices leave 32.9M of 60M parameters trainable and must lose eventually; the
+full-length `ngd-pion` run reaches 3.6728 and cannot be matched by a model whose
+matrices never move. 150 steps is 0.2% of the schedule, and what it appears to
+measure is mostly the embedding, the head and the norm gains finding their
+scale, with matrix updates acting as noise on top. That also explains the
+otherwise odd second control: AdamW owning *every* parameter (5.8213) is worse
+than AdamW owning everything *except* the matrices (5.7071). At this horizon,
+touching the matrices at all costs something, whoever touches them.
+
+The consequence for the work is concrete: **a 150-step loss cannot rank
+optimizers whose benefit arrives later**, and an `eta` tuned on it is tuned on
+a regime the real run spends 0.2% of its time in. That is a much better
+explanation of the 500x between `eta* = 2` and the swept optimum than anything
+proposed so far, and it is orthogonal to the `kappa` account rather than a
+replacement for it.
+
+### The `eps x eta` grid, completed
+
+All four rows now bracketed on both sides (jobs 278661, 278824, 279025, 279061):
+
+    eps      best eta   val@150     the row
+    1e-6       3e-3      5.9415     6.164 6.158 6.177 5.942 5.997
+    1e-4       1e-2      5.9795     6.141 6.105 6.159 5.979 6.169 6.890
+    1e-2       1e-3      6.0592     6.101 6.059 6.091 6.069 6.096 6.386 7.291 8.074
+    1e-1       3e-2      6.0412     6.067 6.057 6.075 6.041 6.740 6.675 7.620 8.346
+
+**The `sqrt(eps)` prediction is dead.** It said `eta*` would span 300x across
+these five orders of `eps`; measured, `eta*` does not move systematically at
+all. The reasoning was wrong in a way worth keeping: floored directions do get
+a `(eps lam_max)^-1/2` boost, but `P` is built from the gradients themselves, so
+a direction with a small `P` eigenvalue is precisely one where the gradient was
+small, and the boost meets a small numerator. The Fisher path has the same
+cancellation recorded from the other side -- a real gradient diverges as
+`eps^-1/2` where a random one of equal norm diverges as `eps^-1`.
+
+Two things do move, both in the direction the construction predicted:
+
+* The loss at each row's own optimum improves as `eps` falls -- 6.0412/6.0592
+  at `1e-1`/`1e-2`, 5.9795 at `1e-4`, 5.9415 at `1e-6`. Preconditioning more of
+  the spectrum helps. It is a 0.12 effect, and every point of it is below the
+  do-nothing line.
+* The cross-layer angle spread **grows** with `eps`: 2.3x-2.8x at `1e-4`, up to
+  103.8x at `eps = 1e-2, eta = 0.3` and 28.2x at `eps = 1e-1, eta = 1`. That is
+  the interpolation claim confirmed from the diagnostic side: as `eps -> 1` the
+  step tends to the raw generator, whose cross-layer spread is the original
+  4658x-36496x defect. The equalisation is delivered by the preconditioning,
+  not by the floor.
+
+### What to do next, and the order changed
+
+1. **Find the crossover.** Run the inert control and one rotational arm to a few
+   thousand steps and see where the rotation starts paying. This is the
+   experiment that says whether a 150-step proxy is usable at all, it costs a
+   fraction of a full run, and every conclusion below depends on it.
+2. **`ngd-pion-s` is the arm to carry**, not `shampoo-pion`. It is the only one
+   above the do-nothing line at this horizon, by 0.20.
+3. `pion_ablated` at full length keeps its place, but the zero it is compared
+   against should be the frozen-matrix control, not `pion_ablated` itself.
+
+### Operational
+
+* Concurrent GPUs cap at 8 per user; a 15-task array runs in two waves. Written
+  into `docs/CLUSTER.md`, which had claimed scheduler limits were not a
+  constraint.
+* **Pin the node for these arrays.** Job 278824 was submitted without `-w` and
+  SLURM packed all eight tasks onto `rtx6001`, which already carried two other
+  users' jobs and 58 of 64 cores; step 0 took 185 s against 80 s elsewhere and
+  the batch was on course to hit its own wall. Resubmitted with
+  `-w rtx6002,rtx6003` it finished in six minutes.
+* A cancelled job leaves `.run.lock` behind and the harness then refuses to
+  start -- correctly. `--force` is the sanctioned way through **after** checking
+  with `squeue` that the named holder is dead; `shampoo_floor.sbatch` takes
+  `FORCE=1` for it.
