@@ -40,36 +40,46 @@ class BackwardProbe:
     """Records the size of each layer's output gradient. Measurement only.
 
     Exists to test one prediction. With `S = E[delta delta^T]` set to the
-    identity, the natural gradient's magnitude comes out proportional to
-    `||delta||`; with the true `S` it comes out inversely proportional. The
-    difference between the two is a factor of `||delta||^2` per layer, and
-    `||delta||` varies widely with depth, so `S = I` should leave the per-layer
-    step scale spread by roughly the square of the spread in `||delta||`.
+    identity the natural gradient's magnitude comes out proportional to
+    `||delta||`; with the true `S` it comes out inversely proportional. The two
+    differ by `||delta||^2` per layer, and `||delta||` varies widely with depth,
+    so `S = I` should leave the per-layer step scale spread by roughly the
+    square of the spread in `||delta||`. Measured in the `eta = 1.0` run, the
+    rotation angle spans 4 658x to 36 496x across layers within one step.
 
-    Measured in the eta = 1.0 run: the rotation angle spans 4 658x to 36 496x
-    across layers within a single step. If the spread in `||delta||` squares to
-    about that, `S = I` is the cause and restoring `S` is the fix.
+    **A forward hook that attaches a tensor hook, not a module backward hook.**
+    `register_full_backward_hook` wraps the module in autograd functions and
+    materialises `grad_input` as well, and it took step 0 of a 60M run from
+    3.6 s to 42 s -- twelve times slower, jobs 268819 and 268820, cancelled for
+    it. A hook on the output tensor delivers the same `dL/d(output)` and costs
+    nothing of the sort.
 
-    This changes nothing in the optimizer. It registers a backward hook,
-    records an RMS, and is attached only when diagnostics are being written.
+    It is also attached only on the steps that are actually logged: `enabled`
+    gates whether the tensor hook is created at all, so on every other step
+    this class does nothing but return from a forward hook.
     """
 
     def __init__(self, modules) -> None:
-        self.enabled = True
+        self.enabled = False
         self.stats: dict[int, torch.Tensor] = {}
-        self._handles = [m.register_full_backward_hook(self._make(m)) for m in modules]
+        self._handles = [m.register_forward_hook(self._make(m)) for m in modules]
 
     def _make(self, module):
-        def hook(mod, grad_input, grad_output):
-            if not self.enabled or not grad_output or grad_output[0] is None:
+        weight = module.weight
+
+        def forward_hook(mod, inputs, output):
+            if not self.enabled or not torch.is_tensor(output) or not output.requires_grad:
                 return None
-            # kept as a device tensor; `layer_diagnostics` calls float() on it
-            # every few hundred steps, so there is no reason to sync here.
-            g = grad_output[0].detach().float()
-            self.stats[id(mod.weight)] = g.pow(2).mean().sqrt()
+
+            def grad_hook(grad):
+                # kept on the device; `layer_diagnostics` calls float() on it
+                self.stats[id(weight)] = grad.detach().float().pow(2).mean().sqrt()
+                return None
+
+            output.register_hook(grad_hook)
             return None
 
-        return hook
+        return forward_hook
 
     def remove(self) -> None:
         for h in self._handles:

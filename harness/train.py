@@ -361,7 +361,10 @@ def train(
             if recorder is not None:
                 recorder.enabled = micro == 0
             if probe is not None:
-                probe.enabled = micro == 0
+                # only on the steps that get logged, so it costs nothing on the rest
+                probe.enabled = micro == 0 and (
+                    step % cfg.log_every == 0 or step == steps - 1
+                )
             x, y = train_data.batch(cfg.micro_batch, device)
             with _autocast(cfg, device):
                 _, loss = model(x, y)
