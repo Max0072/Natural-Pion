@@ -4235,3 +4235,92 @@ Two things do move, both in the direction the construction predicted:
   start -- correctly. `--force` is the sanctioned way through **after** checking
   with `squeue` that the named holder is dead; `shampoo_floor.sbatch` takes
   `FORCE=1` for it.
+
+
+## 2026-08-27, night -- the 150-step ranking does not merely fail to predict; it inverts
+
+### The measurement
+
+`pion` in the published configuration, at 150 steps, AdamW pinned at 1e-3 as
+for every other arm on the board (job 279276). It had never been run at this
+horizon: all eight `pion` runs on disk are full length.
+
+    optimizer                    eta      val@150
+    shampoo-pion (rotation off) 1e-12      5.7071   <- the do-nothing line
+    pion                         3e-4      5.7948
+    adamw, every parameter       1e-3      5.8213
+    pion  (their published lr)   1e-3      6.1182
+    pion                         3e-3      7.3881
+
+**Pion at its published configuration is 0.41 worse than not training the
+matrices at all.** At the best `eta` sampled it is still 0.09 worse -- and that
+point is not an optimum in any meaningful sense, because as `eta -> 0` Pion
+tends to the inert control by construction, so the curve simply approaches the
+do-nothing line from below. There is no `eta` at which Pion beats doing nothing
+at 150 steps.
+
+### The inversion
+
+`pion` and `ngd-pion` are the only two optimizers measured at both horizons:
+
+    optimizer     val@150 (own best eta)    val@73242
+    ngd-pion            5.8786                3.6728
+    pion                5.7948 / 6.1182       3.3719
+
+At 150 steps `ngd-pion` beats `pion` in its published configuration by 0.24.
+At 73 242 steps `pion` beats `ngd-pion` by 0.30. **The ordering reverses.**
+
+So the 150-step protocol is not a noisy version of the full-length answer. On
+the only pair where both exist, it gives the opposite answer. Every ranking
+this repository has taken at 150 steps -- the initialisation sweep, the
+heavy-tail sweep, `S = I` against the measured `S`, the `ngd-pion` versus
+`pion_ablated` "6 sd win", today's `eta` sweep and `eps x eta` grid -- was
+taken with an instrument now shown to invert on the one case that can be
+checked.
+
+That includes the results this session was pleased with. `ngd-pion-s` leading
+the 150-step board at 5.5068 is no longer reassuring; on this evidence, leading
+at 150 steps is weak evidence of *losing* at length.
+
+### What this explains
+
+**The `eta` sweeps were biased downward, structurally.** If rotating hurts at
+this horizon, then any sweep over `eta` at 150 steps is partly a search for how
+little to rotate, and its optimum is pulled toward zero. The "500x gap" between
+the derived `eta* = 2` and the swept optimum of 1e-2 was diagnosed as `kappa`,
+the K-FAC independence error, and that measurement stands on its own -- but the
+swept optimum it was compared against is now suspect, and part of the gap may
+simply be that the sweep was run where the mechanism does not pay.
+
+This does not rescue the Fisher self-scaling hypothesis: `kfac/exact = 0.0128`
+and `alpha_exact/alpha` were measured directly, not inferred from a sweep.
+
+### An anomaly, recorded and not explained
+
+`shampoo-pion` should approach 5.7071 continuously as `eta -> 0`, and does not
+do so monotonically: 5.7071 at `1e-12`, **6.164** at `1e-4`, 5.942 at `3e-3`,
+5.997 at `1e-2` (all at `eps = 1e-6`). Something non-trivial happens between
+`1e-12` and `1e-4`. Cheap to probe with a few intermediate points, and
+deliberately not explained here -- the pattern this project keeps paying for is
+explaining an anomaly before checking what produced it.
+
+### What follows
+
+1. **Stop tuning at 150 steps.** Nothing measured there can order these
+   optimizers. The crossover run in flight (job 279222) is now the more
+   important of the two: it says what the minimum usable horizon is.
+2. Every `eta` the project has chosen needs re-validating at that horizon. This
+   is expensive and it is the honest cost of the finding.
+3. The full-length comparison the project needs has still never been run
+   properly: `ngd-pion` at 73 242 steps used the `S = I` variant at `eta = 1.0`
+   when its own 150-step optimum was 3 -- and a 150-step optimum is now known
+   to mean nothing anyway.
+
+### And a manifest bug, found while checking this
+
+`pion_ablated` runs record `pion_momentum = "lie"`, `pion_scaling = "rms"` and
+`pion_retraction = "trunc"` in their manifests, because the manifest serialises
+`RunConfig` while `build_optimizers` substitutes `none`/`none`/`cayley` at
+construction time. Anyone reading a manifest would conclude the ablation never
+happened. Same class as `ngd_power`: the configuration record and the object
+built from it disagree. The runs are correct; the record of them is not.
