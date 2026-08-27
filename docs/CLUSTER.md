@@ -110,9 +110,18 @@ us: `--test-only` reports an immediate start on both partitions, onto `b201`
 and `rtx6004` respectively. It does halve the b200 pool, so if a b200 job ever
 queues unexpectedly long, this reservation is the first thing to check.
 
-Scheduler limits are not a constraint here. `MaxArraySize=1001`,
-`MaxJobCount=10000`, and the p330 association sets no `MaxJobs` or
-`MaxSubmitJobs`, so step 5's `--array=0-11%8` passes as written. Both
+Scheduler limits are mostly not a constraint -- **with one that is.**
+`MaxArraySize=1001`, `MaxJobCount=10000`, and the p330 association sets no
+`MaxJobs` or `MaxSubmitJobs`, so step 5's `--array=0-11%8` passes as written.
+
+**But concurrent GPUs cap at 8 per user.** A 15-task array of one GPU each
+(job 278661, 2026-08-27) started exactly 8 and left the remaining 7 pending on
+`QOSMaxGRESPerUser`, with all three of the p330 users' other jobs idle. Note
+that `sacctmgr show qos` reports `gres/gpu=16` for QOS `normal` -- which is the
+QOS the job was actually assigned, and the association carries no `GrpTRES` or
+`MaxTRES` of its own -- so the configured number and the enforced one disagree
+and the enforced one is 8. Plan fan-out in waves of 8; a 15-arm grid is two
+waves and costs one extra scheduling round trip, not a failure. Both
 partitions cap at `MaxTime=1-00:00:00`. Billing weights are `gres/gpu=1.0`
 against `cpu=0.0625`, so the allocation is spent by GPU-hour and the eight
 cores each job asks for cost almost nothing.
