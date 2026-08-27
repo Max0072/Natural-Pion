@@ -4018,3 +4018,106 @@ Pinned by a test that the two routes agree. 18 tests in the file, 205 in total.
    to a lever.
 3. `pion_ablated` at full length, unchanged in priority and still the only
    thing that makes a full-length number mean anything.
+
+
+## 2026-08-27, night -- 278352 / 278521: `eta` bracketed, and the step cost is real
+
+### The sweep, run five arms at once
+
+Job 278352, a job array of five arms on one node, one GPU each, all `seed 0`,
+`plane_every = 0`. With `eta = 1e-2` from job 276154 the bracket is closed on
+both sides:
+
+    eta       val@150    angle spread
+    3e-4       6.1414        2.26x
+    1e-3       6.1048        2.84x
+    3e-3       6.1589        2.78x
+    1e-2       5.9795        2.67x   <- minimum
+    3e-2       6.1690        2.38x
+    1e-1       6.8903       12.88x   <- breaks
+
+**Prediction 1 holds across the whole bracket**, not only at the point it was
+first read: 2.3x to 2.8x against the Fisher variant's 4658x-36496x. It degrades
+to 12.9x exactly where the method breaks, at `eta = 1e-1`, where the largest
+layer turns 1.12 radians in a single step.
+
+### The winning point was the odd one out, so it was re-run
+
+`eta = 1e-2` was the only arm measured on a different day, on a different node
+(rtx6001, with a co-tenant), and with `plane_every = 30`. Building a conclusion
+on the one arm that differs in more than the variable under study is the
+failure mode this journal has recorded four times. Job 278521 re-ran it under
+the array's own conditions.
+
+    plane_every    val@150   loss@150   spread
+             30     5.9795     6.0290    2.67x
+              0     5.9795     6.0290    2.67x
+
+**Identical to four decimals.** Three things follow, and two were assumptions
+until now:
+
+* The dip at `eta = 1e-2` is real, not an artefact of the node or the
+  diagnostic.
+* `_diagnose` is read-only, as designed. That was an argument from the code;
+  it is now a measurement.
+* At 150 steps this optimizer is **run-to-run deterministic** across nodes and
+  days. Note that the 0.07 practical floor on this project was measured from
+  repeats of `ngd-pion`, which spanned 5.7621 to 5.8308; whatever produced that
+  spread does not act here. **This should not be generalised from one repeat**,
+  but it does mean the sweep's smaller gaps deserve a second look rather than
+  being written off as noise.
+
+On the last point: the four non-optimal arms span 6.1048 to 6.1690, a range of
+0.064, and they are not monotone in `eta` -- 1e-3 beats 3e-3. Under determinism
+that is reproducible structure rather than noise, but it is not a *mechanism*:
+the 150-step loss is simply a jagged function of `eta`, and 0.06 is the scale
+of the jaggedness. The dip at 1e-2 is 0.13 below its nearest neighbour, i.e.
+twice that scale, so `eta* = 1e-2` stands.
+
+### Step cost: measured properly, and it is acceptable
+
+    arms                          tok/s steady   s/step
+    5 concurrent, plane off             115229     1.14
+    1 solo, plane off                   109227     1.20
+    1 solo, plane on (job 276154)        23966     5.47
+    ngd-pion-s, warm, solo              134000     0.98
+
+Against the compute-bound floor of roughly 1 s/step for 131072 tokens on a 60M
+model, `shampoo-pion` costs **1.14 s/step while five arms share a node** --
+at most 16% above the Fisher variant measured solo, and probably less. Peak
+memory is 82.5 GB against 83.3, so it is cheaper there too. The whole five-arm
+sweep took **5 min 55 s** of wall clock, against 26 min 24 s for the six-arm
+`ngd-pion-s` sweep run sequentially.
+
+**The plane diagnostic costs 4.6x the step** -- 5.47 s against 1.20 for a
+bit-identical trajectory. It was already opt-in and already moved off the
+`svdvals` path that made cusolver fall back to an exact method; this quantifies
+why both were worth doing.
+
+The warm-up is the corpus, not the code: windows read 23666, 88194, 110000,
+116317, 119361. `TokenCorpus` draws 512 random windows per step from a 20 GB
+file, so a cold page cache means 512 scattered reads a step. Identical seeds
+across concurrent arms is what makes them warm each other's cache instead of
+competing -- the co-located array is 5.2x faster than its own first window.
+
+### Where it stands
+
+`shampoo-pion` at its own optimum is **5.9795**, against `pion_ablated` 6.1143,
+`ngd-pion` 5.9113 and `ngd-pion-s` 5.5068, each at its own. It beats the
+isolating baseline by 0.13, ties `ngd-pion`, and trails `ngd-pion-s` by 0.47.
+Every one of those is 150 steps and none of them is a full-length result.
+
+### Next, and the trap in it
+
+`shampoo_eps`. The relative floor `max(lam, eps lam_max)` is not merely
+damping here: at `eps = 1` the whole spectrum collapses to `lam_max`, `Q` is
+proportional to the identity and the step is the raw generator -- ablated Pion
+up to a scalar. At `eps -> 0` it is full Shampoo. So `eps` traces a continuous
+path from the control to the method, which makes it a principled axis rather
+than a knob.
+
+**It cannot be swept at fixed `eta`.** `||X||` depends on `eps`, so a
+one-dimensional sweep measures a rescaling that `eta` then re-absorbs -- which
+is precisely why the `ngd-pion-op` damping sweep came back null and was
+misread as "damping is not a lever". The grid has to be two-dimensional,
+`eps x eta`, or `eta` re-swept per `eps`.
