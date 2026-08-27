@@ -13,7 +13,8 @@ what every run directory holds. This file is only ever *now*.
 
 ### In flight
 
-`eta` sweep for `ngd-pion-s` with MC sampling off -- see "What to do next".
+Nothing. Jobs 273026 (the `eta` sweep) and 273528 (the K-FAC probe) both
+finished; both are written up in the journal entry of 2026-08-27.
 
 ### The headline number, and it is against us
 
@@ -35,92 +36,84 @@ that is still the single most important missing measurement. At 150 steps
 NGD-Pion beat `pion_ablated` by 6 sd; at full length there is nothing to
 compare with.
 
-### The best 150-step number we have is an `S` variant
+### The measured `S` wins, once given its own `eta`
 
-| run | eta | val@150 |
-|---|---|---|
-| `ngd-pion-s` + MC sampling (`mcfisher2`) | **0.01** | **5.5517** |
-| `ngd-pion` (dense sweep, 0.003 to 300) | 1 - 30 | 5.74 - 5.83 |
-| `ngd-pion-pow` | 0.01 | 5.8240 |
-| `ngd-pion-s`, no MC | 1 | 6.1019 |
+Job 273026: `ngd-pion-s`, MC off, `power = 1`, `T_fac = 25`, AdamW pinned at
+1e-3, seed 0, 150 steps. Optimum bracketed on both sides.
 
-Read this carefully, because the obvious reading is wrong twice.
+    eta      val@150
+    3e-4      5.6987
+    1e-3      5.6290
+    3e-3      5.5702
+    1e-2      5.5068   <- minimum
+    3e-2      5.6249
+    1e-1      5.8845
 
-* **`eta = 0.01` is the bottom of that grid** (`{0.01, 0.5, 2, 8}`). The
-  optimum is not bracketed.
-* **`mcfisher2` differs from every other arm in more than one way.** Its
-  manifest records `ngd_power: 0.5`, which **had no effect** -- `power` is
-  passed only for `ngd-pion-pow`, so `FastNGDPionS` ran at power 1. What it
-  does carry that the others do not is MC sampling of the labels. So 5.5517 is
-  "`S` measured, power 1, MC on" and the 0.28 it wins by is not attributed.
+Against `ngd-pion` (`S = I`) at its own swept optimum over 0.003 to 300:
+**5.74 - 5.83**. One variable, and the measured `S` wins by **0.23 to 0.32**
+against a 0.07 noise floor. It also beats the MC-sampled arm at the same `eta`
+(5.5517), so MC sampling contributes nothing and the win belongs to `S`.
 
-### What is actually established about `S`
+**The old claim that `S = I` is better is refuted.** The measured `S` had never
+been given its own `eta`, which is a hundred times smaller -- exactly what
+`with_s.py` predicted in its docstring.
 
-This file used to say "`S = I` is why we lose". That is not supported.
-
-`with_s.py` states in its own docstring that `eta` does not carry over and must
-be swept from scratch. **It never was.** Every non-MC `ngd-pion-s` run sits at
-`eta = 1`, and the sweep launched for it (`with-s`, `eta` 1e-8 to 1e-14) has
-`steps = 0` and `val = nan` in all four directories -- it died before logging a
-step. The claim that the measured `S` is worse rests on a single point at the
-one `eta` the module says will be wrong.
-
-What *is* measured: the per-layer allocation **inverts** rather than narrows.
-`delta_rms` spans ~1200x across the 56 weights in every run regardless of
-optimizer, and
-
-    family                        rho(log angle, log delta_rms)
-    S = I    (ngd-pion/-op/-pow)          +0.81 .. +0.92
-    S measured (ngd-pion-s)               -0.37 .. -0.65
-
-so under the measured `S` the biggest steps go to the layers whose backward
-signal -- and therefore whose `D` estimate -- is weakest. Whether that is
-harmful is exactly what is not yet known.
-
-### `alpha` is NOT vestigial, and `rho = 0.083` on a fresh basis
+### `alpha` is not vestigial, and `eta* = 2` is fully accounted for
 
 The old "decided" entry claiming `alpha == 1.000` for every `T_fac <= 10` does
-not hold for `ngd-pion-s` at `T_fac = 25`:
+not hold at `T_fac = 25`: it runs 2.6e-4 to 0.19, cutting the step by three to
+four orders every step.
 
-    step   alpha_min   alpha_max      rho    angle_max
-       0      1.0000      1.0000    0.083         67
-      90      2.6e-04      0.088    0.282        6.5
-     149      7.2e-04      0.185    0.204        5.1
+`rho` is clean of AdamW -- `train.py` measures `after` between `rot.step()` and
+`adamw.step()`, deliberately. What biases it is `clip_grad_norm_`, which runs
+before `rot.step()`: the clip scales `G` by `s`, `X` is linear in `G`, so
+`quad` goes as `s^2` while the actual decrease goes as `s`, leaving a constant
+factor `1/s` on `rho`, identical across arms at step 0.
 
-The trust region cuts the step by three to four orders every step, and the
-quadratic model still over-predicts the decrease fivefold. **`rho` is clean of
-AdamW** -- `train.py` measures `after` between `rot.step()` and `adamw.step()`,
-deliberately. An earlier version of this file said otherwise; that was wrong.
-What does bias it is `clip_grad_norm_`, which runs before `rot.step()`: the
-clip scales `G` by `s`, and `X` is linear in `G`, so `quad` scales as `s^2`
-while the actual decrease scales as `s`. That puts a constant factor `1/s` on
-`rho`, identical across arms at step 0.
+    eta      rho@0    angle_max@0   val@150
+    3e-4     2.1677      1.1 rad     5.6987
+    1e-3     1.9831      3.6         5.6290
+    3e-3     1.3075     10.8         5.5702
+    1e-2     0.4728    ~36           5.5068   <- best loss
+    3e-2     0.1511   ~108           5.6249
 
-**Step 0 is the number to explain, and it now has a number.** With the clip
-accounted for, `rho` at step 0 is linear in `lr` across the arms --
-`rho = 1/s - lr/(4 kappa s)`, fitted over `eta-s` at 3e-4, 1e-3 and 3e-3 with
-residuals of about 1%. That gives `1/s = 2.28` (a gradient norm of 2.28, which
-is independently checkable) and **`kappa = 1.8e-3`: the true curvature along
-our own step direction is about 140x what `curv` reports.** Pre-registered
-consequence for `scripts/probes/kfac_error.py`, which exists and has never been
-run: it should return a ratio near 0.007. If it returns ~1 instead, the
-independence assumption is fine and the gap is Fisher-against-Hessian, which is
-a different problem with different remedies. Nothing about staleness,
-degeneracy, damping or the choice of `S` is involved there. A scalar `alpha`
-cannot fix it: it shortens the step uniformly while the problem is that the
-*direction* is dominated by the flattest directions of `F`.
+`rho = 2.2822 - 322.8 lr` fits the first three arms to +-0.02 and misses the
+next two by +1.42 and +7.55, so the second-order model holds only to about
+`eta = 3e-3`; past it `rho` saturates rather than going negative.
+
+**The best loss sits where the model over-predicts twofold.** `ALGORITHM.md`
+justifies dropping Pion's RMS scaling as "a testable hypothesis: the Fisher
+sets the scale itself". That test has now been run and the hypothesis fails.
+`eta` is a tuned learning rate; say so in the paper rather than working around
+it.
+
+**Where the 500x went.** With `kappa := curv/(4 Q)` the quadratic optimum is
+`c* = 2 kappa`, so the theoretical `eta* = 2` assumes `kappa = 1`. Measured
+`kappa = 1.8e-3` gives `c* = 3.5e-3` against an observed 1e-2 -- the whole gap,
+to within a factor of 3 over five orders.
+
+**And it is the independence assumption.** Job 273528 ran
+`scripts/probes/kfac_error.py` for the first time, on fresh weights:
+`kfac/exact` = 3.11e-2, 6.04e-3, 1.13e-2, geometric mean **0.0128**. Two orders
+below 1, so the gap is not Fisher-against-Hessian. The in/out cross term is
+excluded separately by Cauchy-Schwarz (`kappa >= 1/2` whatever the data). The
+pre-registered bound of 0.0036 was missed by 3.6x, so independence is most of
+`kappa`, not all of it.
 
 ### What to do next, in order
 
-1. **`ngd-pion-s`, MC off, swept over `eta`** around 0.01. One variable against
-   `ngd-pion`'s existing `eta` curve, and it separates `S` from MC sampling.
-   Half an hour of rtx. This is cheap and it is blocking the interpretation of
-   every `S` result.
+1. **Exact `curv`, so `alpha` means something.** Build the direction with the
+   approximation, measure the length with the truth, as K-FAC does:
+   `curv_exact = E_b[(2 u_b^T X x_b)^2]`. One `(tokens x n)` matmul and a
+   contraction per layer per step, no extra pass -- `u_b` and `x_b` are already
+   in the hooks. Prediction, stated before writing it: `alpha` should land near
+   1e-2 on a fresh basis and `rho` at `eta = 1` should come out near the 0.47
+   that `eta = 1e-2` shows now. If `alpha` lands near 1, the implementation is
+   wrong, not the theory.
 2. **`pion_ablated` at full length.** About 10 rtx-hours. Without it nothing at
-   full length is interpretable. Its own `eta` has never been found beyond 150
-   steps, where it was 0.5.
-3. **Bracket `eta*` for the MC arm** below 0.01, which the `mcfisher2` grid did
-   not do.
+   full length is interpretable, and it has been the top blocker for days.
+3. **`ngd-pion-s` at full length at `eta = 1e-2`**, now that the optimum is
+   bracketed. This is the arm the paper would actually report.
 4. **Momentum.** NGD-Pion has none; Pion has it in the Lie algebra. Not a
    confound to argue away, a missing part of the method.
 
