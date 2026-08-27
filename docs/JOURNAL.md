@@ -3454,3 +3454,86 @@ directions in order to tame the runaway ones, which is exactly the shape of
 optimum, which `mcfisher2` did not, and it separates `S` from MC sampling,
 which `mcfisher2` also did not.
 
+
+## 2026-08-27 -- correction: `rho` is clean, the clip is the confound, and `kappa` falls out
+
+### The correction first
+
+The entry above says `rho` is "an over-estimate of the rotational part" because
+`train.py` divides the whole model's decrease by the rotational prediction.
+**That is wrong.** Read the order:
+
+    watch = ...
+    if rot is not None:
+        rot.step()
+    if watch:
+        ... _, after = model(x, y)
+        rho = (loss_sum - float(after)) / predicted
+    adamw.step()
+
+`after` is measured between the two steps, deliberately, and the comment beside
+it says so. `rho` measures the rotational step alone. The claim went into
+`d84e7cf` and into `RESUME.md`; both are corrected.
+
+### What the real confound is
+
+`clip_grad_norm_(model.parameters(), 1.0)` runs *before* `rot.step()`. The clip
+multiplies `G` by `s <= 1`; `X` is linear in `G`, so `quad = <G_in, X_in> +
+<G_out, X_out>` scales as `s^2`, while the actual first-order decrease
+`c <G_true, V>` scales as `s`. So
+
+    rho = (1/s) * (1 - lr / (4 kappa))
+
+with `kappa := curv / (4 Q)`, `Q = E_b[s_b^2]` the true second-order
+coefficient along the ray, and the factor 4 the same one that puts the
+theoretical optimum at `eta = 2`. At step 0 every arm shares the init, the
+batch, the basis, `alpha = 1.000` and the clip, so `s` is common and **`rho` is
+linear in `lr`**.
+
+### It fits, and it gives a number
+
+Checked first that the arms really are identical: `pred_drop / lr` is
+559.2650 for all four `mcfisher2` arms and 148.6598 for all three `eta-s` arms
+so far -- exactly constant, so `quad` and `alpha` are shared and only `lr`
+differs.
+
+Least squares over `eta-s` at `eta` = 3e-4, 1e-3, 3e-3:
+
+    rho = 2.2822 - 322.8 * lr        residuals +-0.02 on values of 1.3 to 2.2
+
+    intercept 1/s = 2.2822   ->  clip factor 0.438, gradient norm ~2.28
+    slope                    ->  kappa = 1.77e-3
+
+**The true curvature along our own step direction is about 140x what `curv`
+reports.** That, and not damping or degeneracy or the choice of `S`, is why
+`rho` collapses as `eta` grows: the model is not being evaluated against the
+curvature it is built from.
+
+Pairwise slopes drift -264, -319, -338 across the three arms, so there is mild
+third-order structure. The remaining arms (0.01, 0.03, 0.1) test whether the
+line holds or breaks, and where it breaks is the validity radius of the
+quadratic model, which is worth more than `kappa` itself.
+
+### What I tried first, and why it failed -- worth recording
+
+Before spotting the clip I fitted `Delta(lr) = D + quad*lr/2 - K*lr^2` with `D`
+an additive AdamW contribution. Three pairs of `eta-s` points gave
+`kappa` = 3.6e-4, 3.9e-3 and **-0.033** -- two orders of spread and a sign
+flip -- and every `mcfisher2` pair gave a *negative* `D`, from -5.2 to -1342.
+Unphysical throughout. The failure was the diagnostic: it said the model was
+wrong, and it was wrong because `D` does not exist (`rho` was never
+contaminated) and because at `eta >= 0.5` the angles are 3358 to 53722 radians,
+where a second-order model has nothing to say at all.
+
+### Pre-registered, before running anything
+
+`scripts/probes/kfac_error.py` exists and has never been run. It compares
+`4 tr(A X^T S X)` against the exact `E_b[(2 u_b^T X x_b)^2]` along our own step
+direction. If `kappa` is the K-FAC independence error, it should return a ratio
+near **0.007**.
+
+If it returns ~1 instead, independence is fine and the whole 140x is the gap
+between the Fisher and the actual loss curvature -- a different problem, and one
+that no better estimate of `A`, `D` or `S` can touch. Both outcomes are worth
+having and they need the same single run.
+

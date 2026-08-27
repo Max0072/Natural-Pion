@@ -88,13 +88,24 @@ not hold for `ngd-pion-s` at `T_fac = 25`:
      149      7.2e-04      0.185    0.204        5.1
 
 The trust region cuts the step by three to four orders every step, and the
-quadratic model still over-predicts the decrease fivefold. `rho` is an
-over-estimate of the rotational part: the numerator is the whole model's
-decrease, AdamW included, the denominator only the rotational prediction.
+quadratic model still over-predicts the decrease fivefold. **`rho` is clean of
+AdamW** -- `train.py` measures `after` between `rot.step()` and `adamw.step()`,
+deliberately. An earlier version of this file said otherwise; that was wrong.
+What does bias it is `clip_grad_norm_`, which runs before `rot.step()`: the
+clip scales `G` by `s`, and `X` is linear in `G`, so `quad` scales as `s^2`
+while the actual decrease scales as `s`. That puts a constant factor `1/s` on
+`rho`, identical across arms at step 0.
 
-**Step 0 is the number to explain.** Fresh basis, `alpha = 1.000`, where
-`quad = curv` is an identity -- and the loss falls by 8% of what the descent
-lemma predicts, with `angle_max = 67` radians. Nothing about staleness,
+**Step 0 is the number to explain, and it now has a number.** With the clip
+accounted for, `rho` at step 0 is linear in `lr` across the arms --
+`rho = 1/s - lr/(4 kappa s)`, fitted over `eta-s` at 3e-4, 1e-3 and 3e-3 with
+residuals of about 1%. That gives `1/s = 2.28` (a gradient norm of 2.28, which
+is independently checkable) and **`kappa = 1.8e-3`: the true curvature along
+our own step direction is about 140x what `curv` reports.** Pre-registered
+consequence for `scripts/probes/kfac_error.py`, which exists and has never been
+run: it should return a ratio near 0.007. If it returns ~1 instead, the
+independence assumption is fine and the gap is Fisher-against-Hessian, which is
+a different problem with different remedies. Nothing about staleness,
 degeneracy, damping or the choice of `S` is involved there. A scalar `alpha`
 cannot fix it: it shortens the step uniformly while the problem is that the
 *direction* is dominated by the flattest directions of `F`.
