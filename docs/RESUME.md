@@ -9,160 +9,133 @@ what every run directory holds. This file is only ever *now*.
 
 ---
 
-## As of 2026-08-27, evening
+## As of 2026-08-27, late evening
 
 ### In flight
 
-Nothing. Jobs 273026 (the `eta` sweep) and 273528 (the K-FAC probe) both
-finished; both are written up in the journal entry of 2026-08-27.
+Nothing on the cluster. The queue is empty.
 
-### The headline number, and it is against us
+### The direction changed today
 
-Full length, 73 242 steps, AdamW pinned at 1e-3 in both arms:
+The Fisher preconditioner is no longer the thing being repaired.
+`ALGORITHM.md` proposed as a testable hypothesis that the Fisher sets the step
+scale itself -- hence no RMS scaling, and `eta* = 2` derived rather than tuned.
+Three independent measurements now refute it: `kappa = 1.8e-3` from the `rho`
+fit, `kfac/exact = 0.0128` from `kfac_error.py`, and `alpha_exact/alpha` of
+5e-3 to 1e-1 from job 274008. **`eta` is a tuned learning rate; the paper has
+to say so.** The warmup rescue was tested at its predicted optimum (job 274907,
+`eta = 0.15`) and lost by 0.38.
 
-| run | val |
-|---|---|
-| `ngd-pion` eta 1.0, T_fac 25 | **3.6728** |
-| `pion` (their published config) | 3.3719, 3.3866 |
+The decision, taken by the user, is to keep Pion's rotational geometry and
+replace the preconditioner with **Shampoo's**, built from the generators
+themselves rather than from network statistics. Implemented today; nothing run
+on a GPU yet. See the journal entry of 2026-08-27 evening for the
+pre-registration, which was written before any compute.
 
-**We lose by 0.30.** The published gap between Pion's own two arms is 0.0079,
-and repeat runs of an identical configuration differ by about 0.002, so this is
-far outside noise.
+### What is new in the code
 
-**The comparison isolates nothing.** `pion` carries `momentum="lie"`,
-`scaling="rms"` and a truncated retraction; NGD-Pion has none of the three. The
-isolating baseline is `pion_ablated` and **no full-length run of it exists** --
-that is still the single most important missing measurement. At 150 steps
-NGD-Pion beat `pion_ablated` by 6 sd; at full length there is nothing to
-compare with.
+* `ngd_pion/shampoo.py` -- `ShampooPion`, registered as `shampoo-pion`.
+  No hooks, no covariance, no backward recorder: it is a pure function of the
+  gradients it has seen. `power = 0` is exactly ablated Pion and is the control.
+* `ngd_pion/shampoo_reference.py` -- the numpy oracle, in the role
+  `reference.py` plays for NGD-Pion.
+* `tests/test_shampoo.py` -- 17 tests. Suite is now **204 passed, 1 skipped**.
+* `harness/config.py` -- `shampoo_power`, `shampoo_beta`, `shampoo_damping`,
+  `shampoo_eps`, `shampoo_plane_every`.
+* `harness/train.py` -- `DIAGNOSED` replaces two `isinstance(rot, NGDPion)`
+  gates that had silently written no diagnostics at all for the new optimizer.
 
-### The measured `S` wins, once given its own `eta`
+### Why so(n) suits Shampoo, in one paragraph
 
-Job 273026: `ngd-pion-s`, MC off, `power = 1`, `T_fac = 25`, AdamW pinned at
-1e-3, seed 0, 150 steps. Optimum bracketed on both sides.
-
-    eta      val@150
-    3e-4      5.6987
-    1e-3      5.6290
-    3e-3      5.5702
-    1e-2      5.5068   <- minimum
-    3e-2      5.6249
-    1e-1      5.8845
-
-Against `ngd-pion` (`S = I`) at its own swept optimum over 0.003 to 300:
-**5.74 - 5.83**. One variable, and the measured `S` wins by **0.23 to 0.32**
-against a 0.07 noise floor. It also beats the MC-sampled arm at the same `eta`
-(5.5517), so MC sampling contributes nothing and the win belongs to `S`.
-
-**The old claim that `S = I` is better is refuted.** The measured `S` had never
-been given its own `eta`, which is a hundred times smaller -- exactly what
-`with_s.py` predicted in its docstring.
-
-### `alpha` is not vestigial, and `eta* = 2` is fully accounted for
-
-The old "decided" entry claiming `alpha == 1.000` for every `T_fac <= 10` does
-not hold at `T_fac = 25`: it runs 2.6e-4 to 0.19, cutting the step by three to
-four orders every step.
-
-`rho` is clean of AdamW -- `train.py` measures `after` between `rot.step()` and
-`adamw.step()`, deliberately. What biases it is `clip_grad_norm_`, which runs
-before `rot.step()`: the clip scales `G` by `s`, `X` is linear in `G`, so
-`quad` goes as `s^2` while the actual decrease goes as `s`, leaving a constant
-factor `1/s` on `rho`, identical across arms at step 0.
-
-    eta      rho@0    angle_max@0   val@150
-    3e-4     2.1677      1.1 rad     5.6987
-    1e-3     1.9831      3.6         5.6290
-    3e-3     1.3075     10.8         5.5702
-    1e-2     0.4728    ~36           5.5068   <- best loss
-    3e-2     0.1511   ~108           5.6249
-
-`rho = 2.2822 - 322.8 lr` fits the first three arms to +-0.02 and misses the
-next two by +1.42 and +7.55, so the second-order model holds only to about
-`eta = 3e-3`; past it `rho` saturates rather than going negative.
-
-**The best loss sits where the model over-predicts twofold.** `ALGORITHM.md`
-justifies dropping Pion's RMS scaling as "a testable hypothesis: the Fisher
-sets the scale itself". That test has now been run and the hypothesis fails.
-`eta` is a tuned learning rate; say so in the paper rather than working around
-it.
-
-**Where the 500x went.** With `kappa := curv/(4 Q)` the quadratic optimum is
-`c* = 2 kappa`, so the theoretical `eta* = 2` assumes `kappa = 1`. Measured
-`kappa = 1.8e-3` gives `c* = 3.5e-3` against an observed 1e-2 -- the whole gap,
-to within a factor of 3 over five orders.
-
-**And it is the independence assumption.** Job 273528 ran
-`scripts/probes/kfac_error.py` for the first time, on fresh weights:
-`kfac/exact` = 3.11e-2, 6.04e-3, 1.13e-2, geometric mean **0.0128**. Two orders
-below 1, so the gap is not Fisher-against-Hessian. The in/out cross term is
-excluded separately by Cauchy-Schwarz (`kappa >= 1/2` whatever the data). The
-pre-registered bound of 0.0036 was missed by 3.6x, so independence is most of
-`kappa`, not all of it.
+For skew `G`, `G G^T = -G^2 = G^T G`, so Shampoo's two factors coincide: one
+accumulator and one `eigh` instead of two. The two-sided sandwich
+`P^-1/4 G P^-1/4` is skew, so the step stays a rotation generator and Cayley
+still freezes the spectrum -- the one-sided form does not, except on the first
+step where `P` commutes with `G`, which is a trap an implementation checked
+only at step 0 would fall into. With a single accumulated gradient the sandwich
+orthogonalises the generator exactly, so every rotation plane turns by the same
+angle. All three are pinned to machine precision in the tests.
 
 ### What to do next, in order
 
-1. **Exact `curv`, so `alpha` means something.** Build the direction with the
-   approximation, measure the length with the truth, as K-FAC does:
-   `curv_exact = E_b[(2 u_b^T X x_b)^2]`. One `(tokens x n)` matmul and a
-   contraction per layer per step, no extra pass -- `u_b` and `x_b` are already
-   in the hooks. Prediction, stated before writing it: `alpha` should land near
-   1e-2 on a fresh basis and `rho` at `eta = 1` should come out near the 0.47
-   that `eta = 1e-2` shows now. If `alpha` lands near 1, the implementation is
-   wrong, not the theory.
-2. **`pion_ablated` at full length.** About 10 rtx-hours. Without it nothing at
-   full length is interpretable, and it has been the top blocker for days.
-3. **`ngd-pion-s` at full length at `eta = 1e-2`**, now that the optimum is
-   bracketed. This is the arm the paper would actually report.
-4. **Momentum.** NGD-Pion has none; Pion has it in the Lie algebra. Not a
-   confound to argue away, a missing part of the method.
+1. **`shampoo-pion` on the real model, 150 steps, `eta` swept and bracketed on
+   both sides.** Nothing carries over from the Fisher variants' `eta`; this
+   project has walked into a shared-`eta` comparison four times. Read the
+   cross-layer spread of `angle` at step 1 -- prediction 1 is falsifiable in
+   minutes, without training anything.
+2. **`pion_ablated` at full length**, about 10 rtx-hours. **Unaffected by the
+   pivot and now more necessary, not less**: whatever drives the rotation, that
+   is the isolating baseline, and no full-length number means anything without
+   it. It has been the top blocker for days.
+3. `shampoo-pion` at full length, if and only if step 1 brackets an optimum
+   that beats `pion_ablated` at its own.
+
+### Pre-registered for `shampoo-pion`, before any GPU time
+
+* Cross-layer spread of `angle` falls from ~1e4 to order 1e1 or below. If it
+  stays four orders, the construction is wrong.
+* `eta` shows a broad plateau rather than the sharp optimum at 1e-2.
+* **Named risk:** raw Shampoo without grafting is known to be unreliable in
+  step scale. If the arm blows up, the first hypothesis is scale, and grafting
+  the norm -- the analogue of Pion's `rms` -- is the named fallback rather than
+  a rescue invented afterwards.
+* A toy CPU run gave a cross-layer spread of 1.6x. **That is a wiring check,
+  not a result**: a two-layer hidden-64 model produced a headline reading that
+  failed to reproduce at the real configuration twice this week.
 
 ### Open bugs
 
 * **`ngd_power` is silently inert for `ngd-pion-s`.** It reaches the manifest,
   the run hash and the directory name without reaching the optimizer, so it
   reads as a controlled variable and is not. Either wire it or reject it in
-  `RunConfig`.
+  `RunConfig`. `test_shampoo.py` now pins the equivalent wiring for the new
+  optimizer so the class of bug does not recur there.
+* `powered.py`'s docstring calls `power = 1/2` "Adam, Shampoo". The exponents
+  agree arithmetically; the matrices being raised to them do not. Correct it.
 * `basis_congruence` crashed a run at step 41 500 -- `linalg.eigh` failing to
-  converge on an ill-conditioned pencil. It will bite **more often** under
-  `ngd-pion-s`, where the out-side takes the congruence path too.
+  converge on an ill-conditioned pencil. `safe_eigh` now has a three-rung
+  fallback, but **the long `ngd-pion-s` run has still never been attempted**
+  and this is where it would bite. Shampoo does not use that path at all.
 * `is_identity` uses `atol = 1e-6` and a flat-spectrum 512x512 weight built in
-  fp32 misses it at `1.073e-06`. Nothing takes the cheap basis path that
-  should. It should also accept a matrix proportional to the identity, which is
-  what a flat initialisation gives a non-square layer.
+  fp32 misses it at `1.073e-06`.
 * **The out-side solves in a space the problem does not occupy.** For `m > n`
-  the null space of `F_out` is exactly `so(range(W)^perp)`, dimension
-  `(m-n)(m-n-1)/2` -- 39% of `so(1376)` on the FFN layers, and `eps` is applied
-  there for nothing. Note the journal's earlier phrasing, "the meaningful
-  problem is `so(n)`", is **wrong**: the `(kernel, range)` block is live and
-  carries ~88% of the step. The correct target is `so(m)/so(m-n)`, the Stiefel
-  tangent space, of dimension `mn - n(n+1)/2`. Hygiene and cost, not a fix:
-  in exact arithmetic with a fresh basis the step is unchanged, because the
-  `(kernel, kernel)` numerator is exactly zero.
+  the null space of `F_out` is `so(range(W)^perp)` -- 39% of `so(1376)` on the
+  FFN layers. Hygiene and cost, not a fix. Applies to the Fisher path only.
 
 ### Decided, do not re-litigate
 
 * **The anchor is accepted** against its pre-registered criteria, deliberately,
-  by the user. Level reproduces to 0.7%; the arm gap comes out 1.9x theirs. It
-  licenses internal comparisons in this harness and not the quoting of our
-  numbers as reproductions of theirs.
+  by the user. It licenses internal comparisons in this harness and not the
+  quoting of our numbers as reproductions of theirs.
+* **The Fisher's self-scaling hypothesis is dead**, by three independent
+  measurements. Do not re-derive `eta* = 2`.
+* **The toy is not the model.** A two-layer hidden-64 run produced the
+  attention/FFN 1000x split (did not reproduce, came out 2-5x) and now the 1.6x
+  angle spread (unverified). Toy readings are wiring checks.
 * **Pin `--adamw-lr` for any sweep over `lr`.** One rate drove both optimizers
   until 2026-08-26, so every learning-rate conclusion before that date measured
-  AdamW. `adamw_lr = 0` still means "follow lr", which is their published
-  design, so the anchor is unaffected.
-* **Never compare two optimizers at a shared `eta`.** Each has its own optimum
-  -- on the toy problem they spanned 4.6e-3 to 2.2e+1 -- and this project has
-  now walked into it four separate times: the initialisation sweep, the
-  heavy-tail sweep, the `ngd-pion-op` null result, and the standing claim about
-  the measured `S`.
+  AdamW.
+* **Never compare two optimizers at a shared `eta`.** Each has its own optimum;
+  this project has walked into it four separate times.
 * **Concurrent runs on one node must share a seed.** Different seeds read
-  different corpus windows and halve each other's IOPS: 18.7 s/step for two,
-  4.4 as soon as one is cancelled. Sweep seeds sequentially.
-* **A single 150-step run resolves about 0.05 in loss.** sd is 0.024 over four
-  seeds; repeats of `ngd-pion` at `eta = 1` span 5.7621 to 5.8308, so treat
-  0.07 rather than 0.024 as the practical floor.
-* **`T_fac` around 25.** 100 is clearly worse; below 25 nothing is resolvable
-  and the cost keeps climbing.
-* **The covariance bf16 bug is fixed** (`59109d3`) and **every run now on disk
-  postdates it**. `n_negative` is 0 across all 56 weights in the recent runs.
-  Do not re-diagnose negative curvature from that cause.
+  different corpus windows and halve each other's IOPS.
+* **A single 150-step run resolves about 0.05 in loss**; treat 0.07 as the
+  practical floor.
+* **`T_fac` around 25.**
+* **The covariance bf16 bug is fixed** (`59109d3`) and every run now on disk
+  postdates it.
+
+### The headline numbers, for reference
+
+Full length, 73 242 steps, AdamW pinned at 1e-3:
+
+| run | val |
+|---|---|
+| `ngd-pion` `S = I`, eta 1.0, T_fac 25 | **3.6728** |
+| `pion` (their published config) | 3.3719, 3.3866 |
+
+**The comparison isolates nothing**, and is wrong in three ways at once: the
+worse variant (the measured `S` beats `S = I` by 0.23-0.32), off its own
+150-step optimum of `eta = 3`, and against a baseline carrying momentum, RMS
+scaling and a truncated retraction. At 150 steps, best against best,
+`ngd-pion` beat `pion_ablated` 5.9113 to 6.1143.

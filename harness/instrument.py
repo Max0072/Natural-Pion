@@ -95,6 +95,8 @@ def layer_diagnostics(optimizer, names: dict | None = None, probe=None) -> list[
         for p in group["params"]:
             state = optimizer.state.get(p, {})
             if "bases" not in state:
+                if "P_in" in state:
+                    rows.append(_shampoo_row(p, group, state, names, probe))
                 continue
             basis_in, basis_out = state["bases"]
             lam = basis_in.lam
@@ -138,6 +140,61 @@ def layer_diagnostics(optimizer, names: dict | None = None, probe=None) -> list[
                 }
             )
     return rows
+
+
+def _shampoo_row(p, group, state, names, probe) -> dict:
+    """One row for `ShampooPion`, which has no Fisher and therefore no bases.
+
+    Carries the *same key set* as the Fisher row, `NaN` where a quantity has no
+    counterpart, so `summarise` and every analysis script keep working across
+    optimizers instead of each growing a special case.
+
+    The two keys that are not padding are `plane_ratio_in/out`: the ratio of
+    largest to smallest rotation-plane angle within a layer. It is 1 when the
+    generator has been fully orthogonalised and the condition number of the
+    generator when it has not, so it reads out how much preconditioning
+    actually happened -- the direct test of the mechanism, per layer.
+    """
+    nan = float("nan")
+    P_in = state["P_in"]
+    spec = _spectrum(P_in, group["eps"])
+    return {
+        "name": (names or {}).get(id(p), f"{tuple(p.shape)}"),
+        "shape": tuple(p.shape),
+        "alpha": nan,                      # no trust region under this preconditioner
+        "angle": float(state.get("angle", nan)),
+        "angle_requested": nan,
+        "cond_A": spec["cond_trunc"],      # of the accumulator, not of a covariance
+        "lam_max_A": spec["lam_max"],
+        "lam_min_A": spec["lam_min"],
+        "n_below_floor": spec["n_below_floor"],
+        "null_frac": spec["null_frac"],
+        "n_negative": spec["n_negative"],
+        "neg_frac": spec["neg_frac"],
+        "floored_in": nan,
+        "floored_frac_in": nan,
+        "floored_frac_out": nan,
+        "orthogonal_in": False,
+        "skew_ratio": nan,
+        "quad": nan,
+        "curv": nan,
+        "curv_exact": nan,
+        "alpha_exact": nan,
+        "quad_over_curv": nan,
+        "floor_share_in": nan,
+        "floor_share_out": nan,
+        "delta_rms": float(probe.stats[id(p)]) if probe and id(p) in probe.stats else nan,
+        "snr_med": nan,
+        "snr_p99": nan,
+        "snr_max": nan,
+        "depth": _depth(names, p),
+        "lam_ratio": nan,
+        "step": int(state.get("step", 0)),
+        "plane_ratio_in": float(state.get("plane_ratio_in", nan)),
+        "plane_ratio_out": float(state.get("plane_ratio_out", nan)),
+        "plane_max_in": float(state.get("plane_max_in", nan)),
+        "plane_max_out": float(state.get("plane_max_out", nan)),
+    }
 
 
 def _depth(names: dict | None, p: torch.Tensor) -> int:

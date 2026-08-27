@@ -42,11 +42,19 @@ Carlo, the closed-form solve against an explicit Kronecker system, the descent
 lemma, the sign, Cayley's exactness, spectrum preservation. The optimizer, the
 Pion baseline with ablation switches, a LLaMA-60M harness in their
 configuration, the anchor machinery, SLURM scripts, a container definition.
-140 tests, 24 s in the container on four threads. One is skipped by design --
+204 tests, 26 s in the container on four threads. One is skipped by design --
 `square W has no kernel` -- and **none of them touches a GPU**, which is a
 property of checking the torch path against a numpy oracle rather than an
 oversight, but it does mean anything device-specific has to be checked by
 running something on a card.
+
+**The preconditioner changed on 2026-08-27.** The Fisher's self-scaling
+hypothesis -- that `eta* = 2` is derived rather than tuned, so Pion's RMS
+scaling is unnecessary -- was refuted by three independent measurements, and
+the project moved to Shampoo's preconditioner on the same rotational geometry
+(`ngd_pion/shampoo.py`, `shampoo-pion`). The Fisher path is kept, not deleted:
+it is what the negative result is written from. See `ALGORITHM.md` §8 and
+`docs/RESUME.md`.
 
 **Not done, and this is the whole risk.** Nothing has been trained at scale.
 The only evidence the method helps is a toy least-squares with an exactly

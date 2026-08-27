@@ -218,6 +218,34 @@ class RunConfig:
     # carrying the trust region, `lr` is meant to stay at 1.
     ngd_lam_adapt: bool = True
 
+    # Shampoo on so(n) -- `shampoo-pion`. Read by nothing else; see
+    # `ngd_pion/shampoo.py` for why the preconditioner is built from the
+    # generators themselves rather than from network statistics.
+    #
+    # Exponent per side. `0.25` is the original Shampoo, so the two sides
+    # compose to Adagrad's `-1/2`. `0.0` disables preconditioning and leaves
+    # the raw generator, which is ablated Pion and therefore the control arm
+    # that costs nothing to run in the same harness.
+    shampoo_power: float = 0.25
+    # `0` accumulates a plain sum, as the original does. That carries an
+    # implicit `t^-1/2` decay which compounds with the cosine schedule over
+    # 73242 steps -- a real interaction to watch on a long run, not an
+    # artefact. A positive value makes the accumulator an EMA instead.
+    shampoo_beta: float = 0.0
+    # `floor` is the relative floor `max(lam, eps * lam_max)` this package uses
+    # everywhere; `shift` is the original's `eps I`. The choice is not cosmetic:
+    # the shift is not homogeneous, so it forfeits the scale invariance that is
+    # the reason for adopting Shampoo here at all. `test_shampoo.py` pins both
+    # the invariance and its loss.
+    shampoo_damping: str = "floor"   # floor | shift
+    shampoo_eps: float = 1e-4
+    # Record the per-layer plane-angle spread every this many steps; `0` is off
+    # and is the default, because it costs an `svdvals` per side per layer and
+    # 24 of this model's 56 weights have a 1376-dimensional side. Turn it on
+    # for a diagnostic run, not for a training run. `angle` is free and always
+    # recorded.
+    shampoo_plane_every: int = 0
+
     # vanilla Pion
     pion_scaling: str = "rms"
     pion_rms: float = 0.2

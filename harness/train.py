@@ -29,6 +29,7 @@ from ngd_pion.with_s import NGDPionS, attach_backward
 from ngd_pion.with_s_fast import FastNGDPionS
 from ngd_pion.op_damped import OpDampedNGDPion
 from ngd_pion.powered import PoweredNGDPion
+from ngd_pion.shampoo import ShampooPion
 from ngd_pion.damped import DampedNGDPionS
 from ngd_pion.exact_curv import ExactCurvNGDPionS
 from ngd_pion.linalg import EIGH_FALLBACKS
@@ -39,6 +40,13 @@ from .instrument import BackwardProbe, layer_diagnostics, summarise
 from .model import Transformer
 
 __all__ = ["build_optimizers", "lr_at", "train"]
+
+# Optimizers that expose per-layer rows to `instrument.layer_diagnostics`.
+# A tuple rather than `isinstance(rot, NGDPion)` at each call site: `ShampooPion`
+# is deliberately not an `NGDPion` subclass -- it takes no covariance and has no
+# Fisher -- and an identity check would have silently written no diagnostics at
+# all for it, which is exactly how it first behaved.
+DIAGNOSED = (NGDPion, ShampooPion)
 
 
 def lr_at(step: int, cfg: RunConfig, base: float | None = None) -> float:
@@ -134,6 +142,24 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
             alpha_max=cfg.ngd_alpha_max, t_fac=cfg.ngd_t_fac, **kw,
         )
         recorder = attach(linears, rot)
+    elif cfg.optimizer == "shampoo-pion":
+        # Deliberately not in `NGD_IMPLEMENTATIONS`: that call passes `beta`,
+        # `eps` and `alpha_max` with Fisher meanings, and reusing those names
+        # for different quantities is how `ngd_power` came to reach the run
+        # hash without reaching the optimizer.
+        rot = ShampooPion(
+            weights,
+            lr=cfg.lr,
+            power=cfg.shampoo_power,
+            beta=cfg.shampoo_beta,
+            eps=cfg.shampoo_eps,
+            damping=cfg.shampoo_damping,
+            t_fac=cfg.ngd_t_fac,
+            plane_every=cfg.shampoo_plane_every,
+        )
+        # No hooks and no recorder: the preconditioner is a function of the
+        # gradients alone, so there is nothing to observe in the forward pass.
+        recorder = None
     elif cfg.optimizer in ("pion", "pion_ablated"):
         ablated = cfg.optimizer == "pion_ablated"
         rot = Pion(
@@ -164,7 +190,11 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
     else:
         raise ValueError(
             f"unknown optimizer {cfg.optimizer!r}; expected one of "
-            + ", ".join(repr(k) for k in (*NGD_IMPLEMENTATIONS, "pion", "pion_ablated", "adamw"))
+            + ", ".join(
+                repr(k) for k in (
+                    *NGD_IMPLEMENTATIONS, "shampoo-pion", "pion", "pion_ablated", "adamw"
+                )
+            )
         )
 
     adamw = _adamw(rest, cfg)
@@ -338,7 +368,7 @@ def train(
     # instrument in the first place -- does the required step size depend on
     # depth, does the antisymmetric part of the gradient survive bf16 -- cannot
     # be answered from two order statistics over 56 weights.
-    diagnostics = (out / "diagnostics.jsonl").open("a") if isinstance(rot, NGDPion) else None
+    diagnostics = (out / "diagnostics.jsonl").open("a") if isinstance(rot, DIAGNOSED) else None
     # Measurement only, attached alongside the diagnostics file and nowhere else.
     probe = BackwardProbe(model.parameter_split()[0]) if diagnostics is not None else None
     # The S variant needs the backward signal as a statistic, not as a
@@ -509,7 +539,7 @@ def train(
                 row["eigh_fallbacks"] = dict(EIGH_FALLBACKS)
             if rho is not None:
                 row["pred_drop"], row["rho"] = predicted, rho
-            if isinstance(rot, NGDPion):
+            if isinstance(rot, DIAGNOSED):
                 rows = layer_diagnostics(rot, names, probe)
                 row.update(summarise(rows))
                 if diagnostics is not None:

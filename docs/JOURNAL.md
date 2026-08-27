@@ -3733,3 +3733,184 @@ this project days before. It needs the real configuration.
 real model, 150 steps. That reads `alpha_exact` per layer on the configuration
 we would actually report, and says whether the attention/FFN split is real.
 
+
+
+## 2026-08-27, evening -- 274008 and 274907: the Fisher line closes
+
+Both jobs finished after the previous `RESUME.md` was written and neither was
+written up at the time. Recorded here from the logs and the run directories so
+the results are not lost.
+
+### 274008: `alpha_exact` on the real model, and the toy's headline does not survive
+
+`ngd-pion-exact` at `eta = 1e-2` (the swept optimum of 273026), `T_fac = 25`,
+AdamW pinned at 1e-3, seed 0, 150 steps, `exact_every = 30`. Median over the 56
+weights of `alpha_exact / alpha`, which is the factor the Kronecker curvature
+is short by:
+
+    step   median alpha_exact/alpha   curv too small by
+       1              4.70e-03              213x
+      31              1.24e-01                8.1x
+      61              4.06e-02               24.6x
+      91              6.62e-02               15.1x
+     121              7.80e-02               12.8x
+
+`alpha_exact` sits far below 1, which was the pre-registered check that the
+implementation measures against `curv` rather than reproducing it. It passes.
+
+**The 213x is a transient.** By step 31 the Kronecker form is only about 13x
+short and it stays there. That matters because `eta* = 2 kappa`: the step-1
+value predicts `eta* = 9.4e-3` against a swept optimum of 1.0e-2 -- a 6% match
+-- while the steady-state value predicts 0.15. One scalar `eta` for the whole
+run is therefore pinned by the first thirty steps.
+
+**The attention/FFN split does not reproduce.** The toy (two layers, hidden 64)
+showed attention and FFN differing by ~1000x in `alpha_exact`, and that was
+flagged at the time as needing the real configuration before being believed.
+It does not survive it. Medians by role:
+
+    step        attn         ffn     ffn/attn
+       1    1.716e-03   7.501e-03         4.4x
+      31    1.525e-05   2.556e-05         1.7x
+      61    1.558e-05   3.535e-05         2.3x
+      91    3.615e-04   1.643e-03         4.5x
+     121    8.681e-04   1.730e-03         2.0x
+
+Two to five times, not three orders. **The toy reading was an artefact of the
+toy**, and this is the second time in two days that a coherent story from a
+two-layer hidden-64 model failed to reproduce at the real configuration. The
+rule that produced the right call here -- refuse to explain a toy result, run
+the real one -- is worth keeping.
+
+### 274907: the warmup hypothesis, tested at its predicted optimum, fails
+
+If the transient is what pins `eta`, warming up should let the steady-state
+optimum of 0.15 be used and beat the 5.5068 that `eta = 1e-2` gives without
+warmup.
+
+    eta   warmup   steps   val@150
+   0.15       30     149    5.8861
+
+**Worse by 0.38, far outside the 0.07 practical floor.** The hypothesis is dead
+at the point it predicted.
+
+**Only one of five planned arms ran.** The grid in `warmup.sbatch` specifies
+B (`eta = 1e-2` with warmup, the control that isolates AdamW's own warmup),
+C (5e-2), D (0.15), E (0.5) and F (1.0); the job was submitted with `ARMS`
+restricted to D. So the strict reading is narrower than "warmup does not help":
+the *predicted* optimum was tested and lost, and the interval between 1e-2 and
+0.15 is unmeasured. Since D lost rather than won, the missing control B is not
+needed to interpret it -- B exists to attribute a *gain*, and there was none.
+
+### Where this leaves the Fisher line
+
+`ALGORITHM.md` proposed as a testable hypothesis that the Fisher sets the step
+scale itself, so that Pion's RMS scaling is unnecessary and `eta* = 2` is
+derived rather than tuned. Three independent measurements now say it does not:
+`kappa = 1.8e-3` from the `rho` fit, `kfac/exact = 0.0128` from
+`kfac_error.py`, and `alpha_exact/alpha` around 1e-1 to 5e-3 here. `eta` is a
+tuned learning rate and the paper has to say so.
+
+What is *not* established is that preconditioning fails: the only full-length
+comparison is `ngd-pion` (`S = I`, `eta = 1.0`) against full `pion`, and it is
+wrong in three ways at once -- the worse variant, off its own 150-step optimum
+of 3, and against a baseline carrying momentum, RMS scaling and a truncated
+retraction. `pion_ablated` at full length still does not exist and is still the
+top blocker.
+
+
+## 2026-08-27, evening -- Shampoo on so(n): the preconditioner changes, the geometry does not
+
+Decision by the user, after reading the above: rather than continue repairing
+the Fisher preconditioner, replace it with Shampoo's, keeping Pion's rotational
+geometry. Implemented in `ngd_pion/shampoo.py` (`shampoo-pion`), with
+`ngd_pion/shampoo_reference.py` as the numpy oracle and 17 tests in
+`tests/test_shampoo.py`. Nothing has been run on a GPU yet; this entry is the
+pre-registration.
+
+**It is not the powered family.** `powered.py`'s docstring calls `power = 1/2`
+"Adam, Shampoo". That identification is loose and was nearly acted on here:
+`powered.py` raises the *Fisher's* eigenvalues to a power, Shampoo builds its
+factors from the *gradients themselves*. The exponents agree arithmetically,
+the matrices do not. The docstring should be corrected. For the record, since
+it was measured and is easy to mistake for a Shampoo result: `ngd-pion-pow` at
+`power = 0.5`, 150 steps, gave 6.16 / 6.05 / 5.824 / 6.61 at
+`eta` = 1e-6 / 1e-4 / 1e-2 / 1 -- it does not reach the measured `S` arm's
+5.5068.
+
+### Why so(n) is a good host for it, and this is the substance of the idea
+
+Three structural facts, all pinned to machine precision rather than argued.
+
+1. **The two Shampoo factors coincide.** `G^T = -G` gives
+   `L = G G^T = -G^2 = G^T G = R`. One accumulator, one `eigh`, half the state
+   of ordinary Shampoo.
+2. **The two-sided sandwich is what closes on the algebra.**
+   `(P^-p G P^-p)^T = -P^-p G P^-p`, so the step is still a rotation generator
+   and Cayley still freezes the spectrum. **With one exception that is a trap:**
+   on the first step `P = -G^2` commutes with `G`, so the *one-sided* form is
+   skew too. An implementation validated only at step 0 would look correct and
+   leave `so(n)` from step 1. Both halves are tests.
+3. **One gradient in, and the generator is orthogonalised exactly.** In the real
+   Schur basis the blocks come out `[[0,1],[-1,0]]`, so every rotation plane
+   turns by the same angle -- the `so(n)` analogue of Muon, with accumulation
+   interpolating back toward the raw gradient. `X X^T = I` to 1e-9 at `eps = 0`.
+
+The reason to want it here is the defect the full-length run diagnosed: the
+per-layer rotation angle spans 4658x to 36496x within one step, because the
+Fisher is block diagonal per layer and one scalar `eta` covers all of them. The
+sandwich is scale free -- `G -> cG` leaves the step unchanged -- so both the
+spread within a layer and the scale between layers should collapse, structurally,
+where Pion buys the same thing by fiat with `scaling="rms"`.
+
+It also removes, rather than repairs, three things that cost the last week: the
+empirical-Fisher pathology (`delta -> 0` as the model fits, so `F -> 0` and the
+step diverges), the independence assumption that `kfac_error.py` measured at
+0.0128, and the entire `S` question -- there are no hooks, no activation
+statistics and no backward recorder.
+
+### Pre-registered, before any GPU time
+
+1. **The cross-layer spread of `angle` falls from ~1e4 to order 1e1 or below**,
+   readable at step 1 without training anything. If it stays four orders, the
+   construction is wrong and it is visible in minutes.
+2. **`eta` acquires a broad plateau** instead of the sharp optimum at 1e-2,
+   because the step is now scale free.
+3. **Named risk, in advance:** the original Shampoo without grafting is known
+   to be unreliable in step scale, which is why Anil et al. graft the norm from
+   Adagrad. If the arm blows up, the first hypothesis is the scale and grafting
+   -- the analogue of Pion's `rms` -- is the named fallback, not a rescue
+   invented afterwards.
+4. **Control:** `power = 0` is exactly ablated Pion, in the same code and the
+   same harness, so the comparison arm costs one flag.
+5. **`eta` gets its own sweep.** Nothing carries over from the Fisher variants.
+   This project has walked into a shared-`eta` comparison four times.
+
+### The one deliberate departure from "as in the original"
+
+Damping. The original adds `eps I`; an absolute shift is not homogeneous and
+therefore forfeits exactly the scale invariance that motivates the method, most
+severely early when `P` is small and low rank. The relative floor
+`max(lam, eps lam_max)` this package uses everywhere is homogeneous and was
+separately measured 134x more accurate than a shift. So `damping="floor"` is
+the default and `damping="shift"` reproduces the original; both are pinned by
+tests, including a negative control asserting that the shift *does* break the
+invariance, and the difference costs one flag to measure.
+
+### Toy reading, and it is only a wiring check
+
+Twenty steps, two layers, hidden 64, on CPU. Cross-layer spread of `angle`
+came out **1.6x**, against 4658x-36496x for the Fisher variant. That is
+prediction 1 landing emphatically -- and it is a two-layer hidden-64 model,
+which is precisely the configuration whose headline reading failed to
+reproduce twice this week. It is recorded as evidence that the code runs, not
+as a result. The within-layer `plane_ratio` is *not* 1 (211 to 1e9), which is
+expected once the accumulator holds several gradients and most of its spectrum
+sits on the floor; on the real model it is the quantity to watch.
+
+### Next
+
+`shampoo-pion` on the real model, 150 steps, `eta` swept, bracketed on both
+sides, against `pion_ablated` at its own optimum. `pion_ablated` at full length
+is unaffected by this pivot and becomes more necessary, not less: whatever
+drives the rotation, that is the isolating baseline.
