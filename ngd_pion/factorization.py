@@ -40,11 +40,27 @@ class Basis:
     P: torch.Tensor
     lam: torch.Tensor
     orthogonal: bool
+    # `None` means `lam` arrives already floored, which is what
+    # `basis_identity_anchor` and `basis_congruence` do. A float means the
+    # opposite convention: `lam` is raw and the floor belongs on the operator's
+    # own spectrum, applied here. See `damp_op.py` for why that is not the same
+    # thing.
+    eps: float | None = None
 
     @property
     def denominator(self) -> torch.Tensor:
-        """`2(lam_i + lam_j)`, the eigenvalues of `F` in this basis."""
-        return 2.0 * (self.lam.unsqueeze(-1) + self.lam.unsqueeze(-2))
+        """`2(lam_i + lam_j)`, the eigenvalues of `F` in this basis.
+
+        They are the eigenvalues of `F` as a linear operator, and eigenvalues
+        are invariant under any change of basis, so a floor applied *here* is a
+        property of `F` alone. A floor applied to `lam` beforehand is not:
+        `lam` is the spectrum of a pencil, and which pencil depends on how the
+        pair was split.
+        """
+        d = 2.0 * (self.lam.unsqueeze(-1) + self.lam.unsqueeze(-2))
+        if self.eps is None:
+            return d
+        return torch.maximum(d, self.eps * d.amax(dim=(-2, -1), keepdim=True))
 
 
 def basis_identity_anchor(C: torch.Tensor, eps: float) -> Basis:

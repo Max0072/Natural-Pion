@@ -15,11 +15,13 @@ from .linalg import cayley, floor_eigenvalues, floor_spectrum, skew, spectral_no
 from .optimizer import NGDPion
 from .with_s import BackwardRecorder, NGDPionS, attach_backward
 from .with_s_fast import FastNGDPionS
+from .op_damped import OpDampedNGDPion
 
 __all__ = [
     "NGDPion",
     "NGDPionS",
     "FastNGDPionS",
+    "OpDampedNGDPion",
     "attach_backward",
     "BackwardRecorder",
     "attach",
