@@ -56,14 +56,13 @@ COMMON="--ngd-t-fac 25 --adamw-lr 1e-3 --precision bf16 --seed 0 \
         --eval-every 500 --no-resume \
         --data-path $DATA/c4_train.bin --val-path $DATA/c4_val.bin --out-dir $OUT"
 
-#      optimizer:eps:eta
-SPECS=(
-  shampoo-pion:1e-6:1e-12      # the do-nothing line
-  shampoo-pion:1e-6:1e-3
-  shampoo-pion:1e-6:3e-3       # the 150-step optimum
-  shampoo-pion:1e-6:1e-2
-  ngd-pion-s:-:1e-2            # the only arm above the line at 150 steps
-)
+# `optimizer:eps:eta`, overridable so the grid can be extended without a
+# throwaway script. The first pass sampled up to `eta = 1e-2` and the optimum
+# sat on that edge at both 500 and 1000 steps, so the arms above it are a
+# correction to this script's own choice, not a new question:
+#   SPECS="shampoo-pion:1e-6:3e-2 shampoo-pion:1e-6:1e-1" \
+#     sbatch -p rtx -w rtx6002,rtx6003 --array=0-1 scripts/sbatch/crossover.sbatch
+read -r -a SPECS <<< "${SPECS:-shampoo-pion:1e-6:1e-12 shampoo-pion:1e-6:1e-3 shampoo-pion:1e-6:3e-3 shampoo-pion:1e-6:1e-2 ngd-pion-s:-:1e-2}"
 IFS=: read -r OPT EPS ETA <<< "${SPECS[$SLURM_ARRAY_TASK_ID]}"
 
 echo "node $(hostname)  task ${SLURM_ARRAY_TASK_ID:-?}  opt=$OPT eps=$EPS eta=$ETA"

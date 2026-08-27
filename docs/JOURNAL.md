@@ -4324,3 +4324,96 @@ explaining an anomaly before checking what produced it.
 construction time. Anyone reading a manifest would conclude the ablation never
 happened. Same class as `ngd_power`: the configuration record and the object
 built from it disagree. The runs are correct; the record of them is not.
+
+
+## 2026-08-27, night -- 279222/279617: the crossover, and a correction to this morning's reading
+
+### First, the correction
+
+The entry above concluded from the 150-step board that "at 150 steps the
+rotation mostly hurts", on the strength of an inert control -- `shampoo-pion`
+at `eta = 1e-12` -- reaching 5.7071. The control was verified inert (angles
+1e-12 rad, spectrum drift 1.3e-13). **It was not verified stable, and it is
+not.**
+
+    step     0    100    200    300    400    800   1200   1600   2000
+    loss  10.49   5.86   6.05   6.03   6.91  23.11  57.92 315.25 1768.78
+
+It then died at step ~2300 inside `cayley`, `linalg.solve` reporting a singular
+matrix -- a consequence of the divergence, not a cause. Freezing the matrices
+and letting AdamW carry the embedding, head and norms is not a training
+configuration at all: it bottoms out near 5.86 around step 100 and explodes.
+
+So **5.7071 at 150 steps was the transient minimum of a diverging curve**, not
+a baseline, and "the rotation hurts at 150 steps" overstated what had been
+measured. The correct statement is narrower: at 150 steps the rotational arms
+had not yet overtaken a control that happened to be at its own floor. By step
+500 every rotational arm is ahead of it by more than seventeen nats.
+
+What survives from that entry untouched is the inversion between `pion` and
+`ngd-pion` across 150 and 73 242 steps, which involves no control at all.
+
+### The curves
+
+`pion` is eight full-length runs already on disk, so the comparison costs
+nothing. All arms share `adamw_lr = 1e-3` (the old runs predate the field,
+where `0` meant "follow `lr`", also 1e-3), `adam_beta2 = 0.95`,
+`decay_norms_and_biases = False`, seed 0, bf16 -- checked field by field rather
+than assumed.
+
+    step               500     1000     1500     2000     2500     3000
+    pion best of 8   4.7275   4.3150   4.1671   4.0781   4.0272   3.9880
+    pion median      4.8710   4.4212   4.2173   4.1241   4.0571   4.0133
+    ngd-pion-s       4.5947   4.2177   4.0866   4.0124   3.9619   3.9184
+    lead over best  +0.1328  +0.0973  +0.0805  +0.0657  +0.0653  +0.0696
+
+**`ngd-pion-s` is ahead of `pion` at every horizon measured.** The lead narrows
+from 0.133 to about 0.066 and then stops narrowing, holding 0.065-0.070 from
+step 2000 to 3000. Against the median of the eight `pion` runs -- the fairer
+comparator, since "best of 8" is a minimum over eight draws and biased low --
+the lead at 3000 is 0.095.
+
+This is the first time in this project that any arm has beaten `pion` on a
+like-for-like basis at any horizon. It is one run against eight, at 4% of the
+schedule, and the lead has been shrinking; it is not a full-length result.
+
+### `eta*` moves thirtyfold with horizon, and the short-horizon choice inverts
+
+`shampoo-pion`, `eps = 1e-6`:
+
+    eta        500     1000     1500     2000
+    1e-3     5.4356   5.2258   5.0461   4.9073
+    3e-3     5.3483   5.0111   4.8515   4.7684
+    1e-2     5.1617   4.8495   4.7202   4.6456
+    3e-2     5.0759   4.7265   4.5858   4.5019
+    1e-1     5.3561   4.6801   4.4733   4.3586
+
+At 150 steps the optimum of this row was `3e-3`. At 500 it is `3e-2`. From 1000
+onward it is `1e-1`, which is **the worst arm at step 500 and the best from
+step 1000**. The optimum has moved by a factor of 30 and the ranking at the
+short horizon is not merely biased but reversed.
+
+That is the sharpest available statement of what was wrong with the method used
+throughout this repository: `eta` was chosen at 150 steps in every sweep, and a
+150-step choice can be the worst available choice at 1000.
+
+`1e-1` is again the largest value sampled, so shampoo's optimum is still
+outside the grid and every number in its column is an upper bound.
+
+### Where shampoo actually stands
+
+At step 2000, its best sampled arm is 4.3586 against `pion`'s best 4.0781 --
+0.28 behind, with the caveat above. It is not competitive with `ngd-pion-s`
+(4.0124 at the same step) on anything measured so far.
+
+### Next
+
+1. **`ngd-pion-s` at full length.** It leads `pion` at every horizon from 500 to
+   3000 and has never been run to 73 242 steps; the only full-length NGD run
+   used `S = I` at `eta = 1.0`, the variant now known to be worse, at an `eta`
+   chosen by a method now known to be unreliable. This is the run the paper
+   would report and it does not exist.
+2. Shampoo needs `eta` above `1e-1` before any comparison involving it is fair.
+3. Harness: abort on a non-finite loss with a clear message. A diverged run
+   currently dies inside `linalg.solve` with "input matrix is singular", which
+   reads as a numerical bug in the optimizer and is not one.
