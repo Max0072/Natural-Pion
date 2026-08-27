@@ -93,8 +93,29 @@ class NGDPionS(NGDPion):
         return state["cov_backward"]
 
     def observe_backward(self, param: torch.Tensor, delta: torch.Tensor) -> None:
-        """Record the gradient arriving at the output of the layer owning `param`."""
-        self._backward_accumulator(param).observe(delta)
+        """Record the gradient arriving at the output of the layer owning `param`.
+
+        **`delta` is rescaled by the token count, and the factor is not
+        cosmetic.** The loss is a mean over the tokens of a step, so what
+        autograd hands to the hook is `dL/dout_b = dl_b/dout_b / N`, already
+        divided by `N`; `CovarianceAccumulator` then averages over the same
+        tokens and divides again. The result is `E[dd^T] / N^2`.
+
+        What the curvature of a mean loss actually is, though, is the *average
+        of the per-sample* outer products -- the GGN of `L = (1/N) sum l_b` is
+        `(1/N) sum J_b^T H_b J_b` -- so no `N^2` belongs there at all. Left
+        uncorrected, `F` comes out `N^2 = 1.7e10` too small on this
+        configuration and the step correspondingly too large: measured, `eta=1`
+        produced rotations of `1e13` radians.
+
+        With `S = I` this never showed, because the constant was identical for
+        every layer and `eta` absorbed it. Measuring `S` exposes it.
+        """
+        flat = delta.detach().reshape(-1, delta.shape[-1])
+        # `scale`, not `flat * n`: the gram is `d x d` and `flat` is
+        # `tokens x d`, so scaling the input would copy 721 MB per wide layer
+        # per step to achieve the same thing.
+        self._backward_accumulator(param).observe(flat, scale=float(flat.shape[0]) ** 2)
 
     def _ready(self, param: torch.Tensor) -> bool:
         state = self.state[param]

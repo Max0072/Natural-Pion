@@ -55,8 +55,16 @@ class CovarianceAccumulator:
         return self._matrix
 
     @torch.no_grad()
-    def observe(self, x: torch.Tensor) -> None:
-        """Fold a batch of activations in. `x` is `(..., d)`; leading dims are flattened."""
+    def observe(self, x: torch.Tensor, scale: float = 1.0) -> None:
+        """Fold a batch of activations in. `x` is `(..., d)`; leading dims are flattened.
+
+        `scale` multiplies the gram, not `x`. A caller wanting the second moment
+        of `c * x` should pass `scale = c ** 2` rather than handing over
+        `c * x`: the gram is `d x d` while `x` is `tokens x d`, so scaling the
+        input allocates a copy of a tensor five orders of magnitude larger. On
+        this model that is 721 MB per wide layer per step, on a card close
+        enough to full that the allocator was already failing to map 20 MB.
+        """
         flat = x.detach().reshape(-1, x.shape[-1]).to(self.dtype)
         if flat.shape[0] == 0:
             return
@@ -93,7 +101,7 @@ class CovarianceAccumulator:
         # matmul is executed, not whether one happens at all. What was never
         # checked is the only thing that mattered: the dtype that came back.
         with torch.autocast(flat.device.type, enabled=False), exact_fp32():
-            gram = (flat.transpose(0, 1) @ flat) / flat.shape[0]
+            gram = (flat.transpose(0, 1) @ flat) * (scale / flat.shape[0])
         if gram.dtype != self.dtype:
             raise RuntimeError(
                 f"covariance gram came back {gram.dtype}, expected {self.dtype}; "
