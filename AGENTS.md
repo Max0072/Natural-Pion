@@ -79,10 +79,13 @@ the node-by-node detail and the scheduler limits.
 
 **Blocked on the cluster, in order:**
 
-1. Throughput on both partitions. A 60M model does not fill a B200; the peak-FLOPS
-   ratio against the RTX pool will not be the observed ratio, and which pool the
-   long runs belong on depends on measuring it. Twenty minutes, and it changes
-   the allocation plan.
+1. ~~Throughput on both partitions.~~ **Answered, from the anchor runs already
+   on disk rather than by a new measurement.** A full 73242-step `pion` run
+   takes 9.4-9.5 h on `rtx` and 4.8-5.5 h on `b200`: **1.9x**, and not the
+   peak-FLOPS ratio, exactly as this entry warned. Long runs belong on `b200`
+   whenever it is schedulable -- enough so that queueing for it can still beat
+   starting immediately on `rtx`, which is how the runs of 2026-08-28 were
+   placed.
 2. Container, then C4.
 3. **The anchor** — see below. No number this harness produces means anything
    until it lands.
