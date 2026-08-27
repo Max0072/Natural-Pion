@@ -89,6 +89,13 @@ class FastNGDPionS(NGDPionS):
         sigma_in, state["angle_v_in"] = spectral_norm(X_in, iters, state.get("angle_v_in"))
         sigma_out, state["angle_v_out"] = spectral_norm(X_out, iters, state.get("angle_v_out"))
         state["angle"] = c * torch.maximum(sigma_in, sigma_out)
+        # First-order predicted decrease from this layer's rotation. The sign
+        # convention is stated in `direction`: with `X` unsigned and the step
+        # `Cayley(-eta alpha X)`, the loss falls by `1/2 eta alpha quad`.
+        # `harness.train` sums these and divides the measured decrease by the
+        # total -- the ratio a trust region is actually meant to watch, and
+        # which this method has never once looked at.
+        state["pred_drop"] = 0.5 * c * quad
 
         if group["alternate"]:
             W = W @ cayley(X_in, c) if state["step"] % 2 else cayley(X_out, c) @ W

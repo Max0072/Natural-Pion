@@ -397,9 +397,24 @@ def train(
 
         if cfg.grad_clip:
             torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
-        for opt in (rot, adamw):
-            if opt is not None:
-                opt.step()
+        # On logged steps, measure what a trust region is really for: the
+        # decrease the model predicted against the decrease that happened.
+        # Taken on the *same* batch and *before* AdamW moves the embedding and
+        # the head, so neither the data changing nor the other optimizer
+        # contaminates it. One extra forward every `log_every` steps.
+        watch = rot is not None and (step % cfg.log_every == 0 or step == steps - 1)
+        if rot is not None:
+            rot.step()
+        rho = predicted = None
+        if watch:
+            predicted = sum(
+                float(rot.state[p].get("pred_drop", 0.0))
+                for g in rot.param_groups for p in g["params"] if p in rot.state
+            )
+            with torch.no_grad(), _autocast(cfg, device):
+                _, after = model(x, y)
+            rho = (loss_sum - float(after)) / predicted if predicted else float("nan")
+        adamw.step()
 
         if step % cfg.log_every == 0 or step == steps - 1:
             now = time.time()
@@ -432,6 +447,8 @@ def train(
             # from a crash that did not happen.
             if any(EIGH_FALLBACKS.values()):
                 row["eigh_fallbacks"] = dict(EIGH_FALLBACKS)
+            if rho is not None:
+                row["pred_drop"], row["rho"] = predicted, rho
             if isinstance(rot, NGDPion):
                 rows = layer_diagnostics(rot, names, probe)
                 row.update(summarise(rows))

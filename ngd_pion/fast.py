@@ -199,6 +199,13 @@ class FastNGDPion(NGDPion):
             tiny = torch.finfo(dt).tiny
             c = torch.minimum(c, sigma.new_tensor(group["angle_max"]) / sigma.clamp_min(tiny))
         state["angle"] = c * sigma
+        # First-order predicted decrease from this layer's rotation. The sign
+        # convention is stated in `direction`: with `X` unsigned and the step
+        # `Cayley(-eta alpha X)`, the loss falls by `1/2 eta alpha quad`.
+        # `harness.train` sums these and divides the measured decrease by the
+        # total -- the ratio a trust region is actually meant to watch, and
+        # which this method has never once looked at.
+        state["pred_drop"] = 0.5 * c * quad
 
         if group["alternate"]:
             W = W @ cayley(X_in, c) if state["step"] % 2 else cayley(X_out, c) @ W
