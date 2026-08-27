@@ -19,6 +19,7 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from ngd_pion.fast import FastNGDPion
 from ngd_pion.hooks import attach
@@ -113,6 +114,10 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
             kw["power"] = cfg.ngd_power
         if cfg.optimizer in ("ngd-pion-s", "ngd-pion-s-ref"):
             kw["beta_backward"] = cfg.ngd_beta_backward
+            if cfg.ngd_fisher_mc_every:
+                # `D` is only fed on the sampling steps, so its EMA has to look
+                # back over sampling events rather than over training steps
+                kw["beta_backward"] = cfg.ngd_beta_backward
         rot = NGD_IMPLEMENTATIONS[cfg.optimizer](
             weights, lr=cfg.lr, beta=cfg.ngd_beta, eps=cfg.ngd_eps,
             alpha_max=cfg.ngd_alpha_max, t_fac=cfg.ngd_t_fac, **kw,
@@ -394,6 +399,31 @@ def train(
                     step % cfg.log_every == 0 or step == steps - 1
                 )
             x, y = train_data.batch(cfg.micro_batch, device)
+            if (
+                backward is not None
+                and cfg.ngd_fisher_mc_every
+                and micro == 0
+                and step % cfg.ngd_fisher_mc_every == 0
+            ):
+                # One extra pass whose labels are drawn from the model, which
+                # is what makes E[dd^T] the true Fisher rather than the
+                # empirical one. The activation recorder stays off so `A` is
+                # not fed twice, and the gradients this leaves behind are
+                # discarded -- only `D` is wanted from it.
+                if recorder is not None:
+                    recorder.enabled = False
+                backward.enabled = True
+                with _autocast(cfg, device):
+                    logits, _ = model(x)
+                with torch.no_grad():
+                    flat = logits.reshape(-1, logits.shape[-1]).float()
+                    drawn = torch.multinomial(flat.softmax(-1), 1).squeeze(-1)
+                mc = F.cross_entropy(logits.reshape(-1, logits.shape[-1]), drawn)
+                mc.backward()
+                model.zero_grad(set_to_none=True)
+                backward.enabled = False
+                if recorder is not None:
+                    recorder.enabled = True
             with _autocast(cfg, device):
                 _, loss = model(x, y)
             (loss / accum).backward()

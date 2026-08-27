@@ -50,7 +50,7 @@ from .direction import fisher_apply, generators, natural_gradient, trust_region_
 from .linalg import cayley, spectral_norm
 from .op_damped import OpDampedNGDPion
 
-__all__ = ["PoweredNGDPion"]
+__all__ = ["PoweredNGDPion", "signal_to_noise"]
 
 
 class PoweredNGDPion(OpDampedNGDPion):
@@ -122,6 +122,11 @@ class PoweredNGDPion(OpDampedNGDPion):
         state["angle"] = c * sigma
         state["pred_drop"] = 0.5 * c * quad
 
+        every = group["diag_every"]
+        if every and state["step"] % every == 0:
+            med, p99, mx = signal_to_noise(G_in, basis_in)
+            state["snr_med"], state["snr_p99"], state["snr_max"] = med, p99, mx
+
         if group["alternate"]:
             W = W @ cayley(X_in, c) if state["step"] % 2 else cayley(X_out, c) @ W
         else:
@@ -129,3 +134,33 @@ class PoweredNGDPion(OpDampedNGDPion):
         p.copy_(W.to(p.dtype))
         state["step"] += 1
         state["since_refactor"] += 1
+
+
+@torch.no_grad()
+def signal_to_noise(G_skew: torch.Tensor, basis) -> tuple[float, float, float]:
+    """`|E[g]| / sqrt(E[g^2])` per component, which theory bounds by 1.
+
+    Under `X = P Y P^T` the gradient becomes `Gb = P^T G P = E[gb]` and the
+    operator becomes diagonal with `d_ij = E[gb_ij^2]`, so each component of
+    `Gb / sqrt(d)` is a mean divided by an RMS and Cauchy-Schwarz caps it at 1.
+    The cap is exact for the true covariance; here `d` comes from the K-FAC
+    factorisation `E[dd^T] (x) E[xx^T]` rather than from `E[(d x^T)^2]`, so any
+    overshoot measures how far that factorisation is from the truth.
+
+    Divides by the **raw** `2(lam_i + lam_j)` -- no floor, no exponent. Those
+    are choices about the step; this is a statement about the statistics.
+
+    Returns `(median, 99th percentile, max)` over the strictly upper triangle,
+    which is where a skew matrix's independent components live.
+    """
+    P = basis.P
+    Gb = P.transpose(-1, -2) @ G_skew @ P
+    d = 2.0 * (basis.lam.unsqueeze(-1) + basis.lam.unsqueeze(-2))
+    n = d.shape[-1]
+    keep = torch.triu(torch.ones(n, n, dtype=torch.bool, device=d.device), diagonal=1)
+    keep = keep & (d > 0)
+    if not bool(keep.any()):
+        return (float("nan"),) * 3
+    r = (Gb.abs() / d.clamp_min(torch.finfo(d.dtype).tiny).sqrt())[keep].float()
+    q = torch.quantile(r, torch.tensor([0.5, 0.99], device=r.device))
+    return float(q[0]), float(q[1]), float(r.max())

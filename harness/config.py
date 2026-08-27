@@ -178,6 +178,22 @@ class RunConfig:
     # Exponent on the operator's eigenvalues for `ngd-pion-pow`: 1.0 is the
     # natural gradient, 0.5 is what Adam does to its second moment.
     ngd_power: float = 0.5
+    # Draw the labels for `E[dd^T]` from the model instead of from the data,
+    # every this many steps; `0` keeps the empirical Fisher. Only `ngd-pion-s`
+    # reads it.
+    #
+    # This is the difference between a curvature matrix and a noise covariance.
+    # `E[gg^T]` equals `E[grad^2 l]` only when the labels come from the model's
+    # own predictive distribution; with the data's labels it is the *empirical*
+    # Fisher, whose scale is set by how much per-sample gradients disagree
+    # rather than by how curved the loss is. Measured here, the per-component
+    # signal-to-noise `|E[g]| / sqrt(E[g^2])` peaks at 0.035, so `E[g^2]`
+    # exceeds `E[g]^2` by nearly three orders and `F^-1 G` is inflated by the
+    # same amount -- which is why `eta*` sits three orders below the 2 the
+    # theory gives for the true Fisher.
+    #
+    # `D` is an EMA, so the extra pass need not run every step.
+    ngd_fisher_mc_every: int = 0
     # 0 disables. A cap on the rotation applied per step, in radians, which is
     # the bound `alpha` structurally cannot provide: `alpha` is identically 1
     # on a fresh basis, so the step after each refactorisation is unbounded.
