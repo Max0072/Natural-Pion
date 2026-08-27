@@ -3537,3 +3537,127 @@ between the Fisher and the actual loss curvature -- a different problem, and one
 that no better estimate of `A`, `D` or `S` can touch. Both outcomes are worth
 having and they need the same single run.
 
+
+## 2026-08-27 -- the measured S wins by 0.26, and the curvature gap is the independence assumption
+
+### The sweep: `eta` for the measured `S`, bracketed
+
+Job 273026, `ngd-pion-s`, MC off, `power = 1`, `T_fac = 25`, AdamW pinned at
+1e-3, seed 0, 150 steps, six arms sequentially on one card, 0.6 rtx-hours.
+
+    eta      val@150
+    3e-4      5.6987
+    1e-3      5.6290
+    3e-3      5.5702
+    1e-2      5.5068   <- minimum, bracketed on both sides
+    3e-2      5.6249
+    1e-1      5.8845
+
+Against `ngd-pion` (`S = I`) at its own swept optimum over `eta` 0.003 to 300:
+**5.74 - 5.83**. One variable -- same floor, same power, same seed, same
+`T_fac`, same pinned AdamW -- and the measured `S` wins by **0.23 to 0.32**
+against a practical noise floor of 0.07.
+
+It also beats `mcfisher2` (measured `S` plus MC sampling of the labels, same
+`eta`) at 5.5517, so MC sampling contributes nothing here and the 0.28
+`mcfisher2` was winning by is attributable to `S` alone.
+
+**The standing claim is refuted.** The measured `S` was never worse; it had
+never been given its own `eta`, and its optimum is a hundred times smaller than
+the `S = I` arm's, exactly as `with_s.py` warned in its docstring.
+
+### The optimum sits outside the quadratic model's validity
+
+`rho` at step 0, where `alpha = 1.000` exactly and only `lr` differs between
+arms:
+
+    eta      rho@0    angle_max@0   val@150
+    3e-4     2.1677      1.1 rad     5.6987
+    1e-3     1.9831      3.6         5.6290
+    3e-3     1.3075     10.8         5.5702
+    1e-2     0.4728    ~36           5.5068   <- best loss
+    3e-2     0.1511   ~108           5.6249
+
+The line `rho = 2.2822 - 322.8 lr` fits the first three arms to +-0.02 and then
+misses the next two by +1.42 and +7.55. So the second-order model holds only
+to about `eta = 3e-3`, and past it `rho` **saturates** rather than going
+negative -- higher-order terms, not divergence.
+
+**The best loss is obtained where the model over-predicts twofold.**
+`ALGORITHM.md` justifies dropping Pion's RMS scaling as "a testable hypothesis:
+the Fisher sets the scale itself". This is the test, and the hypothesis fails:
+the useful step lies outside the region where the operator's own quadratic
+model is trustworthy. `eta` is a tuned learning rate like anyone else's, and
+that has to be written plainly rather than worked around.
+
+### Where the 500x between `eta* = 2` and `eta* = 0.01` goes
+
+The optimum of the quadratic model is `c* = quad/(2Q)`, and on a fresh basis
+`curv = quad`, so with `kappa := curv/(4Q)`,
+
+    c* = 2 kappa
+
+`kappa = 1` gives `eta* = 2` -- which is to say the theoretical value assumes
+`curv` *is* the true curvature. Measured `kappa = 1.8e-3` gives `c* = 3.5e-3`
+against an observed optimum of 1e-2. **The whole 500x gap is `kappa`**, to
+within a factor of 3 over five orders of magnitude, and that residual factor
+runs the right way: past the quadratic optimum the true loss keeps falling.
+
+### Which of the four candidates it is
+
+`kappa` lumps together (a) the K-FAC independence error, (b) the dropped
+in/out cross term, (c) Fisher against the actual loss curvature, (d) higher
+order.
+
+**(b) is excluded without measuring anything.** `2 E[ab] <= E[a^2] + E[b^2]` by
+Cauchy-Schwarz, so `kappa = (E[a^2]+E[b^2])/Q >= 1/2` whatever the data does.
+The cross term cannot take `kappa` below one half, and it is 1.8e-3. The
+morning's block-diagonality story, which looked convincing, has nothing to do
+with this.
+
+**(a) is it.** Job 273528, `scripts/probes/kfac_error.py` on freshly
+initialised weights -- the same point `kappa` was measured at -- written long
+ago and never run until now:
+
+    layer                    shape       K-FAC       exact   kfac/exact
+    blocks.0.attn.wq    (512, 512)  8.6631e-09  2.7863e-07     3.11e-02
+    blocks.0.attn.wo    (512, 512)  1.6413e+00  2.7183e+02     6.04e-03
+    blocks.0.ffn.up    (1376, 512)  3.2338e-06  2.8681e-04     1.13e-02
+
+Geometric mean **0.0128**. Two orders below 1, so (c) is not the explanation:
+the exact *empirical Fisher* along `X` is 30 to 170 times what the Kronecker
+form says, per layer. The independence assumption `delta ⊥ x` fails, badly,
+along the direction we actually step in.
+
+Two independent routes -- a fit to the loss's own reduction ratio, and a direct
+contraction against per-token quantities -- give 1.8e-3 and 1.28e-2. Different
+quantities on different data, agreeing to a factor of 7 across two to three
+orders. That is confirmation of the mechanism.
+
+**The pre-registration was not met, strictly.** It said "ratio <~ 0.0036 if
+independence is the whole story". 0.0128 is 3.6x above that, so independence
+accounts for most of `kappa` but not all: the cross term can contribute at most
+a factor 2, the probe measures only the in-side, and (c) and (d) take the rest.
+A residual factor of 3 to 4 against a total of 140.
+
+### What follows, and it is cheap
+
+(c) would have been unfixable -- no better estimate of `A`, `D` or `S` reaches
+the gap between the Fisher and the loss. (a) is fixable, by exactly the route
+K-FAC takes: build the direction with the approximation, measure the length
+with the truth.
+
+    curv_exact = E_b[(2 u_b^T X x_b)^2]        u_b = W^T delta_b
+
+One `(tokens x n)` matmul and a contraction per layer per step, the same order
+as the covariance accumulation already performed, and no extra pass over the
+network: `u_b` and `x_b` are already in the hooks. Substituted into
+`alpha = quad/curv` it makes `alpha` a measured correction of order 1/140
+instead of an algebraic identity, and makes `eta = 1` defensible.
+
+That is the next implementation, and its prediction is stated before it is
+written: with the exact `curv`, `alpha` should land near 1e-2 on a fresh basis,
+and `rho` at `eta = 1` should come out near the 0.47 that `eta = 1e-2` shows
+now. If `alpha` lands near 1 instead, the exact form is not being computed on
+the same direction and the implementation is wrong, not the theory.
+
