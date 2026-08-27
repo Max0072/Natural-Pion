@@ -9,11 +9,11 @@ what every run directory holds. This file is only ever *now*.
 
 ---
 
-## As of 2026-08-27, late evening
+## As of 2026-08-27, night
 
 ### In flight
 
-Nothing on the cluster. The queue is empty.
+Nothing on the cluster. Job 276154 (`shampoo-pion` at `eta = 1e-2`) finished.
 
 ### The direction changed today
 
@@ -28,9 +28,31 @@ to say so.** The warmup rescue was tested at its predicted optimum (job 274907,
 
 The decision, taken by the user, is to keep Pion's rotational geometry and
 replace the preconditioner with **Shampoo's**, built from the generators
-themselves rather than from network statistics. Implemented today; nothing run
-on a GPU yet. See the journal entry of 2026-08-27 evening for the
-pre-registration, which was written before any compute.
+themselves rather than from network statistics. Implemented today, and job
+276154 is its first GPU reading. The pre-registration was written before any
+compute; see the journal entries of 2026-08-27 evening and night.
+
+**Prediction 1 landed.** Cross-layer spread of rotation angle, sustained from
+step 30 to 150: **2x to 7x**, against the Fisher variant's 4658x-36496x. The
+defect the full-length run diagnosed is fixed structurally, where Pion buys the
+same calibration by fiat with `scaling="rms"`. `eta` also has a direct physical
+reading now -- it *is* the first step's rotation angle in radians.
+
+**One un-swept point gives `val@150 = 5.9795`**, against `pion_ablated` 6.1143,
+`ngd-pion` 5.9113 and `ngd-pion-s` 5.5068 -- each at its OWN swept optimum. One
+point against three optima is not a ranking. Where Shampoo's optimum sits is
+the next measurement.
+
+**New lever, promoted by the data.** 62-78% of the accumulator's spectrum sits
+on the relative floor once it mixes directions (partly by construction:
+`G_out` for a (1376,512) weight has rank at most 1024 inside `so(1376)`). In
+the Fisher path every `eps` sweep came back null; here `shampoo_eps` governs
+the majority of the spectrum and is the second thing to sweep.
+
+**Step cost is unmeasured, not slow.** The same optimizer in the same
+configuration reads 5.2x apart between the first arm of a job and the rest, so
+every throughput comparison on disk is confounded before the co-tenant on
+rtx6001 and the diagnostic's cusolver fallback are counted.
 
 ### What is new in the code
 
@@ -58,11 +80,12 @@ angle. All three are pinned to machine precision in the tests.
 
 ### What to do next, in order
 
-1. **`shampoo-pion` on the real model, 150 steps, `eta` swept and bracketed on
-   both sides.** Nothing carries over from the Fisher variants' `eta`; this
-   project has walked into a shared-`eta` comparison four times. Read the
-   cross-layer spread of `angle` at step 1 -- prediction 1 is falsifiable in
-   minutes, without training anything.
+1. **Finish the `eta` sweep.** `scripts/sbatch/shampoo.sbatch` holds the grid
+   `3e-4 1e-3 3e-3 1e-2 3e-2 1e-1`; `1e-2` is done at 5.9795, so the remaining
+   five are one `ARMS` override and about half an hour. Bracket both sides.
+   Nothing carries over from the Fisher variants' `eta`.
+1b. **Then `shampoo_eps`**, which the null fractions promoted from a default to
+   a lever.
 2. **`pion_ablated` at full length**, about 10 rtx-hours. **Unaffected by the
    pivot and now more necessary, not less**: whatever drives the rotation, that
    is the isolating baseline, and no full-length number means anything without
@@ -72,16 +95,16 @@ angle. All three are pinned to machine precision in the tests.
 
 ### Pre-registered for `shampoo-pion`, before any GPU time
 
-* Cross-layer spread of `angle` falls from ~1e4 to order 1e1 or below. If it
-  stays four orders, the construction is wrong.
+* ~~Cross-layer spread of `angle` falls from ~1e4 to order 1e1 or below.~~
+  **Met**: 2x-7x, job 276154.
 * `eta` shows a broad plateau rather than the sharp optimum at 1e-2.
+  **Untested** -- one point so far.
 * **Named risk:** raw Shampoo without grafting is known to be unreliable in
   step scale. If the arm blows up, the first hypothesis is scale, and grafting
   the norm -- the analogue of Pion's `rms` -- is the named fallback rather than
   a rescue invented afterwards.
-* A toy CPU run gave a cross-layer spread of 1.6x. **That is a wiring check,
-  not a result**: a two-layer hidden-64 model produced a headline reading that
-  failed to reproduce at the real configuration twice this week.
+* ~~A toy CPU run gave a cross-layer spread of 1.6x, which is a wiring check.~~
+  Superseded: the real model gives 2x-7x, which is the reading that counts.
 
 ### Open bugs
 
