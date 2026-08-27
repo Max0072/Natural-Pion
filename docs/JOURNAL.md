@@ -3039,3 +3039,63 @@ SwiGLU output, where `lam_max` is 4 to 6, against 190 for the normalised
 residual stream that feeds `wq` and `wk`. Predicted ratio 4900 against a
 measured 1269: same order. So the activation scale contributes as well as
 `||delta||`, though `||delta||` dominates at a correlation of 0.92.
+
+### What measuring `S` costs, after six attempts to measure it
+
+**+16% end to end.** Almost all of it is the `E[dd^T]` accumulation.
+
+    per refactorisation        S = I  763 ms      S measured  968 ms
+    per step at T_fac = 25
+      opt.step()                      243.9 ms                242.5 ms
+      A accumulation                  106.2                   106.4
+      D accumulation                    0.0                   154.9
+      refactorisation, amortised       30.5                    38.7
+      total                           380.6 ms                542.5 ms   x1.43
+
+Cross-checked end to end, two runs strictly sequential on one node: **1.200
+against 1.397 s/step, x1.16**. The two agree -- the optimizer costs 43% more
+and is roughly a third of a step, so the step costs 16% more.
+
+`opt.step()` itself is unchanged (243.9 against 242.5). The extra congruence on
+the out-side shows up only in refactorisation, at +205 ms a time, which is
++8 ms/step once amortised. That also reconciles with yesterday's end-to-end
+`T_fac` comparison: 25 against 100 measured +28 ms/step there, and this probe
+predicts +23.
+
+**The x5 that started this was one line.** `observe_backward` passed
+`delta * n` to get the second moment of `n * delta`, which copies a
+`tokens x d` tensor to scale a `d x d` result -- 721 MB per wide layer per
+step, sixteen times a step. Passing `scale` to the accumulator instead removed
+the entire overhead: peak memory went from a measurable gap back to 83.31
+against 83.15 GB.
+
+### Six attempts, and why each measured the wrong thing
+
+Worth recording as a method rather than as a story.
+
+1. Two concurrent jobs, cold node: both 1.65 s/step. Both waiting on the same
+   pages; the difference sat under an I/O ceiling.
+2. Two concurrent, warm node: both 1.26. Same ceiling, lower.
+3. Two concurrent again after more warming: 1.263 against 1.260. Same.
+4. One job alone on rtx6002: 1.29 and still falling at step 120 -- the cache
+   never finished warming inside 150 steps. And the 0.85 s/step baseline this
+   was being compared against had been measured on **rtx6004**: 1.7x between
+   two nodes with no co-tenant on either.
+5. Micro-benchmark at `t_fac = 100`: 243.9 against 242.5, read as
+   "refactorisation is cheap".
+6. Micro-benchmark at `t_fac = 25`: 244.3 against 242.9, read as confirmation.
+
+Attempts 5 and 6 measured the same thing, and neither measured refactorisation
+at all: the timed window is 3 warmup plus 10 iterations, so at any `t_fac >= 13`
+**it never fires**. "244 against 244" did not mean cheap, it meant zero
+occurrences. Forcing `t_fac = 1` gave the real figure at last.
+
+Two rules fall out, and both are about the setup rather than the numbers:
+
+* **End-to-end `s/step` is not a portable measure of algorithm cost on this
+  cluster.** It is bound by page-cache state more often than by arithmetic, and
+  varies 1.7x between nodes doing identical work. Use a micro-benchmark with
+  `torch.cuda.synchronize()` for anything that is meant to be a property of the
+  method; keep `s/step` for planning wall clock.
+* **Check that the event being timed occurs inside the timing window.** Thirteen
+  steps at a period of twenty-five is not "cheap", it is "never".
