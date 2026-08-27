@@ -13,7 +13,8 @@ what every run directory holds. This file is only ever *now*.
 
 ### In flight
 
-Nothing on the cluster. Job 276154 (`shampoo-pion` at `eta = 1e-2`) finished.
+Nothing on the cluster. Jobs 276154, 278352 (the five-arm array) and 278521
+(the validation re-run) all finished.
 
 ### The direction changed today
 
@@ -38,10 +39,22 @@ defect the full-length run diagnosed is fixed structurally, where Pion buys the
 same calibration by fiat with `scaling="rms"`. `eta` also has a direct physical
 reading now -- it *is* the first step's rotation angle in radians.
 
-**One un-swept point gives `val@150 = 5.9795`**, against `pion_ablated` 6.1143,
-`ngd-pion` 5.9113 and `ngd-pion-s` 5.5068 -- each at its OWN swept optimum. One
-point against three optima is not a ranking. Where Shampoo's optimum sits is
-the next measurement.
+**`eta` is now swept and bracketed on both sides**, minimum at `1e-2`:
+
+    3e-4 6.1414   1e-3 6.1048   3e-3 6.1589   1e-2 5.9795   3e-2 6.1690   1e-1 6.8903
+
+Prediction 1 holds across the whole bracket (spread 2.3x-2.8x), degrading to
+12.9x only at `1e-1` where the method breaks. So `shampoo-pion` at its own
+optimum is **5.9795**, against `pion_ablated` 6.1143, `ngd-pion` 5.9113 and
+`ngd-pion-s` 5.5068, each at its own: it beats the isolating baseline by 0.13,
+ties `ngd-pion`, and trails `ngd-pion-s` by 0.47. All 150 steps; none of them
+is a full-length result.
+
+**The optimum was re-run because it was the odd arm out** -- different node,
+different day, plane diagnostic on. Job 278521 reproduced it to four decimals,
+which settles that the dip is real, that `_diagnose` is read-only as designed,
+and that this optimizer is run-to-run deterministic at 150 steps. Do not assume
+the 0.07 practical floor applies here; it was measured from `ngd-pion` repeats.
 
 **New lever, promoted by the data.** 62-78% of the accumulator's spectrum sits
 on the relative floor once it mixes directions (partly by construction:
@@ -49,10 +62,14 @@ on the relative floor once it mixes directions (partly by construction:
 the Fisher path every `eps` sweep came back null; here `shampoo_eps` governs
 the majority of the spectrum and is the second thing to sweep.
 
-**Step cost is unmeasured, not slow.** The same optimizer in the same
-configuration reads 5.2x apart between the first arm of a job and the rest, so
-every throughput comparison on disk is confounded before the co-tenant on
-rtx6001 and the diagnostic's cusolver fallback are counted.
+**Step cost is measured and acceptable: 1.14 s/step** with five arms sharing a
+node, against a compute-bound floor near 1 s and `ngd-pion-s`'s 0.98 s warm and
+solo. At most 16% slower, and cheaper in memory (82.5 GB against 83.3). The
+five-arm sweep took 5:55 against 26:24 for the sequential six-arm Fisher sweep.
+The plane diagnostic alone costs 4.6x the step, which is why it is opt-in.
+Warm-up is the corpus, not the code -- `TokenCorpus` draws 512 random windows a
+step from a 20 GB file, so concurrent arms must share a seed to warm each
+other's page cache rather than compete.
 
 ### What is new in the code
 
@@ -80,12 +97,15 @@ angle. All three are pinned to machine precision in the tests.
 
 ### What to do next, in order
 
-1. **Finish the `eta` sweep.** `scripts/sbatch/shampoo.sbatch` holds the grid
-   `3e-4 1e-3 3e-3 1e-2 3e-2 1e-1`; `1e-2` is done at 5.9795, so the remaining
-   five are one `ARMS` override and about half an hour. Bracket both sides.
-   Nothing carries over from the Fisher variants' `eta`.
-1b. **Then `shampoo_eps`**, which the null fractions promoted from a default to
-   a lever.
+1. **`shampoo_eps`, on a two-dimensional grid.** The relative floor is not just
+   damping here: at `eps = 1` the spectrum collapses to `lam_max`, `Q` becomes
+   proportional to the identity and the step is the raw generator -- ablated
+   Pion up to a scalar -- while `eps -> 0` is full Shampoo. So `eps` traces a
+   continuous path from the control to the method. **It cannot be swept at
+   fixed `eta`**: `||X||` depends on `eps`, so a 1-D sweep measures a rescaling
+   that `eta` re-absorbs, which is exactly why the `ngd-pion-op` damping sweep
+   came back null and was misread. Grid `eps x eta`, five arms per node at
+   ~6 minutes a batch.
 2. **`pion_ablated` at full length**, about 10 rtx-hours. **Unaffected by the
    pivot and now more necessary, not less**: whatever drives the rotation, that
    is the isolating baseline, and no full-length number means anything without
@@ -98,7 +118,9 @@ angle. All three are pinned to machine precision in the tests.
 * ~~Cross-layer spread of `angle` falls from ~1e4 to order 1e1 or below.~~
   **Met**: 2x-7x, job 276154.
 * `eta` shows a broad plateau rather than the sharp optimum at 1e-2.
-  **Untested** -- one point so far.
+  **Not confirmed.** The curve spans 0.19 over `3e-4` to `3e-2`, the same range
+  `ngd-pion-s` spans -- but jagged rather than U-shaped, with the four
+  non-optimal arms bunched in 0.064 and 1e-3 beating 3e-3.
 * **Named risk:** raw Shampoo without grafting is known to be unreliable in
   step scale. If the arm blows up, the first hypothesis is scale, and grafting
   the norm -- the analogue of Pion's `rms` -- is the named fallback rather than
