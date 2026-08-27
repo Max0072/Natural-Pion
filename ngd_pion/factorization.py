@@ -50,6 +50,21 @@ class Basis:
     # `0.5` is what Adam does to its second moment, `0.0` is no
     # preconditioning at all. See `powered.py`.
     power: float = 1.0
+    # Additive Tikhonov damping. Adding a constant here is not an approximation
+    # to `(F + lam I)^-1 G`, and it is not the same thing either. With
+    # `X = P Y P^T`, adding `lam` to the denominator solves
+    #
+    #     F(X) + lam * (P P^T)^-1 X (P P^T)^-1  =  G
+    #
+    # exactly. `basis_congruence` builds `P = B^-1/2 Q`, so `P P^T = B^-1` and
+    # the damped operator is `F(X) + lam B X B` -- Tikhonov in the metric of
+    # the anchor, which for the in-side is `A`, the input covariance. Checked
+    # to machine precision against a dense solve, including at a 1e5 mismatch
+    # between the two factors, where damping against the *Euclidean* identity
+    # instead is wrong by a factor of 7e3.
+    #
+    # An orthogonal basis has `P P^T = I` and this reduces to plain `F + lam I`.
+    lam_tikhonov: float = 0.0
 
     @property
     def denominator(self) -> torch.Tensor:
@@ -60,10 +75,22 @@ class Basis:
         property of `F` alone. A floor applied to `lam` beforehand is not:
         `lam` is the spectrum of a pencil, and which pencil depends on how the
         pair was split.
+
+        The `eps` floor and `lam_tikhonov` differ in kind, not in degree.
+        `max(d, eps * d_max)` is *relative*: multiply every `d` in a layer by a
+        constant and it does not move, while the step it permits grows by that
+        constant. It can only ever act on the spread of the spectrum. Measured
+        on this model, spread is not what drives the step --
+        `rho(angle, nullfrac) = -0.92`, and the largest angle in the model came
+        from a layer with no degeneracy at all. `d + lam` acts on every
+        eigenvalue including the largest, which is what bounds the step at
+        `||G|| / lam` whatever the layer's overall curvature.
         """
         d = 2.0 * (self.lam.unsqueeze(-1) + self.lam.unsqueeze(-2))
         if self.eps is not None:
             d = torch.maximum(d, self.eps * d.amax(dim=(-2, -1), keepdim=True))
+        if self.lam_tikhonov:
+            d = d + self.lam_tikhonov
         return d if self.power == 1.0 else d.pow(self.power)
 
 

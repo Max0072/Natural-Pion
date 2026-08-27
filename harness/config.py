@@ -199,6 +199,17 @@ class RunConfig:
     # on a fresh basis, so the step after each refactorisation is unbounded.
     ngd_angle_max: float = 0.0
     ngd_alpha_max: float = 1.0
+    # Additive Tikhonov damping for `ngd-pion-damped`, as a multiple of a
+    # reference scale frozen at the first refactorisation (the median
+    # `d_max` over layers). Absolute, not per-layer: a per-layer
+    # `lam = c * d_max` would be blind to a uniformly flat layer in exactly
+    # the way the relative floor `max(d, eps * d_max)` is, and that
+    # blindness is what the measurements pin the huge steps on.
+    ngd_lam: float = 0.0
+    # Move `lam` by the Levenberg-Marquardt rule on the reduction ratio,
+    # which the harness already measures every logged step. With `lam`
+    # carrying the trust region, `lr` is meant to stay at 1.
+    ngd_lam_adapt: bool = True
 
     # vanilla Pion
     pion_scaling: str = "rms"

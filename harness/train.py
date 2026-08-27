@@ -29,6 +29,7 @@ from ngd_pion.with_s import NGDPionS, attach_backward
 from ngd_pion.with_s_fast import FastNGDPionS
 from ngd_pion.op_damped import OpDampedNGDPion
 from ngd_pion.powered import PoweredNGDPion
+from ngd_pion.damped import DampedNGDPionS
 from ngd_pion.linalg import EIGH_FALLBACKS
 
 from .config import RunConfig
@@ -87,6 +88,7 @@ NGD_IMPLEMENTATIONS = {
     "ngd-pion-s-ref": NGDPionS,
     "ngd-pion-op": OpDampedNGDPion,
     "ngd-pion-pow": PoweredNGDPion,
+    "ngd-pion-damped": DampedNGDPionS,
 }
 
 
@@ -112,7 +114,10 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
             kw["angle_max"] = cfg.ngd_angle_max
         if cfg.optimizer == "ngd-pion-pow":
             kw["power"] = cfg.ngd_power
-        if cfg.optimizer in ("ngd-pion-s", "ngd-pion-s-ref"):
+        if cfg.optimizer == "ngd-pion-damped":
+            kw["lam"] = cfg.ngd_lam
+            kw["lam_adapt"] = cfg.ngd_lam_adapt
+        if cfg.optimizer in ("ngd-pion-s", "ngd-pion-s-ref", "ngd-pion-damped"):
             kw["beta_backward"] = cfg.ngd_beta_backward
             if cfg.ngd_fisher_mc_every:
                 # `D` is only fed on the sampling steps, so its EMA has to look
@@ -459,6 +464,10 @@ def train(
             with torch.no_grad(), _autocast(cfg, device):
                 _, after = model(x, y)
             rho = (loss_sum - float(after)) / predicted if predicted else float("nan")
+            # The trust region finally gets to read the number it exists
+            # for. Only the damped variant listens; the rest ignore it.
+            if hasattr(rot, "adapt_damping"):
+                rot.adapt_damping(rho)
         adamw.step()
 
         if step % cfg.log_every == 0 or step == steps - 1:
