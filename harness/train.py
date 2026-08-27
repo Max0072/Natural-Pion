@@ -30,6 +30,7 @@ from ngd_pion.with_s_fast import FastNGDPionS
 from ngd_pion.op_damped import OpDampedNGDPion
 from ngd_pion.powered import PoweredNGDPion
 from ngd_pion.damped import DampedNGDPionS
+from ngd_pion.exact_curv import ExactCurvNGDPionS
 from ngd_pion.linalg import EIGH_FALLBACKS
 
 from .config import RunConfig
@@ -89,6 +90,7 @@ NGD_IMPLEMENTATIONS = {
     "ngd-pion-op": OpDampedNGDPion,
     "ngd-pion-pow": PoweredNGDPion,
     "ngd-pion-damped": DampedNGDPionS,
+    "ngd-pion-exact": ExactCurvNGDPionS,
 }
 
 
@@ -117,7 +119,11 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
         if cfg.optimizer == "ngd-pion-damped":
             kw["lam"] = cfg.ngd_lam
             kw["lam_adapt"] = cfg.ngd_lam_adapt
-        if cfg.optimizer in ("ngd-pion-s", "ngd-pion-s-ref", "ngd-pion-damped"):
+        if cfg.optimizer == "ngd-pion-exact":
+            kw["exact_every"] = cfg.ngd_exact_every
+            kw["exact_tokens"] = cfg.ngd_exact_tokens
+        if cfg.optimizer in ("ngd-pion-s", "ngd-pion-s-ref", "ngd-pion-damped",
+                             "ngd-pion-exact"):
             kw["beta_backward"] = cfg.ngd_beta_backward
             if cfg.ngd_fisher_mc_every:
                 # `D` is only fed on the sampling steps, so its EMA has to look

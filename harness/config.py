@@ -194,6 +194,13 @@ class RunConfig:
     #
     # `D` is an EMA, so the extra pass need not run every step.
     ngd_fisher_mc_every: int = 0
+    # Diagnostic only, and only for `ngd-pion-exact`: how often to measure the
+    # curvature the step is *not* preconditioned by, and on how many tokens.
+    # `alpha = quad/curv` is identically 1 on a fresh basis because `curv` is
+    # formed with the same operator that built `X`; this measures the same
+    # quadratic form against the per-token truth instead. 0 disables it.
+    ngd_exact_every: int = 30
+    ngd_exact_tokens: int = 4096
     # 0 disables. A cap on the rotation applied per step, in radians, which is
     # the bound `alpha` structurally cannot provide: `alpha` is identically 1
     # on a fresh basis, so the step after each refactorisation is unbounded.

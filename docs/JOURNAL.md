@@ -3661,3 +3661,75 @@ and `rho` at `eta = 1` should come out near the 0.47 that `eta = 1e-2` shows
 now. If `alpha` lands near 1 instead, the exact form is not being computed on
 the same direction and the implementation is wrong, not the theory.
 
+
+## 2026-08-27 -- `curv_exact`: the diagnostic, and a toy-scale first reading
+
+`ngd_pion/exact_curv.py`. `ExactCurvNGDPionS` measures the curvature the step
+is *not* preconditioned by, and changes nothing: `_apply` calls its parent and
+then rebuilds `X` for the diagnostic, so the trajectory is bit-identical to
+`FastNGDPionS`. Wiring it into `alpha` is a separate class and a separate
+decision, after this one says what the number is.
+
+    s_b = delta_b^T X_out (W x_b) + (W^T delta_b)^T X_in x_b
+    curv_exact = 4 E_b[s_b^2]
+
+The factor 4 puts it in the same units as `curv`, so `alpha_exact = quad /
+curv_exact` is directly comparable to `alpha` and the theoretical optimum stays
+at `eta = 2`.
+
+### Three ways to get it wrong, each pinned by a test
+
+`tests/test_exact_curv.py`, five tests, exact rather than statistical: taking
+every pair of a small set of activations with a small set of gradients makes
+the empirical joint equal the product of the empirical marginals *by
+construction*, so the closed form and the per-token average must agree to
+machine precision. A sampling version would agree only to `O(1/sqrt(N))` and
+could not tell an error from noise.
+
+* **The cross term.** Under exact independence `curv_exact` does **not** equal
+  `curv`: they differ by `8 E[ab] = 8 tr(D X_out W A X_in^T W^T)`. A test
+  asserting equality would fail for the right reason and be read as a bug. It
+  is pinned as a negative control instead, together with the Cauchy-Schwarz
+  bound `curv_exact/curv <= 2` -- which is why the cross term cannot explain a
+  measured ratio of 1e-3.
+* **Pairing.** The one indexing mistake available is drawing the activation
+  sample and the gradient sample with different indices; that would read as a
+  spectacular independence failure. `test_pairing_matters` shuffles one against
+  the other and requires the answer to move.
+* **The `1/N`.** Autograd returns `dl_b/dout_b / N` because the loss is a mean;
+  the per-sample vector is recovered by multiplying by the token count.
+
+Subsampling is 4096 tokens per layer on one step in `exact_every`, drawn from a
+generator of its own rather than the global RNG, so that a run with the
+diagnostic on and one with it off really do produce identical weights.
+
+### First reading, and it is a toy
+
+Two layers, hidden 64, on CPU -- a wiring check, not a measurement of the real
+model. Fresh basis, so `alpha` is 1.0000 on every layer by algebra:
+
+    layer                alpha   alpha_exact       curv   curv_exact
+    blocks.0.attn.wq    1.0000     3.204e-03   7.943e+00    2.481e+03
+    blocks.0.attn.wo    1.0000     9.109e-04   1.049e+01    1.178e+04
+    blocks.0.ffn.gate   1.0000     5.504e-06   1.855e+01    3.374e+06
+    blocks.0.ffn.down   1.0000     3.402e-06   1.702e+01    5.008e+06
+    blocks.1.attn.wq    1.0000     7.552e-03   8.074e+00    1.070e+03
+    blocks.1.ffn.up     1.0000     4.750e-06   1.808e+01    3.811e+06
+
+The prediction written before the run was `alpha_exact` in `[2e-3, 1.3e-2]`,
+from the `rho` fit and `kfac_error.py` respectively. The attention weights land
+in or just under that band; **the FFN weights miss it downward by three orders**
+at 3.4e-6 to 5.5e-6.
+
+So the direction and the order of magnitude hold, and there is an unpredicted
+structure: **attention and FFN differ by about 1000x in how badly independence
+fails.** That is not explained here and will not be explained from a two-layer
+model with hidden 64 -- it is exactly the kind of coherent story that has cost
+this project days before. It needs the real configuration.
+
+### Next
+
+`ngd-pion-exact` at `eta = 1e-2` -- the swept optimum from job 273026 -- on the
+real model, 150 steps. That reads `alpha_exact` per layer on the configuration
+we would actually report, and says whether the attention/FFN split is real.
+

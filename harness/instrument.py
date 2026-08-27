@@ -123,6 +123,8 @@ def layer_diagnostics(optimizer, names: dict | None = None, probe=None) -> list[
                     "skew_ratio": float(state.get("skew_ratio", float("nan"))),
                     "quad": float(state.get("quad", float("nan"))),
                     "curv": float(state.get("curv", float("nan"))),
+                    "curv_exact": float(state.get("curv_exact", float("nan"))),
+                    "alpha_exact": float(state.get("alpha_exact", float("nan"))),
                     "quad_over_curv": float(state.get("quad_over_curv", float("nan"))),
                     "floor_share_in": float(state.get("floor_share_in", float("nan"))),
                     "floor_share_out": float(state.get("floor_share_out", float("nan"))),
