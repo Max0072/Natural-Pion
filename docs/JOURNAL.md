@@ -2891,3 +2891,95 @@ That also closes the complexity gap from this morning: working in the range of
 `W` costs `O(m^2 n)` against the present `O(m^3)`, which is Pion's order. It is
 not an optimisation, it is the correct formulation, and the saving comes from
 no longer solving in a dimension the problem does not have.
+
+## 2026-08-27 -- the full-length result, and why concurrent runs must share a seed
+
+### The headline comparison, and it is negative
+
+`ngd-pion` at `eta = 1.0`, `T_fac = 25`, AdamW pinned at 1e-3, run to the full
+73 242 steps against the six `pion` runs already on disk:
+
+    optimizer   lr       steps    train      val   card  momentum
+    ngd-pion    1.0      73241   3.6452   3.6728   rtx   none
+    pion        1e-3     73241   3.3516   3.3719   rtx   lie
+    pion        1e-3     73241   3.3649   3.3866   rtx   lie
+
+**We lose by 0.30 in validation.** The published gap between Pion's own two
+arms is 0.0079, so this is forty times that.
+
+The `eta = 0.5` arm **crashed** at step 41 500 with
+`linalg.eigh: the algorithm failed to converge because the input matrix is
+ill-conditioned`, inside `basis_congruence` -- a robustness bug in the
+reference, in exactly the congruence path a flat initialisation would remove.
+
+**The comparison does not isolate anything.** `pion` carries
+`momentum = "lie"`, `scaling = "rms"` and a truncated retraction; NGD-Pion has
+none of the three. The isolating baseline is `pion_ablated`, and **no
+full-length run of it exists**. At 150 steps `ngd-pion` beat `pion_ablated` by
+6 sd; at 73 242 steps we have nothing to compare against. Momentum in
+particular is not a confound to argue away, it is a missing feature.
+
+Also: the 150-step optimum was `eta = 3` and the long runs were launched at
+1.0 and 0.5.
+
+### The defect the run exposes: no scale calibration between layers
+
+Per-layer rotation angle **within a single step**:
+
+    step        min      median         max     max/min   widest layer
+       1   1.55e-04    4.70e-03    5.66e+00     36 496   blocks.0.attn.wo
+    9151   4.29e-04    1.07e-02    2.00e+00      4 658   blocks.0.attn.wo
+   18301   3.03e-04    9.74e-03    2.13e+00      7 026   blocks.0.attn.wo
+   54951   4.86e-05    1.61e-03    7.92e-01     16 305   blocks.2.attn.wo
+
+Four and a half orders of magnitude, sustained for the whole run, with one
+layer consistently at the top. The Fisher is block-diagonal per layer: it
+equalises curvature *inside* a block and says nothing about scale *between*
+blocks, and a single scalar `eta` is applied to all of them. Pion has
+`pion_scaling = "rms"` for precisely this. We have nothing.
+
+The gap against `pion` is also **constant** -- 0.28 at step 500 and 0.28 at
+25 000 -- which is the shape of a systematic handicap rather than an
+accumulating deficit.
+
+### `S = I` as the suspected cause, with an order-of-magnitude argument
+
+    with the true S = W^T E[dd^T] W :   ||X|| ~ 1 / (||W|| ||delta|| ||x||)
+    with S = I  (so S = W^T W)      :   ||X|| ~ ||delta|| / (||W|| ||x||)
+
+The two differ by `||delta||^2` per layer. With the true `S` the step is
+*inversely* proportional to the backward signal, which is the natural-gradient
+normalisation; with `S = I` it is *directly* proportional, so layers with a
+strong backward signal are given a wider step as well. A 70x to 200x spread in
+`||delta||` across depth squares to 5e3-4e4, which is the range measured.
+
+So `S = I` may not be the mild simplification this journal has treated it as.
+`BackwardProbe` (measurement only, in `harness`) records `||delta||` per layer
+to test whether the angle spread really is the square of the `||delta||`
+spread.
+
+### Concurrent runs must share a seed
+
+Two probe runs differing **only in seed** were launched together on one node and
+crawled. The data loader samples a seed-dependent random permutation of corpus
+windows, so different seeds are two independent streams of small random reads
+that halve the IOPS and evict each other's pages:
+
+    both seeds running     18.66 s/step
+    seed 1 cancelled        4.43 s/step
+
+Same seed is the opposite: the jobs request identical windows in identical
+order and warm the cache for each other, which is why the two long runs
+yesterday held 0.85 s/step side by side.
+
+**A seed sweep must therefore be run sequentially or on separate nodes.** Only
+sweeps that hold the seed fixed are safe to fan out.
+
+**And a correction.** The first attempt at this probe was cancelled after step 0
+took 42 s against a normal 3.6, and that was attributed here to
+`register_full_backward_hook`. Most of it was the second seed. The hook was
+rewritten as a forward hook attaching `output.register_hook`, gated to logged
+steps only, which is the better implementation regardless -- it delivers the
+same `dL/d(output)` without materialising `grad_input` -- but the factor of
+twelve was not its doing. That is twice now that a slowdown of mine was really
+another job of mine on the same node.
