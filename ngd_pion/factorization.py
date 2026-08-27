@@ -24,7 +24,7 @@ from dataclasses import dataclass
 
 import torch
 
-from .linalg import floor_eigenvalues, is_identity
+from .linalg import floor_eigenvalues, is_identity, safe_eigh
 
 __all__ = ["Basis", "basis_identity_anchor", "basis_congruence", "build_bases"]
 
@@ -49,7 +49,7 @@ class Basis:
 
 def basis_identity_anchor(C: torch.Tensor, eps: float) -> Basis:
     """`F(X) = 2(X C + C X)`. A plain symmetric eigenproblem; `P` orthogonal."""
-    lam, Q = torch.linalg.eigh(C)
+    lam, Q = safe_eigh(C)
     return Basis(P=Q, lam=floor_eigenvalues(lam, eps), orthogonal=True)
 
 
@@ -62,15 +62,15 @@ def basis_congruence(B: torch.Tensor, C: torch.Tensor, eps: float) -> Basis:
     floored, which is the whole of the regularisation -- the denominators come
     out positive with nothing further added.
     """
-    wb, Ub = torch.linalg.eigh(B)
+    wb, Ub = safe_eigh(B)
     wb = floor_eigenvalues(wb, eps)
     B_inv_half = (Ub * wb.rsqrt().unsqueeze(-2)) @ Ub.transpose(-1, -2)
 
-    wc, Uc = torch.linalg.eigh(C)
+    wc, Uc = safe_eigh(C)
     C_floored = (Uc * floor_eigenvalues(wc, eps).unsqueeze(-2)) @ Uc.transpose(-1, -2)
 
     M = B_inv_half @ C_floored @ B_inv_half
-    lam, Q = torch.linalg.eigh(0.5 * (M + M.transpose(-1, -2)))
+    lam, Q = safe_eigh(0.5 * (M + M.transpose(-1, -2)))
     # The floor goes on every spectrum that ends up in a denominator, not only
     # on the ones being inverted. Flooring `B` and `C` does not make `lam`
     # positive in finite precision: the pencil can spread them over more orders

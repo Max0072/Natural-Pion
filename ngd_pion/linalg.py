@@ -12,7 +12,8 @@ from contextlib import contextmanager
 import torch
 
 __all__ = ["skew", "floor_eigenvalues", "floor_spectrum", "cayley", "is_identity",
-           "exact_fp32", "spectral_norm", "cayley_newton_schulz"]
+           "exact_fp32", "spectral_norm", "cayley_newton_schulz",
+           "safe_eigh", "EIGH_FALLBACKS"]
 
 
 @contextmanager
@@ -54,6 +55,79 @@ def skew(M: torch.Tensor) -> torch.Tensor:
     applied where that guarantee is relied upon.
     """
     return 0.5 * (M - M.transpose(-1, -2))
+
+
+# How many times each rung of `safe_eigh`'s ladder was needed. Zero is the
+# expected reading; anything else says the pencil handed to `eigh` has become
+# badly enough conditioned that the primary solver gives up, which is a fact
+# about the algorithm's conditioning and not something to be quietly absorbed.
+EIGH_FALLBACKS = {"jitter": 0, "backend": 0, "cpu": 0}
+
+
+def safe_eigh(M: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """`torch.linalg.eigh` with fallbacks, because its iteration can fail.
+
+    cusolver's symmetric eigensolver is iterative and has an iteration cap. It
+    gave up on one 512x512 pencil at step 41 500 of an otherwise healthy run --
+    `error code: 59`, "the input matrix is ill-conditioned or has too many
+    repeated eigenvalues" -- and took seventeen hours of work with it. The
+    congruence path is where this happens: it forms
+    `M = B^-1/2 C B^-1/2` from a `B` whose spectrum has been floored at
+    `eps * lam_max`, so `B^-1/2` already carries a condition number of `100` at
+    `eps = 1e-4`, and two matrix products then add rounding on top.
+
+    Three rungs, in increasing order of desperation, and **none of them runs
+    unless the one above it raised**. When `eigh` succeeds -- which is the
+    normal case -- this function is exactly `torch.linalg.eigh` and the
+    trajectory is bit-identical.
+
+    1. **Jitter.** Add `1e-7` of the mean diagonal along the diagonal and retry
+       on the GPU. That moves every eigenvalue by that much, which is far below
+       the floor `eps` applies anyway, and it is often enough for the iteration
+       to converge.
+    2. **The other backend.** cusolver and magma use different algorithms --
+       divide-and-conquer against Jacobi -- and one converges where the other
+       does not.
+    3. **CPU.** LAPACK is a third implementation again. Measured at 18 ms for
+       512x512 and 142 ms for 1376x1376 on eight threads, against a
+       refactorisation every 25 steps, so even falling back on *every*
+       refactorisation for *every* wide layer costs 5.3% of wall clock. It is
+       cheap; it is last only because needing it often is a symptom.
+
+    `EIGH_FALLBACKS` counts the rungs so that "needing it often" is visible
+    rather than inferred.
+    """
+    try:
+        return torch.linalg.eigh(M)
+    except Exception:
+        pass
+
+    scale = M.diagonal(dim1=-2, dim2=-1).abs().mean(dim=-1)
+    eye = torch.eye(M.shape[-1], dtype=M.dtype, device=M.device)
+    jittered = M + (1e-7 * scale)[..., None, None] * eye
+    try:
+        out = torch.linalg.eigh(jittered)
+        EIGH_FALLBACKS["jitter"] += 1
+        return out
+    except Exception:
+        pass
+
+    if M.is_cuda:
+        try:
+            previous = torch.backends.cuda.preferred_linalg_library()
+            try:
+                torch.backends.cuda.preferred_linalg_library("magma")
+                out = torch.linalg.eigh(jittered)
+                EIGH_FALLBACKS["backend"] += 1
+                return out
+            finally:
+                torch.backends.cuda.preferred_linalg_library(previous)
+        except Exception:
+            pass
+
+    w, Q = torch.linalg.eigh(jittered.cpu())
+    EIGH_FALLBACKS["cpu"] += 1
+    return w.to(M.device), Q.to(M.device)
 
 
 def floor_eigenvalues(w: torch.Tensor, eps: float) -> torch.Tensor:

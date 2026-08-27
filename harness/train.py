@@ -25,6 +25,7 @@ from ngd_pion.hooks import attach
 from ngd_pion.optimizer import NGDPion
 from ngd_pion.pion_baseline import Pion
 from ngd_pion.with_s import NGDPionS, attach_backward
+from ngd_pion.linalg import EIGH_FALLBACKS
 
 from .config import RunConfig
 from .data import TokenCorpus
@@ -417,6 +418,12 @@ def train(
                 row["peak_gb"] = round(torch.cuda.max_memory_allocated() / 1e9, 2)
                 torch.cuda.reset_peak_memory_stats()
             window_time, window_step = now, step
+            # Zero is the expected reading. Anything else says the pencil given
+            # to `eigh` is badly enough conditioned that the primary solver is
+            # giving up, which is worth seeing in the log rather than inferring
+            # from a crash that did not happen.
+            if any(EIGH_FALLBACKS.values()):
+                row["eigh_fallbacks"] = dict(EIGH_FALLBACKS)
             if isinstance(rot, NGDPion):
                 rows = layer_diagnostics(rot, names, probe)
                 row.update(summarise(rows))
