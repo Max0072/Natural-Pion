@@ -25,6 +25,7 @@ from ngd_pion.hooks import attach
 from ngd_pion.optimizer import NGDPion
 from ngd_pion.pion_baseline import Pion
 from ngd_pion.with_s import NGDPionS, attach_backward
+from ngd_pion.with_s_fast import FastNGDPionS
 from ngd_pion.linalg import EIGH_FALLBACKS
 
 from .config import RunConfig
@@ -72,10 +73,15 @@ def lr_at(step: int, cfg: RunConfig, base: float | None = None) -> float:
 # because the opposite arrangement fails badly: forgetting a suffix would buy
 # 62 days of wall-clock instead of 14 hours, and nothing would say so until the
 # job had been queued.
+# The fast one gets the short name in each family, for the reason given above:
+# a forgotten suffix should cost accuracy you can measure, not two months of
+# wall clock. `with_s.NGDPionS` takes its angle from an exact `matrix_norm`,
+# which is 69.5 s of a 73.5 s step on this model.
 NGD_IMPLEMENTATIONS = {
     "ngd-pion": FastNGDPion,
     "ngd-pion-ref": NGDPion,
-    "ngd-pion-s": NGDPionS,
+    "ngd-pion-s": FastNGDPionS,
+    "ngd-pion-s-ref": NGDPionS,
 }
 
 
@@ -99,7 +105,7 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
             # the reference and the S variant take neither, on purpose
             kw["diag_every"] = cfg.log_every
             kw["angle_max"] = cfg.ngd_angle_max
-        if cfg.optimizer == "ngd-pion-s":
+        if cfg.optimizer in ("ngd-pion-s", "ngd-pion-s-ref"):
             kw["beta_backward"] = cfg.ngd_beta_backward
         rot = NGD_IMPLEMENTATIONS[cfg.optimizer](
             weights, lr=cfg.lr, beta=cfg.ngd_beta, eps=cfg.ngd_eps,

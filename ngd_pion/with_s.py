@@ -44,7 +44,7 @@ import torch
 from .covariance import CovarianceAccumulator
 from .direction import fisher_apply, generators, natural_gradient, trust_region_alpha
 from .factorization import basis_congruence, basis_identity_anchor
-from .linalg import cayley, is_identity
+from .linalg import cayley, is_identity, spectral_norm
 from .optimizer import NGDPion
 
 __all__ = ["NGDPionS", "BackwardRecorder", "attach_backward"]
@@ -63,12 +63,22 @@ class NGDPionS(NGDPion):
     needs.
     """
 
-    def __init__(self, params, *, beta_backward: float = 0.5, **kwargs) -> None:
+    def __init__(
+        self,
+        params,
+        *,
+        beta_backward: float = 0.5,
+        angle_iters: int = 2,
+        angle_warmup: int = 50,
+        **kwargs,
+    ) -> None:
         if not 0.0 <= beta_backward < 1.0:
             raise ValueError(f"beta_backward must lie in [0, 1), got {beta_backward}")
         super().__init__(params, **kwargs)
         for group in self.param_groups:
             group["beta_backward"] = beta_backward
+            group["angle_iters"] = angle_iters
+            group["angle_warmup"] = angle_warmup
 
     # --- the second statistic ------------------------------------------------
 
@@ -177,11 +187,17 @@ class NGDPionS(NGDPion):
         state["alpha"] = float(alpha)
 
         c = group["lr"] * float(alpha)
-        state["angle"] = c * float(
-            torch.maximum(
-                torch.linalg.matrix_norm(X_in, 2), torch.linalg.matrix_norm(X_out, 2)
-            )
-        )
+        # Power iteration rather than `matrix_norm(X, 2)`. The exact call cost
+        # 69.5 s of a 73.5 s step on this model, because cusolver falls back to
+        # a slow path on the 1376x1376 skew matrices. `angle` is read by
+        # `harness.instrument` and by nothing in the step, so approximating it
+        # is safe; the cached vector is re-warmed after each refactorisation,
+        # where `X` moves discontinuously.
+        fresh = "angle_v_in" not in state or state["since_refactor"] == 0
+        iters = group["angle_warmup"] if fresh else group["angle_iters"]
+        sigma_in, state["angle_v_in"] = spectral_norm(X_in, iters, state.get("angle_v_in"))
+        sigma_out, state["angle_v_out"] = spectral_norm(X_out, iters, state.get("angle_v_out"))
+        state["angle"] = c * torch.maximum(sigma_in, sigma_out)
         if group["alternate"]:
             W = W @ cayley(X_in, c) if state["step"] % 2 else cayley(X_out, c) @ W
         else:
