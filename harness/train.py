@@ -24,6 +24,7 @@ from ngd_pion.fast import FastNGDPion
 from ngd_pion.hooks import attach
 from ngd_pion.optimizer import NGDPion
 from ngd_pion.pion_baseline import Pion
+from ngd_pion.with_s import NGDPionS, attach_backward
 
 from .config import RunConfig
 from .data import TokenCorpus
@@ -70,7 +71,11 @@ def lr_at(step: int, cfg: RunConfig, base: float | None = None) -> float:
 # because the opposite arrangement fails badly: forgetting a suffix would buy
 # 62 days of wall-clock instead of 14 hours, and nothing would say so until the
 # job had been queued.
-NGD_IMPLEMENTATIONS = {"ngd-pion": FastNGDPion, "ngd-pion-ref": NGDPion}
+NGD_IMPLEMENTATIONS = {
+    "ngd-pion": FastNGDPion,
+    "ngd-pion-ref": NGDPion,
+    "ngd-pion-s": NGDPionS,
+}
 
 
 def build_optimizers(model: Transformer, cfg: RunConfig):
@@ -88,10 +93,13 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
 
     if cfg.optimizer in NGD_IMPLEMENTATIONS:
         kw = {}
-        if cfg.optimizer != "ngd-pion-ref":
-            # the reference takes no diagnostic options, on purpose
+        if cfg.optimizer == "ngd-pion":
+            # the diagnostics and the angle cap live in the fast variant only;
+            # the reference and the S variant take neither, on purpose
             kw["diag_every"] = cfg.log_every
             kw["angle_max"] = cfg.ngd_angle_max
+        if cfg.optimizer == "ngd-pion-s":
+            kw["beta_backward"] = cfg.ngd_beta_backward
         rot = NGD_IMPLEMENTATIONS[cfg.optimizer](
             weights, lr=cfg.lr, beta=cfg.ngd_beta, eps=cfg.ngd_eps,
             alpha_max=cfg.ngd_alpha_max, t_fac=cfg.ngd_t_fac, **kw,
@@ -304,6 +312,9 @@ def train(
     diagnostics = (out / "diagnostics.jsonl").open("a") if isinstance(rot, NGDPion) else None
     # Measurement only, attached alongside the diagnostics file and nowhere else.
     probe = BackwardProbe(model.parameter_split()[0]) if diagnostics is not None else None
+    # The S variant needs the backward signal as a statistic, not as a
+    # diagnostic, so it gets its own recorder alongside the activation one.
+    backward = attach_backward(model.parameter_split()[0], rot) if isinstance(rot, NGDPionS) else None
     names = {id(m.weight): n for n, m in model.named_modules() if isinstance(m, nn.Linear)}
 
     train_data = TokenCorpus(cfg.data_path, cfg.model.seq_len, seed=cfg.seed)
@@ -338,6 +349,8 @@ def train(
                 recorder.remove()
             if probe is not None:
                 probe.remove()
+            if backward is not None:
+                backward.remove()
             return out
 
     window_time, window_step = time.time(), first
@@ -360,6 +373,8 @@ def train(
             # one micro-batch per step feeds the covariance; see ActivationRecorder
             if recorder is not None:
                 recorder.enabled = micro == 0
+            if backward is not None:
+                backward.enabled = micro == 0
             if probe is not None:
                 # only on the steps that get logged, so it costs nothing on the rest
                 probe.enabled = micro == 0 and (
@@ -427,4 +442,6 @@ def train(
         recorder.remove()
     if probe is not None:
         probe.remove()
+    if backward is not None:
+        backward.remove()
     return out

@@ -13,9 +13,13 @@ from .hooks import attach, attached
 from .fast import FastNGDPion
 from .linalg import cayley, floor_eigenvalues, floor_spectrum, skew, spectral_norm
 from .optimizer import NGDPion
+from .with_s import BackwardRecorder, NGDPionS, attach_backward
 
 __all__ = [
     "NGDPion",
+    "NGDPionS",
+    "attach_backward",
+    "BackwardRecorder",
     "attach",
     "attached",
     "CovarianceAccumulator",

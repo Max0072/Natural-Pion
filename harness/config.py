@@ -170,6 +170,11 @@ class RunConfig:
     ngd_eps: float = 1e-4
     ngd_beta: float = 0.95
     ngd_t_fac: int = 100
+    # EMA rate for `D = E[delta delta^T]`, used only by `ngd-pion-s`. Shorter
+    # than `ngd_beta` on purpose: the backward signal depends on the current
+    # loss surface and on everything downstream of a layer, so it moves faster
+    # than the activation statistics do.
+    ngd_beta_backward: float = 0.5
     # 0 disables. A cap on the rotation applied per step, in radians, which is
     # the bound `alpha` structurally cannot provide: `alpha` is identically 1
     # on a fresh basis, so the step after each refactorisation is unbounded.
