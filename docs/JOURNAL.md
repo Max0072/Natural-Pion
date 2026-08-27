@@ -3196,3 +3196,119 @@ That is Bayesian shrinkage per eigendirection, and it is what makes Adam's
 `sqrt(E[g^2])` work -- Adam divides by the noise RMS because for a pure-noise
 component that is exactly the right shrinkage. The `power = 1/2` family was
 probing this empirically from the wrong end.
+
+## Not degeneracy: the step tracks the scale of the curvature, not its spread
+
+The question was whether the enormous steps come from degenerate directions --
+tiny eigenvalues in the denominator blowing up `Y = G / d`. It is the natural
+suspicion, it is what the `eps` floor was built for, and it is wrong. Every
+measurement below is free: it reads the diagnostics and the optimizer state
+already sitting in finished runs, no GPU job.
+
+### The `eps^(-1/2)` law is real (`scripts/probes/damping_scaling.py`, CPU, fp64)
+
+Synthetic `A` with `cond = 1e8`, `x ~ N(0, A)`, `B = 512`, `d` drawn at random
+so `G` carries no signal at all:
+
+| eps | #floored | \|X\| real | slope | \|X\| rand | slope |
+|---|---|---|---|---|---|
+| 1e-03 | 160 | 4.243e+01 | 0.469 | 6.308e+02 | 0.924 |
+| 1e-05 | 96 | 3.358e+02 | 0.447 | 3.894e+04 | 0.883 |
+| 1e-07 | 32 | 2.172e+03 | 0.387 | 1.573e+06 | 0.759 |
+
+A real gradient diverges as `eps^(-1/2)`, a random one of equal norm as
+`eps^(-1)`. So the old intuition -- the gradient's own component along a
+low-variance direction carries `sqrt(lam)`, which cancels half the divergence
+-- is correct, and now has an exponent. Degenerate directions are not harmless,
+but they cost `sqrt(cond)`, not `cond`.
+
+### In the real model, degeneracy does not predict the angle
+
+Per-layer diagnostics, 56 layers, `ngd-pion-s` at `eta = 0.01`, Spearman
+against the angle actually taken:
+
+```
+ step   rho(angle,condA)   rho(angle,nullfrac_A)   rho(angle,floored)
+    1             -0.485                  -0.109                0.440
+   61              0.155                   0.251                0.182
+  150             -0.253                  -0.276                0.033
+```
+
+Zero to negative at every step. Two facts settle it:
+
+* `blocks.0.attn.wq` has `cond_A = 85.7`, `null_frac = 0`, nothing below the
+  floor -- and an angle of 142 rad at `eta = 1`. `blocks.1.attn.wo` has
+  `cond_A = 45778` and `null_frac = 0.121` -- and an angle of 157. Conditioning
+  differs by 530x, the angle does not differ at all.
+* **The 6715 rad maximum, the number this whole line of work has been chasing,
+  comes from a layer with zero degeneracy.** 48 of 56 layers have `null_frac = 0`
+  and nothing below the floor, and their angles span the entire range, 83 to 6715.
+
+The most degenerate layers (`attn.wo`, 12% null) take the *smallest* steps,
+`angle/sqrt(cond_A) ~ 0.7`.
+
+### Relocating the degeneracy to `S` does not save it either
+
+`A` and `E[dd^T]` are both in the checkpoint, so `S = W^T E[dd^T] W` and its
+spectrum cost nothing to compute. (Pairing of optimizer state to diagnostics
+rows was checked against all 56 layer shapes first; without that the table
+would describe key order, not layers.)
+
+```
+  rho(angle, cond_S    ) = -0.111        rho(angle, nullfrac_S) =  0.023
+  rho(angle, cond_A    ) = -0.302        rho(angle, cond_D    ) = -0.240
+  rho(angle, lam_max_S ) = -0.502        rho(angle, lam_max_D ) = -0.550
+
+  rho(angle, 1/sqrt(lam_max_S * lam_max_A)) =  0.634
+```
+
+`S` is degenerate beyond anything in `A` -- `cond_S` runs from 1e7 to **1e19**,
+and `blocks.3.ffn.down` has **63%** of `S`'s spectrum numerically null. Its
+angle is 245, the middle of the distribution. Degeneracy is everywhere and
+correlates with nothing.
+
+What correlates is **scale**. The single best predictor is
+`1 / sqrt(lam_max_S * lam_max_A)`, which is just `F ~ lam_S lam_A` and
+`X = F^-1 G`. The step is inversely proportional to how curved the layer is
+overall, not to how unevenly curved it is.
+
+### The consequence for damping, which is the point
+
+The floor has always been **relative**: `max(d_ij, eps * d_max)` within a layer.
+That form can only ever act on the *spread* of the spectrum. Multiply every
+`d_ij` in a layer by `1e-6` and `d/d_max` is unchanged, so the floor does not
+move -- while the step grows by `1e3`. **The relative floor is structurally
+blind to the quantity that actually drives the blow-up.**
+
+That is why `ngd-pion-op` shifted the loss by 0.041, and why every `eps` sweep
+has come back null. It was not evidence that damping does not matter. It was
+damping the wrong quantity.
+
+It also retires an earlier reading in this journal. The `ngd-pion-op` null
+result was taken as "damping is not a lever". It was measured at a **shared
+`eta` across arms**, and since `||X|| ~ eps^(-1/2)`, changing `eps` mostly
+rescales the step, which `eta` then re-absorbs. The comparison could not have
+shown an effect whether or not one existed -- the same single-shared-`eta`
+error as the initialisation sweep.
+
+### What did not hold
+
+`angle ~ 1/delta_rms`, guessed from the top of the table, does not survive
+contact with all 56 layers: the spread falls only from 115x to 94x. Within a
+role it is good (`angle * delta_rms` varies 1.9x for `wq` and 2.0x for `wk`
+across all eight blocks) and it breaks across roles, by 90x. Depth is explained
+by `delta`; role is not.
+
+The controlled pair is worth keeping. `wq` and `wk` in a block read the same
+residual stream, so they have *literally the same* `A` -- `cond_A` and
+`lam_max_A` agree to the digit -- plus the same shape, depth and
+initialisation. At block 7 their angles are 988 and 6672, a factor of 6.8.
+Exactly one thing differs between them, the backward statistics, and it is
+worth 6.8x. That is the cleanest single-variable lever in the project so far.
+
+### Caveats
+
+One run, one seed. The `S` table is at step 150, by which point the model has
+moved and angles are 13x smaller than at step 0. `rho = 0.634` is a decent rank
+correlation, not an overwhelming one, and a scale law deserves a direct test
+rather than a correlation across a heterogeneous set of layers.
