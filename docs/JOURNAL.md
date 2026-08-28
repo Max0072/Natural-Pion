@@ -5074,3 +5074,53 @@ exactly the experiment that had not been run.
 
 Corrected in `unified.py`, `harness/config.py` and `scripts/sbatch/trust.sbatch`,
 all of which had quoted the fabricated figure.
+
+
+## 2026-08-28 -- `eta` finds itself from a 100x range, and every `rho` we looked at was aliased
+
+### The mechanism works, and the claim is the strong one
+
+Job 297936: `ngd-pion-s`, `trust_lr` adapting `eta` on the reduction ratio,
+`rho_every = 5`, three starting rates spanning a hundredfold.
+
+    eta0     final effective eta    val@3000
+    0.002          0.133             4.2771
+    0.02           0.152             4.2400
+    0.2            0.200             4.3271
+    control (fixed eta = 0.02)       3.9184
+
+**A hundredfold spread at the start becomes 1.5x at the end**, and the losses
+land within 0.087 of each other. The pre-registered claim -- that the rule
+removes the learning rate rather than improving the loss -- holds.
+
+**And the point it settles on is wrong**: `eta ~ 0.15` against a swept optimum
+of 0.02, losing 0.32.
+
+### The measurement that explains it, and it invalidates a number I derived from
+
+The logged `rho` in these runs has a median of **0.15**, below 0.25 on 65-74%
+of rows. At that reading the rule should shrink relentlessly; it grew and held
+`lr_scale` near its cap. The contradiction is the tell.
+
+**`log_every = 100` is a multiple of `t_fac = 25`.** Every logged step is
+therefore a refactorisation boundary, where the basis is *fresh*, `alpha = 1`,
+the step is the longest of the cycle and `rho` is at its lowest. The rule runs
+every 5 steps and sees every phase; we have only ever looked at one.
+
+So the logged `rho` is a biased sample of the quantity the rule acts on -- and
+that includes **the median of 1.22 from the full-length run**, which was the
+number this entry's own target band was going to be derived from. It is not a
+median over the run; it is a median over refactorisation boundaries.
+
+`harness.train` now accumulates every `rho` between logged rows and reports
+`rho_n`, `rho_med`, `rho_lo`, `rho_hi` beside the instantaneous value. The
+aliasing was arithmetic and could have been noticed by reading two config
+fields together at any point in the past four days.
+
+### What this leaves
+
+The trust-region-on-`eta` result stands on its own: **the rule converges from
+any starting rate, and it converges to the wrong place.** Where the right place
+is cannot be read off the `rho` figures quoted so far, because they were all
+sampled in one phase. The next run needs an unaliased `log_every` -- 97 rather
+than 100 -- before any target band is chosen.

@@ -438,6 +438,8 @@ def train(
             return out
 
     window_time, window_step = time.time(), first
+    # `rho` values since the last logged row; see the note where it is appended.
+    rho_window: list[float] = []
     for step in range(first, steps):
         lr = lr_at(step, cfg)
         # Two schedules when `adamw_lr` is set, one when it is not. Sharing the
@@ -553,6 +555,17 @@ def train(
             # for. Only the damped variant listens; the rest ignore it.
             if hasattr(rot, "adapt_damping"):
                 rot.adapt_damping(rho)
+            # Every `rho` measured since the last logged row, not only the one
+            # that happens to land on it.
+            #
+            # **The instantaneous value is aliased.** `log_every` is 100 and
+            # `t_fac` is 25, so every logged step is a multiple of both and the
+            # basis is always *fresh* there -- `alpha = 1`, the longest step of
+            # the cycle, and the lowest `rho`. Every figure quoted from this
+            # field before 2026-08-28 was sampled in one phase of the
+            # refactorisation cycle, including the median of 1.22 that a
+            # trust-region target was derived from.
+            rho_window.append(rho)
         adamw.step()
 
         if step % cfg.log_every == 0 or step == steps - 1:
@@ -588,6 +601,14 @@ def train(
                 row["eigh_fallbacks"] = dict(EIGH_FALLBACKS)
             if rho is not None:
                 row["pred_drop"], row["rho"] = predicted, rho
+            finite = [r for r in rho_window if r == r and abs(r) != float("inf")]
+            if finite:
+                finite.sort()
+                row["rho_n"] = len(finite)
+                row["rho_med"] = finite[len(finite) // 2]
+                row["rho_lo"] = finite[0]
+                row["rho_hi"] = finite[-1]
+            rho_window = []
             # The damping the Levenberg-Marquardt rule adapts. Without it a run
             # cannot answer whether the rule fired, which is how the first
             # attempt at this was launched -- the same blindness as recording
