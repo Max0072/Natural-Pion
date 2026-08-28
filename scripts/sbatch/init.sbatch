@@ -36,6 +36,11 @@ OUT="$DATA_p330/runs/init"
 SPECS=(orthogonal:2e-2 orthogonal:6e-2 xavier:2e-2 xavier:6e-2)
 IFS=: read -r INIT ETA <<< "${SPECS[$SLURM_ARRAY_TASK_ID]}"
 
+# `FORCE=1` takes a run directory's lock from a holder that is gone. Set it only
+# after checking with `squeue` that the named job is dead.
+FORCE_FLAG=""
+[ "${FORCE:-0}" = "1" ] && FORCE_FLAG="--force"
+
 echo "node $(hostname)  task ${SLURM_ARRAY_TASK_ID:-?}  init=$INIT eta=$ETA"
 nvidia-smi --query-gpu=name --format=csv,noheader
 
@@ -45,6 +50,6 @@ apptainer exec --env PYTHONUNBUFFERED=1 --env PYTHONPATH="$REPO" \
     python -m harness.run \
         --optimizer ngd-pion-s --lr "$ETA" --init "$INIT" \
         --ngd-t-fac 25 --adamw-lr 1e-3 --precision bf16 --seed 0 \
-        --max-steps 3000 --log-every 100 --eval-every 500 --no-resume \
+        --max-steps 3000 --log-every 100 --eval-every 500 --no-resume $FORCE_FLAG \
         --data-path "$DATA/c4_train.bin" --val-path "$DATA/c4_val.bin" \
         --out-dir "$OUT"

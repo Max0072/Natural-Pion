@@ -4992,3 +4992,52 @@ though the arm carrying it lost.
 
 `ngd-pion-s` at 54.9% of its own full run is already at **3.5224**, below
 Shampoo's final. Its number lands tonight and it is the one that matters.
+
+
+## 2026-08-28 -- the Levenberg-Marquardt rule works; the variant carrying it does not
+
+Job 297755, `ngd-pion-damped`, `rho_every = 5`, `eta = 2`, 2x2 over the initial
+damping and whether the rule adapts it:
+
+    lam0   adapt    val@500   val@1000
+    0.1    False     5.7016    5.3434     lam stays 0.1
+    0.1    True      5.2990    4.9421     lam 0.15 -> 4.9e5 -> 2.5e3
+    1      False     5.6494    5.3583     lam stays 1
+    1      True      5.3168    4.9866     lam 1.5 -> 2.9e5 -> 3.3e3
+    control (ngd-pion-s)  4.5947  4.2177
+
+**Adaptation is worth 0.39-0.40** against fixed damping at both scales, and
+`lam` controls rather than diverges: it climbs five orders, then comes back
+down, tracking `rho` across both thresholds.
+
+**And the whole family is 0.72 behind the control.** `ngd-pion-damped` removes
+the spectral floor and lets `lam` replace it; that substitution costs more than
+the adaptation gains.
+
+### The verdict on `damped.py` stands, and its reason was wrong
+
+It was listed as a dead end. That verdict was reached at 150 steps with `rho`
+computed only on logged steps, so at `log_every = 30` the rule adapted perhaps
+five times in its entire evaluation -- **the mechanism was starved, not
+tested.** With `rho_every = 5`, as kfac-jax uses, it is plainly alive and worth
+0.4.
+
+So the conclusion is unchanged and the reasoning behind it was not evidence.
+That matters beyond this arm: `ngd-pion-op` and `ngd-pion-pow` sit in the same
+dead-end list, closed on the same 150-step horizon, and at least the `eps`
+sweep behind `ngd-pion-op` is recorded as having been run at a shared `eta`,
+which the journal already notes could not have shown an effect either way.
+
+### What it points at
+
+An adaptive trust region belongs on the **floor-based** variant, not as a
+replacement for the floor. `damped.py` was the only carrier of the rule and it
+brings an extra change with it, so the two have never been separated. Bolting
+the `rho`-driven rule onto `ngd-pion-s` -- adapting something that scales the
+step rather than something that replaces the floor -- is the experiment that
+has not been run.
+
+Also recorded: the grid was wrong by six orders. `lam` wanted 1e5 and the sweep
+offered 0.1 and 1. The rule climbed there by itself, but half the run was spent
+getting out of a starting point chosen without measurement. That is the fourth
+grid edge today.
