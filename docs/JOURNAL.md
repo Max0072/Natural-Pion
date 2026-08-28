@@ -4704,3 +4704,64 @@ a step into matrices of `512^2` and `1376^2`.
 Taken together the plausible target is 497 ms of optimizer down to roughly 150,
 which moves the cost ratio against `pion` from 2.10x to about 1.35x -- before
 any batch amortisation.
+
+
+## 2026-08-28 -- their `pion_msign` read: it is our Shampoo-on-so(n) without the accumulator
+
+`$DATA_p330/reference/pion/megatron-lm/megatron/core/optimizer/pion_msign.py`, 500
+lines, with its own shell script beside it. Both were on disk the whole time.
+Read rather than inferred.
+
+Their update, per step per matrix:
+
+    1. EMA on the raw gradient          beta1 = 0.95
+    2. G_in = skew(W^T G),  G_out = skew(G W^T)
+    3. msign of the active side -- the polar factor, Newton-Schulz,
+       5 steps, quintic coefficients
+    4. truncated matrix exponential of -eta * u
+    5. alternating: odd steps the in-side, even steps the out-side
+
+### The identification, and it matters for the paper
+
+`msign` of a skew matrix is its polar factor, and in the real Schur basis a skew
+matrix's blocks `[[0, th], [-th, 0]]` become `[[0, 1], [-1, 0]]`: **every
+rotation plane normalised to a unit angle.**
+
+That is exactly what `shampoo.py`'s docstring derives for a single accumulated
+gradient -- `P^-1/4 G P^-1/4` with `P = G G^T` gives the same unit blocks, and
+`tests/test_shampoo.py::test_single_gradient_orthogonalises` pins it to 1e-9.
+
+**So their `pion_msign` is the memoryless case of the construction this project
+adopted on 2026-08-27, and our version is its accumulated generalisation.**
+
+Two consequences, and the second is uncomfortable:
+
+* The direction is not exotic. Orthogonalising the Pion generator is something
+  the Pion authors implemented themselves.
+* **It is therefore prior art, and theirs.** What is ours is the accumulator,
+  not the orthogonalisation. The journal already listed HTMuon as prior art to
+  answer; `pion_msign` has to be answered too, and it is closer.
+
+### The experiment that falls out, and it is one flag
+
+`shampoo-pion` with `shampoo_beta` just above zero gives `P = G G^T` from the
+current gradient alone -- their msign. `shampoo_beta = 0` is the plain sum, ours.
+So the controlled pair is `beta -> 0` against the sum, both in this harness,
+both with Cayley, each at its own `eta`. It isolates precisely the part that is
+ours: whether accumulation buys anything over bare orthogonalisation.
+
+### Details worth carrying
+
+* **Their generator is half ours.** `skew(W^T G) = (W^T G - G^T W)/2`; ours has
+  no half. `eta` absorbs it, but the numbers are not directly comparable.
+* **They kept the truncated exponential** rather than moving to Cayley. They can:
+  after msign the step norm is `eta` by construction, and what this project
+  measured is that the truncation inflates when the scale is *not* fixed.
+* **msign replaces the RMS scaling.** Their msign script drops
+  `--pion-scaling rms`, `--pion-rms`, `--pion-momentum` and `--pion-degree`
+  entirely. Independent support for the line taken here: the scale should come
+  from the construction rather than by fiat.
+* **They give the rotation its own `--pion-lr 1e-2`**, which the plain 60M script
+  does not have. The learning-rate decoupling this project hit as a bug is
+  deliberate in their msign variant -- and their value is the same order as the
+  optimum swept here.
