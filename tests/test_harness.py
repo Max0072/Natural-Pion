@@ -666,3 +666,51 @@ def test_two_ways_to_choose_a_spectrum_are_refused_together():
         Transformer(replace(SMALL, init="orthogonal", init_pl_alpha=3.0))
     with pytest.raises(ValueError):
         Transformer(replace(SMALL, init="hilbert"))
+
+
+def test_residual_flag_changes_the_block_and_defaults_on():
+    """Off, a block is a plain composition; on, it is the usual pre-norm sum."""
+    x = torch.randn(2, 8, SMALL.hidden)
+    for flag in (True, False):
+        torch.manual_seed(0)
+        m = Transformer(replace(SMALL, residual=flag))
+        blk = m.blocks[0]
+        out = blk(x, m.cos[:8], m.sin[:8])
+        composed = blk.ffn(blk.ffn_norm(blk.attn(blk.attn_norm(x), m.cos[:8], m.sin[:8])))
+        if flag:
+            assert not torch.allclose(out, composed, atol=1e-6)
+        else:
+            assert torch.allclose(out, composed, atol=1e-6)
+
+
+def test_residual_default_is_bit_identical_to_before():
+    torch.manual_seed(0)
+    a = Transformer(SMALL)
+    torch.manual_seed(0)
+    b = Transformer(replace(SMALL, residual=True))
+    x = torch.randint(0, SMALL.vocab_size, (2, 8))
+    with torch.no_grad():
+        assert torch.equal(a(x)[0], b(x)[0])
+
+
+def test_orthogonal_weights_survive_a_cayley_run():
+    """The premise of the residual-free experiment: the spectrum is frozen, so
+    an orthogonal initialisation is orthogonal for the whole run, not only at
+    step zero."""
+    from ngd_pion.unified import NGDPionUnified
+
+    torch.manual_seed(0)
+    m = Transformer(replace(SMALL, init="orthogonal", residual=False))
+    w = m.parameter_split()[0][0].weight
+    before = torch.linalg.svdvals(w.detach().double())
+    p = torch.nn.Parameter(w.detach().clone())
+    opt = NGDPionUnified([p], lr=0.05, t_fac=3)
+    x = torch.randn(64, p.shape[1])
+    d = torch.randn(64, p.shape[0]) * 0.3
+    for _ in range(6):
+        opt.observe(p, x)
+        opt.observe_backward(p, d)
+        p.grad = torch.randn_like(p) * 0.1
+        opt.step()
+    after = torch.linalg.svdvals(p.detach().double())
+    assert torch.allclose(before, after, rtol=1e-5, atol=1e-7)

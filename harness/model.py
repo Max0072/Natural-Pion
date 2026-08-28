@@ -73,6 +73,23 @@ class ModelConfig:
     # every singular value to `init_gain`, which is 1 by default. Since the
     # spectrum is frozen, the difference between them is a real experimental
     # variable and not a convention, so they are separate settings.
+    # Residual connections. `False` makes every block a plain composition, so
+    # the signal must pass through each weight rather than around it.
+    #
+    # It is here because this optimizer makes a question askable that is
+    # usually not. Dynamical isometry -- orthogonal weights preserving the
+    # signal norm through depth -- is the classical prerequisite for training
+    # without residuals, and it normally decays as the weights train. Pion and
+    # NGD-Pion **freeze the singular values**, so an orthogonal initialisation
+    # stays orthogonal for the whole run, exactly, as long as the retraction is
+    # Cayley. So: does preserving the spectrum substitute for a residual?
+    #
+    # Two things the flag cannot deliver, and both belong beside any result:
+    # the *weights* stay orthogonal but the block Jacobian does not, since
+    # softmax, RoPE and SwiGLU are in the way; and residuals earn their keep at
+    # depth, while this model has 8 layers, so a negative result here is weak
+    # evidence and a positive one is strong.
+    residual: bool = True
     init: str = "normal"          # normal | orthogonal | xavier
     init_gain: float = 1.0        # singular value for `orthogonal`
 
@@ -149,12 +166,16 @@ class SwiGLU(nn.Module):
 class Block(nn.Module):
     def __init__(self, cfg: ModelConfig) -> None:
         super().__init__()
+        self.residual = cfg.residual
         self.attn_norm = RMSNorm(cfg.hidden, cfg.norm_eps)
         self.attn = Attention(cfg)
         self.ffn_norm = RMSNorm(cfg.hidden, cfg.norm_eps)
         self.ffn = SwiGLU(cfg)
 
     def forward(self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
+        if not self.residual:
+            x = self.attn(self.attn_norm(x), cos, sin)
+            return self.ffn(self.ffn_norm(x))
         x = x + self.attn(self.attn_norm(x), cos, sin)
         return x + self.ffn(self.ffn_norm(x))
 
