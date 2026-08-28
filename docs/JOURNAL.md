@@ -5216,3 +5216,107 @@ If the claim is to be strengthened rather than softened, the next signal has to
 be one that does not saturate -- a directional derivative along the step, or
 the ratio of achieved to predicted drop measured at two step lengths rather
 than one. That is a design question, not a run to launch.
+
+---
+
+## 2026-08-29 -- the measurement was feeding the thing it measured
+
+### The bug
+
+`ActivationRecorder` hangs off `register_forward_pre_hook`. A forward pre-hook
+fires under `torch.no_grad()` like any other, and nothing disabled the recorder
+around the `rho` evaluation. So the forward taken *for measurement* was folding
+its activations into `A` exactly as though it were a training batch.
+
+The size of it is set by a second detail. `CovarianceAccumulator.observe`
+blends with a fixed `1 - beta` **per call**, not per sample -- the gram is
+already a mean over the call's tokens. A `rho_micro = 128` chunk of a
+512-sequence batch therefore carries a full training batch's EMA weight while
+estimating the gram from a quarter of the tokens, and the chunked forward makes
+four such calls. At `rho_every = 5`:
+
+    training calls per 5 steps      5
+    diagnostic calls per 5 steps    4   -> 44% of A's EMA weight
+    effective horizon at beta=0.95  20 calls = 11 steps, not 20
+
+drawn at post-`rot.step()` weights, from quarter-sized batches.
+
+### Blast radius: nine runs, and one conclusion
+
+    rho_every=5, rho_micro=128   44%   trustlr (3), rhodist (2)
+    rho_every=5, rho_micro unset 17%   lm (4)
+    everything else               --   no full-length run or sweep set rho_every
+
+So every full-length number, every optimizer comparison and every `eta` sweep
+in this repository is untouched. What is touched is the trust-region-on-`eta`
+work, and one conclusion from it does not survive:
+
+**the 0.20 deficit charged to the controller on 2026-08-28 was measured with
+the controller arms at 44% contamination and the fixed-rate control at 1%.**
+Two things differed, not one. The comparison cannot carry the number.
+
+What does survive is everything measured *within* `trustlr`, where all three
+arms are contaminated identically: the controller reaches `rho_med = 1.00` by
+step 300 and holds; the losses agree to 0.009 across a hundredfold range of
+starting rates; the final effective rates differ 3x with no effect on the
+outcome; the corrected band beats `[0.25, 0.75]` by 0.12. The `rhodist`
+separation of `eta = 0.02` from `eta = 0.15` also survives -- both arms carry
+the same contamination.
+
+So "`rho` saturates" remains plausible and rests on homogeneous measurements;
+"and it costs 0.20" does not.
+
+This is the same failure as the five collected on 2026-08-26: the numbers
+arrived, an explanation suggested itself, it was coherent, and nothing prompted
+a look at whether the arms differed in one thing. The check that would have
+caught it is two config fields read together, which is also what the `rho`
+aliasing needed.
+
+### The fix
+
+`harness.train._recorders_off` silences every recorder around every diagnostic
+forward, and `_measure_loss` is the one chunked, side-effect-free evaluation
+both callers use. `rho_every` and `rho_micro` are now trajectory-neutral, which
+is what the project's own rule for implementation flags always required of
+them.
+
+`test_diagnostic_forward_leaves_the_covariance_alone` pins both halves: that a
+guarded forward leaves `A` bit-identical, and that an unguarded one does not.
+The second assertion matters -- a guard that pins nothing is worse than no
+guard, because it reads as evidence.
+
+### `rho_holdout`, and what it is for
+
+`rho` is evaluated on the batch whose gradient produced the step, so it asks
+whether the quadratic model described *that* batch. A step several times too
+long still describes it: it is descending that batch's own quadratic. And the
+step here is **96.4% sampling noise**, so the batch's quadratic and the
+expected one are not the same object. That is the obvious candidate for why a
+controller targeting `rho ~ 1` settles two to four times above the swept
+optimum -- it steers by a quantity that is blind, by construction, to the error
+that makes the step too long.
+
+`rho_holdout` evaluates the achieved drop on a fresh batch from a second reader
+over the training corpus, and logs `rho_held` beside `rho`. Two extra chunked
+forwards per measurement, about 6% of a step at `rho_every = 5`, and now that
+the recorders are silenced it moves nothing.
+
+### Job 298962, rtx6002, three arms, 3000 steps
+
+    A   eta = 0.02   fixed        the swept optimum, and the clean control
+    B   eta = 0.077  fixed        where the controller settles
+    C   eta = 0.02   band [0.8, 1.2]   the controller, against A
+
+`log_every = 97`, coprime with `t_fac = 25`. Same seed on all three.
+
+    HYPOTHESIS  same-batch `rho` reads ~1 over a range of `eta` across which
+                the loss differs materially; held-out `rho` does not.
+    PREDICTION  A and B agree on `rho_med` within a few tenths, while
+                `rho_held_med` is materially lower at 0.077 than at 0.02.
+    CONTROL     A and B differ in `eta` alone. If `rho_held` fails to separate
+                them the idea dies here, and no knob was added to the method.
+
+C repairs the broken number: it is A's own settings plus the controller, so the
+deficit becomes a one-variable comparison. Nothing on disk could be reused for
+it, because every earlier fixed-rate run had `rho_every` unset -- which is the
+bug restated as a fact about the archive.

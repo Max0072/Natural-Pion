@@ -10,7 +10,7 @@ indexes are linked from `AGENTS.md`. This file is only ever *now*.
 
 ---
 
-## As of 2026-08-29, after midnight
+## As of 2026-08-29, morning
 
 ### The headline: a tie, and the number is final
 
@@ -47,7 +47,7 @@ signature of a constant step-equivalent advantage rather than a fading head
 start. `eta = 1e-2` leads `2e-2` by 0.024 -- the reverse of the 3000-step
 sweep, and the third time a short protocol has reordered arms.
 
-### The adaptive-`eta` claim, now measured rather than hoped
+### The adaptive-`eta` claim, and the confound in it
 
 Target `rho ~ 1` (grow above 1.2, shrink below 0.8), 3000 steps, 100x range of
 starts:
@@ -56,31 +56,27 @@ starts:
     0.002          0.089             4.1196
     0.02           0.030             4.1238
     0.2            0.077             4.1150
-    control, fixed 0.02              3.9184
     old band [0.25, 0.75], best      4.2400
 
-The controller reaches its target -- `rho_med` is 1.00 from step 300 in all
-three arms -- and the losses now agree to **0.009** where they spread 0.087
-under the old band. But it lands 2-4x above the swept optimum and pays **0.20**
-for it, and the band is not the reason:
+**Sound, because all three arms are identical apart from the starting rate:**
+the controller reaches `rho_med = 1.00` by step 300 and holds; the losses agree
+to **0.009** where the old band spread 0.087; the final rates differ 3x with no
+effect on the outcome; the corrected band is worth 0.12 over K-FAC's.
 
-* final rates differ 3x across arms while losses differ 0.009, so the outcome
-  does not depend on where it lands;
-* the arm closest to the swept optimum was the worst of the three.
+**Not sound:** the 0.20 deficit against a fixed `eta = 0.02`. The controller
+arms ran with 44% of `A`'s EMA weight coming from diagnostic forwards and the
+fixed-rate control with 1% -- see the open-bugs entry -- so that comparison
+varied two things. Job 298962 re-measures it against a matched control.
 
-**`rho` saturates.** It reads 0.02-0.25 at a catastrophic rate and 1.0 at both
-ends of the interval that costs 0.20. It asks whether the quadratic model
-predicted the drop, not whether the drop was the largest available. **No
-controller on `rho` alone will find the swept rate**, and no choice of band
-changes that. (Separate defect, worth fixing anyway: 1.5x every 5 steps with no
-dead zone, so the rate dithers 0.051/0.077/0.115 forever instead of settling.)
+The hypothesis under test is that **`rho` is blind by construction**: it is
+evaluated on the batch whose gradient produced the step, so a step several
+times too long still fits it, and the step is 96.4% sampling noise. `rho_held`,
+measured on a fresh batch, should separate rates that `rho` cannot. If it does
+not, the idea dies and no knob was added.
 
-So the paper's distinctive claim is weaker and more precise than "there is no
-learning rate to tune": **the rule converges reliably from a hundredfold range
-to a rate 2-4x too large, at a cost of 0.20 at 3000 steps.** It removes the
-search and pays for it. Strengthening it needs a signal that does not saturate
--- a directional derivative along the step, or achieved-over-predicted measured
-at two step lengths. That is a design question, not a run to launch.
+Either way the claim is narrower than "there is no learning rate to tune":
+**the rule converges reliably from a hundredfold range to a rate 2-4x above the
+swept optimum**, at a cost still being measured.
 
 ### What is settled, with the number
 
@@ -123,8 +119,9 @@ at two step lengths. That is a design question, not a run to launch.
    first thing a reviewer asks for. ~10 rtx-hours.
 3. **`pion_ablated` at full length.** Still never run, still the isolating
    baseline for any statement about what the preconditioner buys.
-4. **A non-saturating step-size signal**, if the adaptive claim is to be
-   strengthened. Design first, measure on the 3000-step protocol second.
+4. **Job 298962** (running, ~2h): does held-out `rho` separate rates that
+   same-batch `rho` cannot, and what is the trust region's real cost against a
+   matched control.
 
 ### The honest arithmetic on cost
 
@@ -151,6 +148,13 @@ advantage to preserve.
   1.073e-06.
 * `shampoo-pion` does not approach the inert limit monotonically as `eta -> 0`.
 * the `rho` controller has no dead zone, so the effective rate never settles.
+* **FIXED 2026-08-29, but it invalidated a number.** The diagnostic forward fed
+  `A`: a forward pre-hook fires under `no_grad`, and `CovarianceAccumulator`
+  blends per *call*, so four `rho_micro = 128` chunks every five steps carried
+  44% of the EMA weight from quarter-sized batches at post-step weights. Nine
+  runs (`trustlr`, `rhodist` 44%; `lm` 17%); no full-length run or sweep set
+  `rho_every`, so those are clean. Guarded by `_recorders_off` and pinned by
+  `test_diagnostic_forward_leaves_the_covariance_alone`.
 
 ### Decided, do not re-litigate
 
