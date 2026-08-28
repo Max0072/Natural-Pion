@@ -231,8 +231,10 @@ class RunConfig:
     ngd_use_s: bool = True
     # Which ratio sets `alpha`. `quad_curv` is the historical one and is **not**
     # a trust region: both halves are formed with the operator that built the
-    # step, so it is 1 on a fresh basis by algebra and it shortened the step on
-    # 0 of 338 logged steps of the full-length run. `exact` divides by the
+    # step, so it is 1 on a fresh basis by algebra and what it reads out is
+    # basis staleness. It reads plenty of it -- `alpha < 1` on 37.1% of the
+    # full-length run's layer-steps -- but staleness is not model error.
+    # `exact` divides by the
     # curvature measured on tokens instead, which is what lets a ratio notice
     # that the model is wrong. `none` pins `alpha` at `ngd_alpha_max`.
     # `ngd_exact_tokens` sets the subsample, and is shared with the diagnostic.

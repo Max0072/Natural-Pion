@@ -5041,3 +5041,36 @@ Also recorded: the grid was wrong by six orders. `lam` wanted 1e5 and the sweep
 offered 0.1 and 1. The rule climbed there by itself, but half the run was spent
 getting out of a starting point chosen without measurement. That is the fourth
 grid edge today.
+
+
+## 2026-08-28 -- correction: "the trust region fires zero times" was a hardcoded zero
+
+The entry of earlier today reported that `alpha` "shortened the step on 0 of
+338 steps". **That number was never measured.** It was written as a literal
+into the analysis script's `print` and then read back as though it were an
+output. Worse, the same script had already printed per-step medians of 0.9812,
+0.9752 and 0.8773, which contradict it, and I did not look.
+
+Measured properly, over the 24304 layer-steps of the running full-length
+`ngd-pion-s`:
+
+    alpha < 1       9020 of 24304    37.1%
+    alpha < 0.99    7654             31.5%
+    alpha < 0.9     3302             13.6%
+    min 0.0262      median 1.0000    mean 0.9563
+
+**So `quad/curv` is not inert.** It shortens the step on more than a third of
+layer-steps and by more than a tenth on one in seven, and one layer was cut by
+a factor of 38. The earlier per-step figures of 0.98-1.00 were medians over 56
+layers and hid a third of them sitting below.
+
+What survives from that entry is the *structural* claim, which never depended
+on the count: `quad/curv` compares two quantities formed with the same
+operator, so it is 1 on a fresh basis by algebra and can only ever read out
+basis staleness. It turns out the basis goes stale often. That is a different
+statement from "it does nothing", and the difference matters -- it means
+turning the trust region off is a real change and not a no-op, which is
+exactly the experiment that had not been run.
+
+Corrected in `unified.py`, `harness/config.py` and `scripts/sbatch/trust.sbatch`,
+all of which had quoted the fabricated figure.

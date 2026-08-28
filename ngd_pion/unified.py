@@ -98,8 +98,11 @@ class NGDPionUnified(NGDPionS):
             `"quad_curv"` is the historical one, `quad / curv`. **It is not a
             trust region.** Both halves are formed from `X = F^-1 G` with the
             same operator, so on a fresh basis it is 1 by algebra and it can
-            only ever detect that the basis has gone stale. Measured on the
-            full-length run it shortened the step on **0 of 338 logged steps**.
+            only ever detect that the basis has gone stale. **It does detect it**:
+            measured over 24304 layer-steps of the full-length run, `alpha` is
+            below 1 on **37.1%** of them and below 0.9 on 13.6%, with a minimum
+            of 0.0262. So it is not inert -- it is active, and what it is active
+            about is staleness rather than the model being wrong.
 
             `"exact"` is `quad / curv_exact`, with `curv_exact = 4 E_b[s_b^2]`
             measured against per-token quantities rather than against the
