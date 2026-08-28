@@ -4602,3 +4602,52 @@ the opposite of what a signal-to-noise account of `eta` predicts.
   0.967, and an elementwise EMA over two buffers cannot account for 25%. Either
   the arms had not finished warming or momentum has a cost that has not been
   identified. Unresolved, and stated as such.
+
+
+## 2026-08-28 -- read the horizontal gap, not the vertical one
+
+Every comparison in this journal has been quoted as a difference in loss at a
+fixed step, and every one of them narrows with training: momentum over the
+control goes 0.243, 0.114, 0.078, 0.066, 0.056, 0.045; `ngd-pion-s` over `pion`
+goes 0.133 to 0.070. Read naively that says the advantage is evaporating.
+
+It is not. **Loss is a compressive scale**, and 0.045 at step 3000 is far more
+progress than 0.045 at step 500. The scale-free reading is the horizontal one:
+at what step does the baseline reach the loss this arm has now.
+
+    momentum vs control, both eta = 1e-2
+    step    our val    control reaches    speedup
+     500     4.3519          822           1.64x
+    1000     4.1038         1434           1.43x
+    1500     4.0084         2040           1.36x
+    2000     3.9466         2676           1.34x
+
+    ngd-pion-s vs the median of eight pion runs
+    step    our val    pion reaches       speedup
+      500    4.6269          771           1.54x
+     6500    3.7995        10029           1.54x
+    12500    3.7137        18446           1.48x
+    18500    3.6597        25333           1.37x
+    24500    3.6169        30989           1.26x
+    27500    3.5955        33913           1.23x
+
+So the loss gap collapsing by 5x corresponds to a step-equivalent advantage
+that has moved only from 1.54x to 1.23x. **Quote the speedup, not the loss
+difference**; the latter understates a real effect and would understate it more
+the longer a run goes.
+
+**The speedup is nonetheless declining**, and honestly it has to be watched:
+-0.31 over 21000 steps. Extrapolated linearly it reaches 1.0 near step 43000,
+inside the 73242 of a full run. That is an extrapolation, of exactly the kind
+this session has twice been punished for, and the full-length run is at 38% and
+will answer it directly rather than by projection.
+
+### The precedent, checked rather than assumed
+
+The completed full-length `ngd-pion` (`S = I`, `eta = 1`) finished at 3.6728
+against `pion`'s median 3.4061, so the obvious worry was that it too had led
+early and lost late. **It had not.** Its speedup against the same baseline runs
+0.21x, 0.16x, 0.18x, 0.23x, 0.29x, 0.33x from step 6500 to 72500 -- never above
+1, three to six times *slower* throughout, and slowly closing rather than
+slowly losing. A different shape entirely, and not a precedent for the arm
+running now.
