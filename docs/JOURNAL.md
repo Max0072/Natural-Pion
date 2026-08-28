@@ -4515,3 +4515,90 @@ survives this method's 0.2-0.7 radian steps is untested and the test says so.
 account of `eta` is wrong -- which is worth knowing separately from whether the
 loss improves. `eta` must therefore be swept for the momentum arm rather than
 carried over, and at a horizon of at least 3000 steps.
+
+
+## 2026-08-28 -- 296244: momentum helps, and the `eta* ~ 2 SNR^2` account is refuted
+
+Five arms, `ngd-pion-m`, `momentum="lie"`, `beta1 = 0.9`, 3000 steps, `eta`
+swept. No control arm was run: `tests/test_momentum.py` pins `momentum="none"`
+bit-identical to `FastNGDPionS`, and `ngd-pion-s` *is* `FastNGDPionS`, so the
+crossover curve is the exact control.
+
+    step                   500     1000     1500     2000     2500     3000
+    control (no momentum) 4.5947   4.2177   4.0866   4.0124   3.9619   3.9184
+    momentum eta = 1e-2   4.3519   4.1038   4.0084   3.9466   3.9056   3.8734
+    momentum eta = 3e-2   4.4655   4.1828   4.0787   4.0202   3.9823   3.9559
+    momentum eta = 1e-1   4.8204   4.4947   4.2918   4.2251   4.1769   4.1436
+    momentum eta = 3e-1   5.2406   4.8930   4.7407   4.6699   4.6097   4.5740
+    momentum eta = 1      5.9122   5.5103   5.3256   5.1162   5.0085   4.9398
+
+### It helps, and the gain is shrinking
+
+At matched `eta = 1e-2` momentum is ahead at every horizon: +0.243, +0.114,
++0.078, +0.066, +0.056, **+0.045**. Real, and narrowing steadily. Whether it
+survives to 73242 steps is not answerable from here, and today has twice shown
+what extrapolating from an early lead is worth.
+
+**It is nonetheless the best number this project has produced.** Against the
+eight full-length `pion` runs at step 3000 -- best 3.9880, median 4.0133 --
+
+    pion best of 8   3.9880
+    ngd-pion-s       3.9184   +0.070
+    ngd-pion-m       3.8734   +0.115
+
+so momentum roughly doubles the margin over `pion`.
+
+### The pre-registration failed, cleanly
+
+Stated before the run: an EMA at `beta1 = 0.9` averages `k = 19` draws, so if
+`eta* ~ 2 SNR^2` holds, `eta*` should rise about nineteenfold, from 1e-2 to the
+order of 0.1-0.2.
+
+**It did not move.** `eta = 1e-2` is best at every one of the six checkpoints,
+the ordering is monotone in `eta` throughout, and 1e-2 is the *smallest* value
+sampled -- so the optimum is at or below the bottom of the grid, and may have
+moved down rather than up. `eta* ~ 2 SNR^2` does not survive this.
+
+That matters beyond the knob. It was the account that made `eta` a
+signal-to-noise shrinkage rather than a tuned constant, and it was the last
+remaining derivation of `eta` from first principles. Both the theoretical
+`eta* = 2` and its SNR replacement are now refuted, by separate measurements.
+
+### The mechanism, measured rather than argued
+
+Median per-layer rotation angle, same `eta`, with and without momentum:
+
+    step        no momentum     with momentum    ratio
+       1         6.963e-01        6.963e-02       0.10
+     601         4.730e-01        2.075e-01       0.44
+    1201         4.100e-01        1.903e-01       0.46
+    2101         4.208e-01        1.701e-01       0.40
+    3000         4.009e-01        1.204e-01       0.30
+
+The step-1 ratio is exactly `1 - beta1 = 0.10`, which is what the first EMA
+step must give and is a clean check that the buffer is what it claims to be.
+
+In steady state momentum takes steps **0.43x** the size at the same `eta`. From
+`|m|^2/|G|^2 = s + (1-s)/k_eff` with the measured signal fraction `s = 0.036`,
+that implies **`k_eff = 6.5`, not 19**. So momentum realised about a third of
+the available variance reduction, and the reason is the one flagged before the
+run: the true direction drifts across the averaging window, and this method
+rotates 0.2-0.7 rad per step. The caveat is now a number.
+
+**And this is what makes the `eta*` result sharp.** Momentum shrinks the step
+2.3x at fixed `eta`, so `eta*` would have to rise 2.3x merely to hold the angle
+constant, before any SNR gain. It rose by nothing. **The optimal rotation angle
+went down by at least a factor of two once the direction got cleaner** --
+the opposite of what a signal-to-noise account of `eta` predicts.
+
+### Next
+
+* Extend the grid downward: `3e-3`, `1e-3` at `beta1 = 0.9`. The optimum is off
+  the bottom edge and every number above is therefore an upper bound.
+* `beta1` is unswept. If `k_eff` is drift-limited at 6.5, a *smaller* `beta1`
+  may lose nothing and track better; a larger one may not help at all. That is
+  now a measurement rather than a guess.
+* Step cost: the momentum arms settled near 1.2 s/step against the control's
+  0.967, and an elementwise EMA over two buffers cannot account for 25%. Either
+  the arms had not finished warming or momentum has a cost that has not been
+  identified. Unresolved, and stated as such.
