@@ -82,10 +82,24 @@ the node-by-node detail and the scheduler limits.
 1. ~~Throughput on both partitions.~~ **Answered, from the anchor runs already
    on disk rather than by a new measurement.** A full 73242-step `pion` run
    takes 9.4-9.5 h on `rtx` and 4.8-5.5 h on `b200`: **1.9x**, and not the
-   peak-FLOPS ratio, exactly as this entry warned. Long runs belong on `b200`
-   whenever it is schedulable -- enough so that queueing for it can still beat
-   starting immediately on `rtx`, which is how the runs of 2026-08-28 were
-   placed.
+   peak-FLOPS ratio, exactly as this entry warned.
+
+   **The ratio is per optimizer and does not transfer.** Measured on the same
+   model and the same corpus:
+
+   | optimizer | rtx | b200 | speedup |
+   |---|---|---|---|
+   | `pion` | 0.460 s/step | 0.236 | **1.9x** |
+   | `shampoo-pion` | 0.640 | 0.519 | 1.26x |
+   | `ngd-pion-s` | 0.967 | 0.991 | **0.98x -- none** |
+
+   `pion` spends its step in matmul, which is what a B200 is faster at; the
+   rotational variants spend theirs in eigendecomposition, which is not. So
+   `ngd-pion-s` gains nothing from `b200` and should be placed wherever it can
+   start soonest. An earlier version of this entry said long runs belong on
+   `b200` whenever it is schedulable; that was the `pion` ratio transferred to
+   a different optimizer, which is the error this entry's first sentence exists
+   to warn against, made while closing it.
 2. Container, then C4.
 3. **The anchor** — see below. No number this harness produces means anything
    until it lands.
