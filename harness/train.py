@@ -147,6 +147,9 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
             kw["ns_iters"] = cfg.ngd_ns_iters
             kw["ns_guard"] = cfg.ngd_ns_guard
             kw["angle"] = cfg.ngd_angle
+            kw["trust"] = cfg.ngd_trust
+            kw["exact_tokens"] = cfg.ngd_exact_tokens
+            kw["exact_beta"] = cfg.ngd_exact_beta
         if cfg.optimizer == "ngd-pion-exact":
             kw["exact_every"] = cfg.ngd_exact_every
             kw["exact_tokens"] = cfg.ngd_exact_tokens

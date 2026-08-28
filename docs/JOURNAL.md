@@ -4878,3 +4878,81 @@ Two honest options, and they are exclusive.
 The second is the more interesting of the two, because `rho` rising through 1
 and settling near 1.3 says the step could be *longer* in the second half of
 training, which a fixed `eta` cannot express and an adaptive one can.
+
+
+## 2026-08-28 -- the exact trust region: it works as a mechanism, and `curv_exact` is heavy-tailed
+
+**The run directories for this entry were deleted by an `rm -rf runs/trust/*/`
+that was meant to remove two cancelled partial runs and took the finished ones
+with it. The numbers below are the analysis output, transcribed; the raw
+`diagnostics.jsonl` is gone.** Re-running the three `beta = 0` arms costs about
+fifty minutes each if anything here needs checking.
+
+### `quad / curv_exact` is a trust region, and `eta*` moved as predicted
+
+Job 297594/297652, `ngd-pion-s`, `trust=exact`, 3000 steps, `eta` in the
+post-convention units:
+
+    eta      val at 500 / 1000 / 1500 / 2000 / 2500 / 3000
+    0.06    4.6970  4.3485  4.1897  4.0983   (to step 2300)
+    0.2     4.7833  4.3181  4.1651  4.0424  3.9846  3.9334
+    0.6     4.7615  4.3552  4.2182  4.1102  4.0710  4.0361
+    control 4.5947  4.2177  4.0866  4.0124  3.9619  3.9184
+
+**Pre-registration 1 met.** The optimum is `0.2`, bracketed on both sides, and
+that is **10x** the control's `2e-2` -- inside the predicted 8-25x, which was
+derived from the measured `alpha_exact/alpha` before the run. So the ratio does
+shorten the step and `eta` does compensate: it is behaving as a trust region.
+
+**Pre-registration 2 failed, and in the wrong direction.** The cross-layer
+angle spread went to 40-90x against the control's 18-61x. It did not narrow; it
+widened.
+
+**The loss converges to parity rather than beating it.** The deficit runs
+0.189, 0.100, 0.078, 0.030, 0.023, **0.015** -- inside the 0.07 practical floor
+by step 3000, so at that horizon the two are indistinguishable. The trend is
+still closing, which is the only reason the mechanism is worth another pass.
+
+### Why it does not win: the ratio is measuring through thirteen times its own noise
+
+Per-layer `alpha` in the `eta = 0.2` arm:
+
+    across layers, median alpha        8.4x   (0.0103 to 0.0866)
+    within one layer over time       109.5x   (median; one layer 7687x)
+
+The per-layer signal is **real** -- 8.4x agrees with the 2-5x between attention
+and FFN measured earlier -- and it sits under thirteen times as much estimation
+noise. That is the whole story: `alpha` adds its own variance on top of `||X||`,
+which is why the angle spread widened.
+
+**More tokens cannot fix it.** The noise falls as `1/sqrt(N)`, the subsample is
+4096 and the whole batch is 131072, so spending the entire batch buys
+`sqrt(32) = 5.7x` against the 13x needed.
+
+### And averaging cannot fix it either, which was the surprise
+
+`beta = 0.99` on an arithmetic EMA was tried and is **catastrophic**: median
+`alpha` reached 0.0000 by step 101 and stayed there -- the rotation stopped.
+val at step 500 was 5.4620 against the control's 4.5947.
+
+The cause, measured: **`curv_exact` is heavily heavy-tailed.**
+
+    curv_exact over steps, per layer
+      mean / median    typically 10.1x,  worst 6362x
+      max  / median    typically 187x,   worst 197150x
+
+An EMA estimates the **mean**, and for this distribution the mean sits ten
+times above the typical value, so a long EMA drives `alpha` to zero. Averaging
+is the wrong operation, not the wrong constant.
+
+The fix is a **geometric** mean -- smooth `log(curv_exact)` -- which for a tail
+of this shape sits at the median. `kfac_error.py` already reported its
+cross-layer figure as a geometric mean; the same reason applies here and was
+not noticed until it broke something.
+
+`exact_beta` now smooths in the log. 245 tests.
+
+### Cost, which is the one unambiguously good number
+
+1.05 s/step against 1.004 for the same optimizer without it. Measuring the true
+curvature every step, on every layer, is very nearly free.

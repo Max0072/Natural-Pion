@@ -63,6 +63,7 @@ from collections import defaultdict
 import torch
 
 from .direction import fisher_apply, generators, natural_gradient, trust_region_alpha
+from .exact_curv import exact_curv
 from .factorization import basis_congruence, basis_identity_anchor
 from .linalg import cayley, cayley_newton_schulz, is_identity, spectral_norm
 from .with_s import NGDPionS
@@ -92,6 +93,61 @@ class NGDPionUnified(NGDPionS):
         ns_guard: rotation angle above which a layer takes the exact solve
             regardless. `0` disables the fallback, which is how to measure what
             the guard is worth rather than assume it.
+        trust: which ratio sets `alpha`.
+
+            `"quad_curv"` is the historical one, `quad / curv`. **It is not a
+            trust region.** Both halves are formed from `X = F^-1 G` with the
+            same operator, so on a fresh basis it is 1 by algebra and it can
+            only ever detect that the basis has gone stale. Measured on the
+            full-length run it shortened the step on **0 of 338 logged steps**.
+
+            `"exact"` is `quad / curv_exact`, with `curv_exact = 4 E_b[s_b^2]`
+            measured against per-token quantities rather than against the
+            operator that built the step -- what K-FAC does, and what makes the
+            ratio capable of noticing the model is wrong. Measured
+            `alpha_exact/alpha` on this model is 4.7e-3 at step 1 and 0.04-0.12
+            in steady state, so it shortens by 8 to 25x, **per layer and per
+            step**, which is the pair of freedoms a swept `eta` does not have.
+
+            `"none"` fixes `alpha = alpha_max`.
+
+            **The risk to check first**: `curv_exact` is an estimate from
+            `exact_tokens` tokens, so `alpha` becomes a noisy per-step
+            multiplier. A trust region that jitters is a variance source, not a
+            control. If it hurts, smoothing `curv_exact` is the next thing to
+            try, not abandoning the ratio.
+        exact_beta: EMA factor on `curv_exact`. `0` uses the instantaneous
+            estimate, which is what the first attempt did and why it failed.
+
+            Measured on job 297594: the median `alpha` across layers spans
+            **8.4x**, and within a single layer across steps it spans
+            **109.5x**. The per-layer differences are real -- 8.4x agrees with
+            the 2-5x between attention and FFN in the journal -- but they sit
+            under thirteen times as much estimation noise, and a multiplier
+            that jitters by 100x is a variance source rather than a control.
+
+            **More tokens cannot fix it.** The noise falls as `1/sqrt(N)`, the
+            subsample is 4096 and the whole batch is 131072, so even spending
+            the entire batch buys `sqrt(32) = 5.7x` against the 13x needed.
+            Smoothing in time is the only route, which is unsurprising: `A` and
+            `D` are EMAs of exactly the same kind and only this one was taken
+            instantaneously.
+
+            **The average is geometric.** `curv_exact` is heavy-tailed --
+            mean/median 10.1 across layers, 6362 at worst, single draws at 187
+            medians -- so an arithmetic EMA converges to a mean far above the
+            typical value and `alpha` collapses. Measured at `beta = 0.99` with
+            an arithmetic mean: median `alpha` reached 0.0000 by step 101 and
+            the rotation stopped. Smoothing `log(curv_exact)` estimates the
+            geometric mean, which for this tail sits at the median.
+
+            The buffer is seeded with its first observation rather than with
+            zero, which in the log is the same as starting the geometric mean
+            at the first draw.
+        exact_tokens: tokens subsampled per layer for `curv_exact`. Paired
+            between the forward and the backward hook by index, drawn from a
+            generator of this class's own so that turning the flag on does not
+            move the global RNG.
         angle: `"power"` is the warm power iteration, `"svd"` the exact
             `matrix_norm`, `"off"` skips it. The angle is read by
             `harness.instrument` and by the Newton-Schulz guard, and by nothing
@@ -106,6 +162,9 @@ class NGDPionUnified(NGDPionS):
         use_s: bool = True,
         momentum: str = "none",
         beta1: float = 0.9,
+        trust: str = "quad_curv",
+        exact_beta: float = 0.0,
+        exact_tokens: int = 4096,
         retraction: str = "cayley",
         ns_iters: int = 2,
         ns_guard: float = 0.5,
@@ -116,6 +175,17 @@ class NGDPionUnified(NGDPionS):
             raise ValueError(f"momentum must be none/lie/ambient, got {momentum!r}")
         if not 0.0 <= beta1 < 1.0:
             raise ValueError(f"beta1 must be in [0, 1), got {beta1}")
+        if trust not in ("quad_curv", "exact", "none"):
+            raise ValueError(f"trust must be quad_curv/exact/none, got {trust!r}")
+        if trust == "exact" and not use_s:
+            raise ValueError(
+                "trust='exact' needs the per-token output gradients, which only "
+                "the measured-S path collects; set use_s=True"
+            )
+        if not 0.0 <= exact_beta < 1.0:
+            raise ValueError(f"exact_beta must be in [0, 1), got {exact_beta}")
+        if exact_tokens < 1:
+            raise ValueError(f"exact_tokens must be at least 1, got {exact_tokens}")
         if retraction not in ("cayley", "ns"):
             raise ValueError(f"retraction must be cayley/ns, got {retraction!r}")
         if angle not in ("power", "svd", "off"):
@@ -132,7 +202,8 @@ class NGDPionUnified(NGDPionS):
             group.update(
                 use_s=use_s, momentum=momentum, beta1=beta1,
                 retraction=retraction, ns_iters=ns_iters, ns_guard=ns_guard,
-                angle=angle,
+                angle=angle, trust=trust, exact_tokens=exact_tokens,
+                exact_beta=exact_beta,
             )
 
     # --- statistics ---------------------------------------------------------
@@ -143,6 +214,46 @@ class NGDPionUnified(NGDPionS):
             state = self.state.get(param, {})
             return "cov" in state and state["cov"].ready
         return super()._ready(param)
+
+    def _sampler(self, device: torch.device) -> torch.Generator:
+        """One generator per device, seeded once, never the global RNG."""
+        cache = self.__dict__.setdefault("_samplers", {})
+        key = (device.type, device.index)
+        if key not in cache:
+            g = torch.Generator(device=device)
+            g.manual_seed(0x5EED)
+            cache[key] = g
+        return cache[key]
+
+    def observe(self, param: torch.Tensor, x: torch.Tensor) -> None:
+        super().observe(param, x)
+        if self._group_of(param)["trust"] != "exact":
+            return
+        state = self.state[param]
+        flat = x.detach().reshape(-1, x.shape[-1])
+        k = min(self._group_of(param)["exact_tokens"], flat.shape[0])
+        # Drawn here and kept for the backward hook: the two samples have to be
+        # the same tokens, or the estimate reads as a spectacular independence
+        # failure rather than as a curvature.
+        idx = torch.randint(0, flat.shape[0], (k,), device=flat.device,
+                            generator=self._sampler(flat.device))
+        state["exact_idx"] = idx
+        state["exact_x"] = flat[idx].to(torch.float32)
+
+    def observe_backward(self, param: torch.Tensor, delta: torch.Tensor) -> None:
+        super().observe_backward(param, delta)
+        state = self.state[param]
+        idx = state.get("exact_idx")
+        if idx is None or "exact_x" not in state:
+            return
+        flat = delta.detach().reshape(-1, delta.shape[-1])
+        if flat.shape[0] < idx.shape[0]:
+            state.pop("exact_x", None)
+            state.pop("exact_idx", None)
+            return
+        # `* n` undoes the `1/N` autograd applies because the loss is a mean.
+        state["exact_d"] = flat[idx].to(torch.float32) * float(flat.shape[0])
+        state.pop("exact_idx", None)
 
     def _D(self, p: torch.Tensor, group: dict) -> torch.Tensor | None:
         if not group["use_s"]:
@@ -255,10 +366,50 @@ class NGDPionUnified(NGDPionS):
         curv = (X_in * fisher_apply(B_in, C_in, X_in)).sum() + (
             X_out * fisher_apply(B_out, W @ A @ Wt, X_out)
         ).sum()
-        alpha = trust_region_alpha(quad, curv, group["alpha_max"])
-        state["alpha"] = float(alpha)
         state["quad"] = quad
         state["curv"] = curv
+        mode = group["trust"]
+        if mode == "none":
+            alpha = torch.as_tensor(group["alpha_max"], dtype=quad.dtype, device=quad.device)
+        elif mode == "exact":
+            xs = state.pop("exact_x", None)
+            ds = state.pop("exact_d", None)
+            if xs is None or ds is None:
+                raise RuntimeError(
+                    "trust='exact' needs paired per-token samples; observe() and "
+                    "observe_backward() must both run every step for it"
+                )
+            ce = exact_curv(W.float(), X_in.float(), X_out.float(), xs, ds)
+            # The raw estimate is kept whatever the smoothing does, so that the
+            # noise this flag exists to remove stays measurable.
+            state["curv_exact"] = ce
+            beta = group["exact_beta"]
+            if beta > 0.0:
+                # **A geometric mean, not an arithmetic one, and the difference
+                # decides whether this works at all.** `curv_exact` is heavily
+                # heavy-tailed: measured across 56 layers, mean/median is 10.1
+                # typically and 6362 at worst, and a single draw reaches 187
+                # medians typically. An EMA estimates the *mean*, so a long one
+                # converges to a value ten times the typical and `alpha`
+                # collapses -- measured at `beta = 0.99`, the median `alpha`
+                # went to 0.0000 from step 101 and the rotation died.
+                #
+                # Averaging in the log estimates the geometric mean, which for
+                # a tail of this shape sits at the median, which is the typical
+                # value the ratio wants. `kfac_error.py` already reported its
+                # cross-layer figure as a geometric mean, for the same reason.
+                lg = torch.log(ce.clamp_min(torch.finfo(ce.dtype).tiny))
+                if "curv_exact_log" not in state:
+                    state["curv_exact_log"] = lg.clone()
+                else:
+                    state["curv_exact_log"] = beta * state["curv_exact_log"] + (1.0 - beta) * lg
+                ce = torch.exp(state["curv_exact_log"])
+                state["curv_exact_smooth"] = ce
+            alpha = trust_region_alpha(quad, ce.to(quad.dtype), group["alpha_max"])
+            state["alpha_exact"] = float(alpha)
+        else:
+            alpha = trust_region_alpha(quad, curv, group["alpha_max"])
+        state["alpha"] = float(alpha)
 
         c = group["lr"] * float(alpha)
         state["angle"], sigma = self._measure_angle(state, group, X_in, X_out, c)

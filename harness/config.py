@@ -229,6 +229,20 @@ class RunConfig:
     # `ngd-pion-u` takes every algorithmic choice from the configuration rather
     # than from the optimizer's name. The named variants remain presets.
     ngd_use_s: bool = True
+    # Which ratio sets `alpha`. `quad_curv` is the historical one and is **not**
+    # a trust region: both halves are formed with the operator that built the
+    # step, so it is 1 on a fresh basis by algebra and it shortened the step on
+    # 0 of 338 logged steps of the full-length run. `exact` divides by the
+    # curvature measured on tokens instead, which is what lets a ratio notice
+    # that the model is wrong. `none` pins `alpha` at `ngd_alpha_max`.
+    # `ngd_exact_tokens` sets the subsample, and is shared with the diagnostic.
+    ngd_trust: str = "quad_curv"     # quad_curv | exact | none
+    # EMA on `curv_exact`. `0` is the instantaneous estimate, whose noise made
+    # the first attempt lose: measured, `alpha` varies 8.4x across layers and
+    # 109.5x within one layer over time. More tokens cannot close that -- the
+    # whole batch buys 5.7x against the 13x needed -- so it has to be smoothed
+    # in time, like `A` and `D` already are.
+    ngd_exact_beta: float = 0.0
     # Implementation choices. These are meant not to change the trajectory, or
     # to change it by a bounded amount, and `tests/test_unified.py` checks them
     # on that footing rather than against the classes they replace.
