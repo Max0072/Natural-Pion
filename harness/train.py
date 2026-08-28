@@ -566,6 +566,12 @@ def train(
                 row["eigh_fallbacks"] = dict(EIGH_FALLBACKS)
             if rho is not None:
                 row["pred_drop"], row["rho"] = predicted, rho
+            # The damping the Levenberg-Marquardt rule adapts. Without it a run
+            # cannot answer whether the rule fired, which is how the first
+            # attempt at this was launched -- the same blindness as recording
+            # `curv_exact` without the smoothed value the step divides by.
+            if rot is not None and "lam" in rot.param_groups[0]:
+                row["lam"] = float(rot.param_groups[0]["lam"])
             if isinstance(rot, DIAGNOSED):
                 rows = layer_diagnostics(rot, names, probe)
                 row.update(summarise(rows))

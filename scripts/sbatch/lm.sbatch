@@ -47,11 +47,15 @@ SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"
 DATA="${DATA:-$DATA_p330/c4}"
 OUT="$DATA_p330/runs/lm"
 
-#      eta:lam
-SPECS=(2:0.01 2:0.1 2:1 2e-1:0.1)
-IFS=: read -r ETA LAM <<< "${SPECS[$SLURM_ARRAY_TASK_ID]}"
+# `eta:lam:adapt`. **The adapt=false arms are the control and are not
+# optional.** `ngd-pion-damped` is not `ngd-pion-s` plus adaptation: it drops
+# the spectral floor entirely and lets `lam` replace it, so comparing it
+# against `ngd-pion-s` confounds two changes. Holding `lam` fixed at the same
+# value isolates the one being tested.
+SPECS=(2:0.1:false 2:0.1:true 2:1:false 2:1:true)
+IFS=: read -r ETA LAM ADAPT <<< "${SPECS[$SLURM_ARRAY_TASK_ID]}"
 
-echo "node $(hostname)  task ${SLURM_ARRAY_TASK_ID:-?}  eta=$ETA lam=$LAM rho_every=5"
+echo "node $(hostname)  task ${SLURM_ARRAY_TASK_ID:-?}  eta=$ETA lam=$LAM adapt=$ADAPT rho_every=5"
 nvidia-smi --query-gpu=name --format=csv,noheader
 
 apptainer exec --env PYTHONUNBUFFERED=1 --env PYTHONPATH="$REPO" \
@@ -59,7 +63,7 @@ apptainer exec --env PYTHONUNBUFFERED=1 --env PYTHONPATH="$REPO" \
     --nv --bind "$DATA_p330:$DATA_p330" --pwd "$REPO" "$SIF" \
     python -m harness.run \
         --optimizer ngd-pion-damped --lr "$ETA" \
-        --ngd-lam "$LAM" --ngd-lam-adapt --rho-every 5 \
+        --ngd-lam "$LAM" --ngd-lam-adapt "$ADAPT" --rho-every 5 \
         --ngd-t-fac 25 --adamw-lr 1e-3 --precision bf16 --seed 0 \
         --max-steps 3000 --log-every 100 --eval-every 500 --no-resume \
         --data-path "$DATA/c4_train.bin" --val-path "$DATA/c4_val.bin" \

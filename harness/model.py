@@ -55,6 +55,26 @@ class ModelConfig:
     # conversely, starting from the right shape is the one intervention that
     # would let it.
     init_pl_alpha: float = 0.0
+    # The initialisation of the rotational weights, as a name rather than as a
+    # corner of `init_pl_alpha`.
+    #
+    # `"normal"` is `normal(0, init_std)` and is what every run on disk used.
+    # `"orthogonal"` is a plain semi-orthogonal weight with every singular value
+    # equal to `init_gain`. `"xavier"` is Glorot uniform.
+    #
+    # **This matters more here than in an ordinary network.** Pion and NGD-Pion
+    # rotate, so the singular values of a rotational weight are fixed at
+    # initialisation and never move again. The choice is not a starting point,
+    # it is a permanent property of the model.
+    #
+    # `"orthogonal"` is deliberately *not* the same as `init_pl_alpha = inf`.
+    # That one is also flat but scaled so the spectral norm is
+    # `sqrt(fan_out/fan_in)`, the feature-learning condition; this one sets
+    # every singular value to `init_gain`, which is 1 by default. Since the
+    # spectrum is frozen, the difference between them is a real experimental
+    # variable and not a convention, so they are separate settings.
+    init: str = "normal"          # normal | orthogonal | xavier
+    init_gain: float = 1.0        # singular value for `orthogonal`
 
     @property
     def head_dim(self) -> int:
@@ -162,10 +182,29 @@ class Transformer(nn.Module):
         # scale for no stated reason. Both belong to AdamW in any case, which
         # can move their spectra, so nothing is frozen there.
         rotational = module is not self.embed and module is not self.head
-        if self.cfg.init_pl_alpha > 0.0 and rotational:
-            _power_law_(module.weight, self.cfg.init_pl_alpha, self.cfg.init_std)
-        else:
+        if not rotational:
             nn.init.normal_(module.weight, mean=0.0, std=self.cfg.init_std)
+            return
+        if self.cfg.init != "normal" and self.cfg.init_pl_alpha > 0.0:
+            raise ValueError(
+                f"init={self.cfg.init!r} and init_pl_alpha={self.cfg.init_pl_alpha} "
+                "both set; they are two ways to choose the same spectrum"
+            )
+        if self.cfg.init == "orthogonal":
+            # `orthogonal_` gives a semi-orthogonal matrix whatever the shape,
+            # so every singular value is `init_gain` for both tall and wide.
+            nn.init.orthogonal_(module.weight, gain=self.cfg.init_gain)
+        elif self.cfg.init == "xavier":
+            nn.init.xavier_uniform_(module.weight)
+        elif self.cfg.init == "normal":
+            if self.cfg.init_pl_alpha > 0.0:
+                _power_law_(module.weight, self.cfg.init_pl_alpha, self.cfg.init_std)
+            else:
+                nn.init.normal_(module.weight, mean=0.0, std=self.cfg.init_std)
+        else:
+            raise ValueError(
+                f"init must be normal/orthogonal/xavier, got {self.cfg.init!r}"
+            )
 
     def forward(self, idx: torch.Tensor, targets: torch.Tensor | None = None):
         x = self.embed(idx)

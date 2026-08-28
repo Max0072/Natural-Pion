@@ -612,3 +612,57 @@ def test_the_old_behaviour_is_still_reachable():
     _, adamw, _ = build_optimizers(Transformer(cfg.model), cfg)
     assert len(adamw.param_groups) == 1
     assert adamw.param_groups[0]["weight_decay"] == cfg.weight_decay
+
+
+def test_normal_init_is_unchanged_by_the_new_flag():
+    """Every run on disk used it, so the default must be bit-identical."""
+    torch.manual_seed(0)
+    a = Transformer(SMALL)
+    torch.manual_seed(0)
+    b = Transformer(replace(SMALL, init="normal"))
+    for (n, p), (_, q) in zip(a.named_parameters(), b.named_parameters()):
+        assert torch.equal(p, q), n
+
+
+def test_orthogonal_init_gives_a_flat_spectrum_at_the_gain():
+    """The point of it: Pion freezes the spectrum, so this one is permanent."""
+    model = Transformer(replace(SMALL, init="orthogonal", init_gain=1.0))
+    rotational, _ = model.parameter_split()
+    for m in rotational:
+        s = torch.linalg.svdvals(m.weight.detach())
+        assert torch.allclose(s, torch.ones_like(s), atol=1e-5), (s.min(), s.max())
+
+
+def test_orthogonal_gain_scales_the_whole_spectrum():
+    model = Transformer(replace(SMALL, init="orthogonal", init_gain=0.5))
+    m = model.parameter_split()[0][0]
+    s = torch.linalg.svdvals(m.weight.detach())
+    assert torch.allclose(s, 0.5 * torch.ones_like(s), atol=1e-5)
+
+
+def test_xavier_init_has_the_glorot_bound():
+    model = Transformer(replace(SMALL, init="xavier"))
+    m = model.parameter_split()[0][0]
+    w = m.weight.detach()
+    fan_out, fan_in = w.shape
+    bound = math.sqrt(6.0 / (fan_in + fan_out))
+    assert w.abs().max() <= bound * (1 + 1e-6)
+    assert w.abs().max() > 0.8 * bound
+
+
+def test_the_embedding_and_head_keep_the_normal_init():
+    """The spectral condition is derived for matmul layers; an embedding is a
+    lookup table, and both belong to AdamW which can move their spectra anyway."""
+    torch.manual_seed(0)
+    a = Transformer(SMALL)
+    torch.manual_seed(0)
+    b = Transformer(replace(SMALL, init="orthogonal"))
+    assert torch.equal(a.embed.weight, b.embed.weight)
+    assert torch.equal(a.head.weight, b.head.weight)
+
+
+def test_two_ways_to_choose_a_spectrum_are_refused_together():
+    with pytest.raises(ValueError):
+        Transformer(replace(SMALL, init="orthogonal", init_pl_alpha=3.0))
+    with pytest.raises(ValueError):
+        Transformer(replace(SMALL, init="hilbert"))
