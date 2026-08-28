@@ -1,26 +1,21 @@
-"""`NGDPionS` with the angle diagnostic costed properly.
+"""`NGDPionS` plus the three diagnostics the trust region is read from.
 
-Stands to `with_s.py` exactly as `fast.py` stands to `optimizer.py`: same
-algorithm, same trajectory, one quantity computed by a cheap approximation
-instead of an exact decomposition.
+**The name is a leftover and the split has closed.** This class existed because
+`with_s.NGDPionS._apply` took `angle` from `torch.linalg.matrix_norm(X, 2)`,
+which cost 69.5 s of a 73.5 s step -- cusolver falls back to a slow path on the
+1376x1376 skew matrices. The power iteration has since moved into `NGDPionS`
+itself, along with `angle_iters` and `angle_warmup`, so **the two now produce
+bit-identical trajectories** and this one is not faster than its parent.
 
-`with_s.NGDPionS._apply` takes `angle` from `torch.linalg.matrix_norm(X, 2)`.
-On LLaMA-60M that call cost **69.5 s of a 73.5 s step** -- cusolver fails to
-converge on the 1376x1376 skew matrices and falls back to a slow path, and 24
-of the 56 weights have a 1376 side. Power iteration does the same job in
-14.4 ms.
+What is left of the difference is that this class records `quad`, `curv` and
+`pred_drop` in the optimizer state, which `harness.train` uses for the reduction
+ratio and `harness.instrument` writes to the per-layer rows. That is the whole
+of it, and `tests/test_fast.py` pins both halves: equal weights, and the three
+extra keys.
 
-It is safe to approximate because `angle` is read by `harness.instrument` and
-by nothing inside the step. Nothing here changes what the optimizer does.
-
-Cold, power iteration converges badly on a skew matrix -- its singular values
-come in equal pairs and the large ones bunch, so the ratio governing
-convergence sits near 1. Measured on a random 512x512 skew: 21% relative error
-after one iteration, 6% after five. Warm, from a vector converged on the
-previous step's `X`, one iteration gives `1e-4`. So the cached vector is spent
-generously exactly twice: on the first step, and again after each
-refactorisation, where `X` moves discontinuously because the basis it is built
-in has just been rebuilt.
+`ngd-pion-s` maps here, so this is the class every result in this repository was
+produced by. It is kept rather than folded into `NGDPionS` because the reference
+is meant to stay free of instrumentation, not because it costs anything.
 """
 
 from __future__ import annotations

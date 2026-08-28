@@ -27,6 +27,21 @@ not between two branches of it.
 1. **[`ALGORITHM.md`](ALGORITHM.md)** — the specification. Every design decision
    with the measurement that produced it. Each module implements one of its
    sections and says so in its docstring.
+
+**Four indexes, so that finding a thing does not mean reading everything:**
+
+* [`ngd_pion/README.md`](ngd_pion/README.md) — which of the nine registered
+  optimizers is live, which is a reference, which is a dead end, and the caveat
+  that most "dead end" verdicts were decided at 150 steps, a horizon since
+  measured to invert.
+* [`scripts/probes/README.md`](scripts/probes/README.md) — what each of the
+  thirty-six probes asks, and the answer where it is settled. Twelve are listed
+  as undocumented rather than guessed at.
+* [`scripts/sbatch/README.md`](scripts/sbatch/README.md) — the job scripts, and
+  the two cluster rules learned the hard way.
+* [`docs/JOURNAL_INDEX.md`](docs/JOURNAL_INDEX.md) — dated headings of the
+  journal with line numbers. Generated: re-run `scripts/journal_index.py` after
+  adding an entry, do not edit it.
 2. This file — the state of play, and the mistakes already made.
 
 `ngd_pion/reference.py` is a deliberately naive numpy transcription of the

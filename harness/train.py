@@ -89,8 +89,10 @@ def lr_at(step: int, cfg: RunConfig, base: float | None = None) -> float:
 # job had been queued.
 # The fast one gets the short name in each family, for the reason given above:
 # a forgotten suffix should cost accuracy you can measure, not two months of
-# wall clock. `with_s.NGDPionS` takes its angle from an exact `matrix_norm`,
-# which is 69.5 s of a 73.5 s step on this model.
+# wall clock. That reason has lapsed for the `S` family and the naming has not:
+# the power iteration moved into `NGDPionS`, so `FastNGDPionS` is bit-identical
+# to it and differs only by recording `quad`, `curv` and `pred_drop`. The
+# 69.5 s of a 73.5 s step this comment used to cite is history, not a live cost.
 NGD_IMPLEMENTATIONS = {
     "ngd-pion": FastNGDPion,
     "ngd-pion-ref": NGDPion,

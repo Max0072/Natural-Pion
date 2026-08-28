@@ -191,3 +191,42 @@ def test_spectral_norm_handles_a_zero_matrix():
 def test_spectral_norm_rejects_negative_iterations():
     with pytest.raises(ValueError):
         spectral_norm(rand_skew(8), -1)
+
+
+def test_fast_s_is_bit_identical_to_its_reference():
+    """`FastNGDPionS` is no longer faster than `NGDPionS`, and must stay equal.
+
+    The class was introduced when `NGDPionS` took `angle` from an exact
+    `matrix_norm`. The power iteration has since moved into the parent, so the
+    two now differ only in that the subclass records `quad`, `curv` and
+    `pred_drop` for the reduction ratio. Pinning both halves keeps the docstring
+    honest: if someone re-optimises one of them, this fails instead of the two
+    silently diverging while the names still claim they are the same step.
+    """
+    import torch
+
+    from ngd_pion.with_s import NGDPionS
+    from ngd_pion.with_s_fast import FastNGDPionS
+
+    DT = torch.float64
+    M, N = 6, 4
+    g = torch.Generator().manual_seed(0)
+    W = torch.randn(M, N, dtype=DT, generator=g)
+    x = torch.randn(64, N, dtype=DT, generator=g)
+    d = torch.randn(64, M, dtype=DT, generator=g) * 0.3
+    grads = [torch.randn(M, N, dtype=DT, generator=g) * 0.1 for _ in range(8)]
+
+    def run(cls):
+        p = torch.nn.Parameter(W.clone())
+        opt = cls([p], lr=0.05, t_fac=3, compute_dtype=DT)
+        opt.observe(p, x)
+        opt.observe_backward(p, d)
+        for G in grads:
+            p.grad = G.clone()
+            opt.step()
+        return p.detach().clone(), opt.state[p]
+
+    a, ref_state = run(NGDPionS)
+    b, fast_state = run(FastNGDPionS)
+    assert torch.equal(a, b), (a - b).abs().max()
+    assert set(fast_state) - set(ref_state) == {"quad", "curv", "pred_drop"}
