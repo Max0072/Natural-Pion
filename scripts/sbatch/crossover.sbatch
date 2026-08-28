@@ -62,7 +62,7 @@ COMMON="--ngd-t-fac 25 --adamw-lr 1e-3 --precision bf16 --seed 0 \
 # correction to this script's own choice, not a new question:
 #   SPECS="shampoo-pion:1e-6:3e-2 shampoo-pion:1e-6:1e-1" \
 #     sbatch -p rtx -w rtx6002,rtx6003 --array=0-1 scripts/sbatch/crossover.sbatch
-read -r -a SPECS <<< "${SPECS:-shampoo-pion:1e-6:1e-12 shampoo-pion:1e-6:1e-3 shampoo-pion:1e-6:3e-3 shampoo-pion:1e-6:1e-2 ngd-pion-s:-:1e-2}"
+read -r -a SPECS <<< "${SPECS:-shampoo-pion:1e-6:1e-12 shampoo-pion:1e-6:1e-3 shampoo-pion:1e-6:3e-3 shampoo-pion:1e-6:1e-2 ngd-pion-s:-:2e-2}"
 IFS=: read -r OPT EPS ETA <<< "${SPECS[$SLURM_ARRAY_TASK_ID]}"
 
 echo "node $(hostname)  task ${SLURM_ARRAY_TASK_ID:-?}  opt=$OPT eps=$EPS eta=$ETA"

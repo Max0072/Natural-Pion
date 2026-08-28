@@ -4,6 +4,16 @@ Every one carries its own reasoning in the header -- what is being tested, what
 was pre-registered before it ran, and what the arms are compared against. That
 header is the point; the srun line underneath is the least interesting part.
 
+**The generator convention changed on 2026-08-28** and with it the meaning of
+`eta` for every NGD variant and for `pion_ablated`: `generators` now returns
+`skew(W^T G)` rather than twice it, so an `eta` written before that date means
+**half** what the same number means now. `momentum.sbatch`, `crossover.sbatch`
+and `full.sbatch` have had their NGD rates doubled so they still run the
+experiments they ran. **Every other script in this directory still carries the
+old numbers**, deliberately -- they are the record of what was run, not a menu
+-- so double the NGD rate before re-running one. `pion` with RMS scaling and
+`shampoo-pion` are unaffected; see `ALGORITHM.md` §1 for why.
+
 **As of 2026-08-28 the account reaches only `b200`.** `rtx` and `genoa` refuse
 with "Invalid account or account/partition combination". The `sbatch -p rtx`
 lines in the older headers are history. See `docs/CLUSTER.md`.

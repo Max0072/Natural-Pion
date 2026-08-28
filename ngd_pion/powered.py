@@ -120,7 +120,7 @@ class PoweredNGDPion(OpDampedNGDPion):
                 sigma.new_tensor(group["angle_max"]) / sigma.clamp_min(tiny),
             )
         state["angle"] = c * sigma
-        state["pred_drop"] = 0.5 * c * quad
+        state["pred_drop"] = c * quad
 
         every = group["diag_every"]
         if every and state["step"] % every == 0:

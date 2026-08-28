@@ -49,14 +49,20 @@ def test_generators_are_skew(shape):
 
 @pytest.mark.parametrize("shape", SHAPES)
 def test_descent_lemma(shape):
-    """`<G, W X> = 1/2 <G_in, X>` -- the identity the sign convention rests on."""
+    """`<G, W X> = <G_in, X>` -- the identity the sign convention rests on.
+
+    The half disappeared with the 2026-08-28 generator convention, and with it
+    the half in `pred_drop`. That is not cosmetic: `pred_drop` feeds the
+    reduction ratio `rho`, so leaving it would have made every `rho` on record
+    after the change wrong by a factor of two.
+    """
     d_out, d_in = shape
     W, G = rand(*shape, seed=5), rand(*shape, seed=6)
     X_in = skew(rand(d_in, d_in, seed=7))
     X_out = skew(rand(d_out, d_out, seed=8))
     G_in, G_out = generators(W, G)
-    assert torch.allclose((G * (W @ X_in)).sum(), 0.5 * (G_in * X_in).sum())
-    assert torch.allclose((G * (X_out @ W)).sum(), 0.5 * (G_out * X_out).sum())
+    assert torch.allclose((G * (W @ X_in)).sum(), (G_in * X_in).sum())
+    assert torch.allclose((G * (X_out @ W)).sum(), (G_out * X_out).sum())
 
 
 def test_solve_inverts_the_fisher_operator():
@@ -174,3 +180,120 @@ def test_dead_block_carries_no_gradient(shape):
         Gt = b.P.T @ G @ b.P
         block = Gt[dead][:, dead]
         assert block.abs().max() < 1e-8 * Gt.abs().max()
+
+
+# --- the 2026-08-28 convention change ---------------------------------------
+
+
+def test_generators_are_exactly_half_the_old_convention():
+    """`skew(W^T G)` rather than `W^T G - G^T W`.
+
+    Halving is exact in binary, so this is `torch.equal` and not a tolerance.
+    """
+    import torch
+
+    from ngd_pion.direction import generators
+
+    g = torch.Generator().manual_seed(0)
+    W = torch.randn(6, 4, dtype=torch.float64, generator=g)
+    G = torch.randn(6, 4, dtype=torch.float64, generator=g)
+    G_in, G_out = generators(W, G)
+    assert torch.equal(G_in, 0.5 * (W.T @ G - G.T @ W))
+    assert torch.equal(G_out, 0.5 * (G @ W.T - W @ G.T))
+
+
+def test_the_generator_is_now_the_riemannian_gradient():
+    """`<G, W X> = <G_in, X>` for skew `X`, without the factor of two.
+
+    This is the reason for the change: the quantity `eta` multiplies is now the
+    same one their paper's learning rate multiplies.
+    """
+    import torch
+
+    from ngd_pion.direction import generators
+
+    g = torch.Generator().manual_seed(1)
+    W = torch.randn(6, 4, dtype=torch.float64, generator=g)
+    G = torch.randn(6, 4, dtype=torch.float64, generator=g)
+    Z = torch.randn(4, 4, dtype=torch.float64, generator=g)
+    X = Z - Z.T
+    G_in, _ = generators(W, G)
+    assert torch.allclose((G * (W @ X)).sum(), (G_in * X).sum(), atol=1e-12)
+
+
+def test_doubling_eta_reproduces_the_old_trajectory():
+    """The linearity that makes the eta-doubling exact rather than approximate.
+
+    `natural_gradient` is linear in `G` and `alpha = quad/curv` carries the
+    factor in both halves, so a run at twice the gradient and rate `c` is the
+    same as one at the gradient and rate `2c` -- which is precisely the relation
+    between an `eta` recorded before 2026-08-28 and one recorded after.
+    """
+    import torch
+
+    from ngd_pion.unified import NGDPionUnified
+
+    DT = torch.float64
+    g = torch.Generator().manual_seed(2)
+    W = torch.randn(6, 4, dtype=DT, generator=g)
+    x = torch.randn(64, 4, dtype=DT, generator=g)
+    d = torch.randn(64, 6, dtype=DT, generator=g) * 0.3
+    grads = [torch.randn(6, 4, dtype=DT, generator=g) * 0.1 for _ in range(6)]
+
+    def run(scale, lr):
+        p = torch.nn.Parameter(W.clone())
+        opt = NGDPionUnified([p], lr=lr, t_fac=3, compute_dtype=DT)
+        opt.observe(p, x)
+        opt.observe_backward(p, d)
+        for G in grads:
+            p.grad = (scale * G).clone()
+            opt.step()
+        return p.detach().clone()
+
+    assert torch.allclose(run(2.0, 0.02), run(1.0, 0.04), rtol=1e-10, atol=1e-12)
+
+
+def test_pion_with_rms_is_untouched_by_the_factor():
+    """Its update is normalised to a target RMS, so a constant on the generator
+    is absorbed. This is why the anchor did not have to be re-run."""
+    import torch
+
+    from ngd_pion.pion_baseline import Pion
+
+    DT = torch.float64
+    g = torch.Generator().manual_seed(3)
+    W = torch.randn(6, 4, dtype=DT, generator=g)
+    grads = [torch.randn(6, 4, dtype=DT, generator=g) * 0.1 for _ in range(5)]
+
+    def run(scale):
+        p = torch.nn.Parameter(W.clone())
+        opt = Pion([p], lr=0.01, scaling="rms", momentum="none")
+        for G in grads:
+            p.grad = (scale * G).clone()
+            opt.step()
+        return p.detach().clone()
+
+    assert torch.allclose(run(1.0), run(2.0), rtol=1e-9, atol=1e-11)
+
+
+def test_shampoo_is_untouched_by_the_factor():
+    """`P` goes as `1/4`, `P^-1/4` as `sqrt(2)`, and the sandwich returns the
+    same step -- so its `eta` means what it meant before the change."""
+    import torch
+
+    from ngd_pion.shampoo import ShampooPion
+
+    DT = torch.float64
+    g = torch.Generator().manual_seed(4)
+    W = torch.randn(6, 4, dtype=DT, generator=g)
+    grads = [torch.randn(6, 4, dtype=DT, generator=g) * 0.1 for _ in range(5)]
+
+    def run(scale):
+        p = torch.nn.Parameter(W.clone())
+        opt = ShampooPion([p], lr=0.05, eps=1e-10, compute_dtype=DT)
+        for G in grads:
+            p.grad = (scale * G).clone()
+            opt.step()
+        return p.detach().clone()
+
+    assert torch.allclose(run(1.0), run(2.0), rtol=1e-8, atol=1e-10)

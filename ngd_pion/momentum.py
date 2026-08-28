@@ -147,7 +147,7 @@ class MomentumNGDPionS(FastNGDPionS):
         sigma_in, state["angle_v_in"] = spectral_norm(X_in, iters, state.get("angle_v_in"))
         sigma_out, state["angle_v_out"] = spectral_norm(X_out, iters, state.get("angle_v_out"))
         state["angle"] = c * torch.maximum(sigma_in, sigma_out)
-        state["pred_drop"] = 0.5 * c * quad
+        state["pred_drop"] = c * quad
 
         if group["alternate"]:
             W = W @ cayley(X_in, c) if state["step"] % 2 else cayley(X_out, c) @ W

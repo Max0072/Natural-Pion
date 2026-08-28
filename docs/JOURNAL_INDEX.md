@@ -1,6 +1,6 @@
 # Journal index
 
-Generated from `docs/JOURNAL.md` by `scripts/journal_index.py` -- 50 entries, 4706 lines. Do not edit by hand; re-run the script.
+Generated from `docs/JOURNAL.md` by `scripts/journal_index.py` -- 52 entries, 4818 lines. Do not edit by hand; re-run the script.
 
 Line numbers are for `sed -n 'Np,+40p' docs/JOURNAL.md`.
 
@@ -56,3 +56,5 @@ Line numbers are for `sed -n 'Np,+40p' docs/JOURNAL.md`.
 | 2026-08-28 | 296244: momentum helps, and the `eta* ~ 2 SNR^2` account is refuted | 4520 |
 | 2026-08-28 | read the horizontal gap, not the vertical one | 4607 |
 | 2026-08-28 | 297391: the step is mostly the retraction, not the factorisation | 4656 |
+| 2026-08-28 | their `pion_msign` read: it is our Shampoo-on-so(n) without the accumulator | 4709 |
+| 2026-08-28 | the generator carries the half now, and it moved `pred_drop` with it | 4770 |

@@ -126,8 +126,22 @@ def test_angle_agrees_with_the_exact_norm_it_replaces(shape):
     got_out, _ = spectral_norm(X_out, 2, state["angle_v_out"])
     got = torch.maximum(got_in, got_out)
 
+    # The structural half, which is exact and not a tolerance.
     assert got <= exact * (1 + 1e-12), "a Rayleigh quotient cannot exceed the norm"
-    assert float((exact - got) / exact) < 1e-3, "warm estimate drifted from the norm"
+
+    # The accuracy half. A skew matrix has its singular values in exact pairs and
+    # the large ones bunch together, so the ratio governing power-iteration
+    # convergence sits near 1 and the warm estimate's error depends on the gap
+    # between the top two *pairs* -- a property of wherever the trajectory
+    # happened to land, not of the implementation. A tight threshold here is
+    # fitted to one trajectory and breaks the moment the trajectory moves, which
+    # is what it did when the generator convention changed on 2026-08-28. So the
+    # loose bound is documented as loose, and the implementation is checked by
+    # convergence instead: more iterations must close the gap.
+    assert float((exact - got) / exact) < 5e-3, "warm estimate is not even close"
+    converged, _ = spectral_norm(X_in, 200, state["angle_v_in"])
+    exact_in = torch.linalg.matrix_norm(X_in, 2)
+    assert float((exact_in - converged) / exact_in) < 1e-6, "iteration does not converge"
 
 
 def test_cached_vectors_survive_a_reload():

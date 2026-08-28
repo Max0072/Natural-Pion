@@ -4765,3 +4765,54 @@ ours: whether accumulation buys anything over bare orthogonalisation.
   does not have. The learning-rate decoupling this project hit as a bug is
   deliberate in their msign variant -- and their value is the same order as the
   optimum swept here.
+
+
+## 2026-08-28 -- the generator carries the half now, and it moved `pred_drop` with it
+
+`generators` returns `skew(W^T G)` rather than `W^T G - G^T W`. It is now the
+Riemannian gradient rather than twice it, and it matches the reference
+implementation, whose `pion_msign.py` uses `skew(W^T G)`. The point is not
+tidiness: a learning rate quoted here and one quoted in their paper are now the
+same quantity, and their msign script's `--pion-lr 1e-2` is a number a reader
+will hold against ours.
+
+**Every `eta` recorded before today means half what the same number means now**,
+for the NGD variants and for `pion_ablated`.
+
+### What moved, all measured rather than argued
+
+| | effect |
+|---|---|
+| NGD variants, `pion_ablated` | `eta` doubles to reproduce a run. `natural_gradient` is linear in `G` and `alpha` carries the factor in both halves, so the reproduction is exact |
+| `pred_drop` | **was wrong the moment the convention changed.** `<G, W X>` is now `<G_in, X>`, so the first-order decrease is `eta alpha quad`, not half it |
+| `pion` with `scaling="rms"` | unaffected -- the update is normalised, the factor is absorbed. **The anchor did not have to be re-run** |
+| `shampoo-pion` | unaffected -- scale invariant by construction: `P` goes as `1/4`, `P^-1/4` as `sqrt(2)` |
+
+### The test suite caught the one that mattered
+
+`test_descent_lemma` asserted `<G, W X> = 1/2 <G_in, X>` and failed on all three
+shapes, which is exactly what it is for. `pred_drop` was `0.5 * c * quad` in
+five modules, and `harness.train` divides the measured decrease by it to form
+`rho`. Shipping the convention without that would have made **every `rho`
+recorded after today wrong by a factor of two**, silently, in the one diagnostic
+that reads out whether the step does what it predicts.
+
+The other failure was not a bug. `test_angle_agrees_with_the_exact_norm_it_replaces`
+compares the warm power iteration against the exact norm at a 1e-3 tolerance and
+read 1.135e-3. A skew matrix has its singular values in exact pairs, so the
+ratio governing power-iteration convergence sits near 1 and the warm estimate's
+error depends on the gap between the top two *pairs* -- a property of wherever
+the trajectory landed, and the trajectory moved. A threshold fitted to one
+trajectory is not a test of the implementation, so the structural half (a
+Rayleigh quotient cannot exceed the norm) is kept exact, the accuracy half is
+loosened and documented as loose, and convergence is checked directly instead:
+200 iterations must close the gap to 1e-6.
+
+### What was deliberately not rewritten
+
+`momentum.sbatch`, `crossover.sbatch` and `full.sbatch` had their NGD rates
+doubled so they still run the experiments they ran. **Every other job script
+keeps its old numbers**: they are the record of what was run, not a menu.
+`scripts/sbatch/README.md` says so at the top.
+
+234 tests.

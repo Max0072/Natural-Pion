@@ -24,8 +24,14 @@ def skew(M: np.ndarray) -> np.ndarray:
 
 
 def generators(W: np.ndarray, G: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """`G_in = W^T G - G^T W`, `G_out = G W^T - W G^T`, as in `reference.py`."""
-    return W.T @ G - G.T @ W, G @ W.T - W @ G.T
+    """`skew(W^T G)`, `skew(G W^T)`, as in `reference.py`.
+
+    Shampoo is invariant to the factor -- `P` goes as `1/4` and `P^-1/4` as
+    `sqrt(2)` -- so the 2026-08-28 convention change leaves its `eta` alone.
+    Kept in step with the other oracle anyway, so the two never disagree about
+    what a generator is.
+    """
+    return 0.5 * (W.T @ G - G.T @ W), 0.5 * (G @ W.T - W @ G.T)
 
 
 def gram(G: np.ndarray) -> np.ndarray:

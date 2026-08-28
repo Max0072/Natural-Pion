@@ -262,7 +262,7 @@ class NGDPionUnified(NGDPionS):
 
         c = group["lr"] * float(alpha)
         state["angle"], sigma = self._measure_angle(state, group, X_in, X_out, c)
-        state["pred_drop"] = 0.5 * c * quad
+        state["pred_drop"] = c * quad
 
         if group["alternate"]:
             W = (W @ self._retract(X_in, c, group, sigma) if state["step"] % 2

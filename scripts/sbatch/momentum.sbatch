@@ -42,7 +42,9 @@ SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"
 DATA="${DATA:-$DATA_p330/c4}"
 OUT="$DATA_p330/runs/momentum"
 
-read -r -a ETAS <<< "${ETAS:-1e-2 3e-2 1e-1 3e-1 1}"
+# Doubled on 2026-08-28 with the generator convention, so this still runs
+# the sweep it ran before: 1e-2 3e-2 1e-1 3e-1 1 in the old convention.
+read -r -a ETAS <<< "${ETAS:-2e-2 6e-2 2e-1 6e-1 2}"
 ETA="${ETAS[$SLURM_ARRAY_TASK_ID]}"
 
 echo "node $(hostname)  task ${SLURM_ARRAY_TASK_ID:-?}  eta=$ETA"

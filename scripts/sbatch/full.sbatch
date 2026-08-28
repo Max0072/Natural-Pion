@@ -30,7 +30,7 @@
 # disk, not from a peak-FLOPS ratio. `AGENTS.md` still lists this measurement as
 # the first open blocker; it was answered by reading the logs.
 #
-#   SPECS="ngd-pion-s:-:1e-2 ngd-pion-s:-:3e-2" \
+#   SPECS="ngd-pion-s:-:2e-2 ngd-pion-s:-:6e-2" \
 #     sbatch -p b200 --array=0-1 scripts/sbatch/full.sbatch
 #   SPECS="shampoo-pion:1e-6:1e-1 shampoo-pion:1e-6:3e-1" \
 #     sbatch -p rtx -w rtx6002 --array=0-1 scripts/sbatch/full.sbatch

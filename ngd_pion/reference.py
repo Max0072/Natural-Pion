@@ -10,7 +10,8 @@ Section numbers in the docstrings refer to that document.
 Sign convention (sec. 7): `X_in` and `X_out` come out of `natural_gradient`
 unsigned, and the descent direction is `Cayley(-eta * alpha * X)`. With that
 choice `quad`, `curv` and `alpha_t` are all positive and the step decreases
-the loss by `1/2 * eta * alpha_t * quad` to first order.
+the loss by `eta * alpha_t * quad` to first order (the half went with the
+2026-08-28 generator convention).
 """
 
 from __future__ import annotations
@@ -44,12 +45,13 @@ def skew(M: np.ndarray) -> np.ndarray:
 
 
 def generators(W: np.ndarray, G: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """`G_in = W^T G - G^T W`, `G_out = G W^T - W G^T`.
+    """`G_in = skew(W^T G)`, `G_out = skew(G W^T)` (sec. 1).
 
-    For a single sample `G = delta x^T` this is `delta' ^ x` with
-    `delta' = W^T delta`, the bivector of sec. 1.
+    Convention changed 2026-08-28 together with `direction.generators`: this
+    used to return twice the above. See that docstring for what moves and what
+    does not.
     """
-    return W.T @ G - G.T @ W, G @ W.T - W @ G.T
+    return 0.5 * (W.T @ G - G.T @ W), 0.5 * (G @ W.T - W @ G.T)
 
 
 # --- sec. 2: the Fisher operator ---------------------------------------------
