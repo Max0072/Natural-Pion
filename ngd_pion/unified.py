@@ -167,6 +167,8 @@ class NGDPionUnified(NGDPionS):
         beta1: float = 0.9,
         trust_lr: bool = False,
         trust_lr_cap: float = 100.0,
+        trust_lr_lo: float = 0.25,
+        trust_lr_hi: float = 0.75,
         trust: str = "quad_curv",
         exact_beta: float = 0.0,
         exact_tokens: int = 4096,
@@ -180,6 +182,10 @@ class NGDPionUnified(NGDPionS):
             raise ValueError(f"momentum must be none/lie/ambient, got {momentum!r}")
         if not 0.0 <= beta1 < 1.0:
             raise ValueError(f"beta1 must be in [0, 1), got {beta1}")
+        if not 0.0 < trust_lr_lo < trust_lr_hi:
+            raise ValueError(
+                f"need 0 < trust_lr_lo < trust_lr_hi, got {trust_lr_lo}, {trust_lr_hi}"
+            )
         if trust_lr_cap < 1.0:
             raise ValueError(f"trust_lr_cap must be at least 1, got {trust_lr_cap}")
         if trust not in ("quad_curv", "exact", "none"):
@@ -212,6 +218,7 @@ class NGDPionUnified(NGDPionS):
                 angle=angle, trust=trust, exact_tokens=exact_tokens,
                 exact_beta=exact_beta, trust_lr=trust_lr,
                 trust_lr_cap=trust_lr_cap, lr_scale=1.0,
+                trust_lr_lo=trust_lr_lo, trust_lr_hi=trust_lr_hi,
             )
 
     # --- statistics ---------------------------------------------------------
@@ -241,8 +248,17 @@ class NGDPionUnified(NGDPionS):
         too long early and too short late, in that order. One scalar cannot be
         both, and a sweep can only pick the compromise.
 
-        Thresholds and factor are K-FAC's, and the cadence comes from
-        `rho_every`, which kfac-jax sets to 5.
+        The factor and the cadence are K-FAC's; **the thresholds must not be.**
+        Measured over 625 unaliased samples, `rho` at the swept optimum runs
+        0.47 rising to 1.35, and at a rate ten times too large it sits at
+        0.02-0.25. The two separate cleanly, so the ratio does discriminate --
+        but K-FAC's `[0.25, 0.75]` puts the *good* rate above the upper
+        threshold, so the rule reads "be bolder" at exactly the point it should
+        hold, grows `eta` and lands in the bad regime. Job 297936 did precisely
+        that, settling at 0.15 from every starting rate.
+
+        Hence `trust_lr_lo` and `trust_lr_hi`, and a target of `rho ~ 1` rather
+        than 0.5.
         """
         if rho is None or rho != rho or rho in (float("inf"), float("-inf")):
             return
@@ -250,9 +266,9 @@ class NGDPionUnified(NGDPionS):
             if not group.get("trust_lr"):
                 continue
             cap = group["trust_lr_cap"]
-            if rho > 0.75:
+            if rho > group["trust_lr_hi"]:
                 group["lr_scale"] = min(group["lr_scale"] * 1.5, cap)
-            elif rho < 0.25:
+            elif rho < group["trust_lr_lo"]:
                 group["lr_scale"] = max(group["lr_scale"] / 1.5, 1.0 / cap)
 
     def _sampler(self, device: torch.device) -> torch.Generator:

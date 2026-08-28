@@ -41,9 +41,16 @@ DATA="${DATA:-$DATA_p330/c4}"
 OUT="$DATA_p330/runs/trustlr"
 
 read -r -a ETAS <<< "${ETAS:-2e-3 2e-2 2e-1}"
+# The band the rule steers into. K-FAC's `[0.25, 0.75]` is measurably wrong
+# here: over 625 unaliased samples `rho` at the swept optimum runs 0.47 rising
+# to 1.35, so the *good* rate sits above the upper threshold, the rule reads
+# "be bolder" exactly where it should hold, and job 297936 duly settled at 0.15
+# from every starting rate. Target `rho ~ 1` instead.
+LO="${LO:-0.8}"
+HI="${HI:-1.2}"
 ETA="${ETAS[$SLURM_ARRAY_TASK_ID]}"
 
-echo "node $(hostname)  task ${SLURM_ARRAY_TASK_ID:-?}  eta0=$ETA trust_lr=on rho_every=5"
+echo "node $(hostname)  task ${SLURM_ARRAY_TASK_ID:-?}  eta0=$ETA band=[$LO,$HI] rho_every=5"
 nvidia-smi --query-gpu=name --format=csv,noheader
 
 apptainer exec --env PYTHONUNBUFFERED=1 --env PYTHONPATH="$REPO" \
@@ -52,6 +59,7 @@ apptainer exec --env PYTHONUNBUFFERED=1 --env PYTHONPATH="$REPO" \
     python -m harness.run \
         --optimizer ngd-pion-s --lr "$ETA" \
         --ngd-trust-lr true --rho-every 5 --rho-micro 128 \
+        --ngd-trust-lr-lo "$LO" --ngd-trust-lr-hi "$HI" \
         --ngd-t-fac 25 --adamw-lr 1e-3 --precision bf16 --seed 0 \
         --max-steps 3000 --log-every 100 --eval-every 500 --no-resume \
         --data-path "$DATA/c4_train.bin" --val-path "$DATA/c4_val.bin" \

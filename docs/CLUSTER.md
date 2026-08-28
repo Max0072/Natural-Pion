@@ -126,6 +126,18 @@ partitions cap at `MaxTime=1-00:00:00`. Billing weights are `gres/gpu=1.0`
 against `cpu=0.0625`, so the allocation is spent by GPU-hour and the eight
 cores each job asks for cost almost nothing.
 
+**`rtx6004` hangs jobs -- avoid it.** On 2026-08-28 two independent submissions
+died there the same way: the process starts, logs step 0, then stops. GPU
+utilisation reads **0%** with ~89 GB still allocated, no error on stderr, no
+progress for tens of minutes. It happened to three `notrust` arms at 14:30 and
+to both full-length `ngd-pion-m` arms at 22:50, while identical jobs on
+`rtx6002` and `rtx6003` ran normally on the same corpus and code. The node
+reports `idle` and accepts work, so `sinfo` will not warn you. **Pin `-w
+rtx6002,rtx6003` rather than letting the scheduler choose**, and check
+`nvidia-smi --query-gpu=utilization.gpu` through `srun --overlap` before
+leaving a long run unattended: a hung job looks exactly like a slow one in the
+log.
+
 **Partition access came back the same afternoon.** At 14:47 on 2026-08-28
 `sbatch --test-only -A p330` was accepted on `rtx` again and
 `sacctmgr show assoc` listed `b200`, `genoa` and `rtx` once more. So the

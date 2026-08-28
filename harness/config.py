@@ -270,6 +270,12 @@ class RunConfig:
     # 0.39, so the rule was never what failed.
     ngd_trust_lr: bool = False
     ngd_trust_lr_cap: float = 100.0
+    # The band the rule steers `rho` into. K-FAC's `[0.25, 0.75]` is wrong here
+    # and measurably so: at the swept optimum `rho` runs 0.47 to 1.35, so the
+    # good rate sits *above* the upper threshold and the rule grows the step
+    # away from it. Target `rho ~ 1` instead.
+    ngd_trust_lr_lo: float = 0.25
+    ngd_trust_lr_hi: float = 0.75
     # Implementation choices. These are meant not to change the trajectory, or
     # to change it by a bounded amount, and `tests/test_unified.py` checks them
     # on that footing rather than against the classes they replace.
