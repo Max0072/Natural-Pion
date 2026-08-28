@@ -31,6 +31,7 @@ from ngd_pion.op_damped import OpDampedNGDPion
 from ngd_pion.powered import PoweredNGDPion
 from ngd_pion.momentum import MomentumNGDPionS
 from ngd_pion.shampoo import ShampooPion
+from ngd_pion.unified import NGDPionUnified
 from ngd_pion.damped import DampedNGDPionS
 from ngd_pion.exact_curv import ExactCurvNGDPionS
 from ngd_pion.linalg import EIGH_FALLBACKS
@@ -96,13 +97,16 @@ def lr_at(step: int, cfg: RunConfig, base: float | None = None) -> float:
 NGD_IMPLEMENTATIONS = {
     "ngd-pion": FastNGDPion,
     "ngd-pion-ref": NGDPion,
-    "ngd-pion-s": FastNGDPionS,
     "ngd-pion-s-ref": NGDPionS,
     "ngd-pion-op": OpDampedNGDPion,
     "ngd-pion-pow": PoweredNGDPion,
     "ngd-pion-damped": DampedNGDPionS,
     "ngd-pion-exact": ExactCurvNGDPionS,
-    "ngd-pion-m": MomentumNGDPionS,
+    # `with_s_fast.FastNGDPionS` and `momentum.MomentumNGDPionS` are kept as the
+    # oracles `tests/test_unified.py` checks against, not as the things that run.
+    "ngd-pion-s": NGDPionUnified,
+    "ngd-pion-m": NGDPionUnified,
+    "ngd-pion-u": NGDPionUnified,
 }
 
 
@@ -131,14 +135,23 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
         if cfg.optimizer == "ngd-pion-damped":
             kw["lam"] = cfg.ngd_lam
             kw["lam_adapt"] = cfg.ngd_lam_adapt
-        if cfg.optimizer == "ngd-pion-m":
-            kw["momentum"] = cfg.ngd_momentum
+        if cfg.optimizer in ("ngd-pion-s", "ngd-pion-m", "ngd-pion-u"):
+            # The name is a preset for the algorithmic flags; the implementation
+            # flags come from the configuration for all three.
+            kw["use_s"] = cfg.ngd_use_s if cfg.optimizer == "ngd-pion-u" else True
+            kw["momentum"] = (
+                cfg.ngd_momentum if cfg.optimizer in ("ngd-pion-m", "ngd-pion-u") else "none"
+            )
             kw["beta1"] = cfg.ngd_beta1
+            kw["retraction"] = cfg.ngd_retraction
+            kw["ns_iters"] = cfg.ngd_ns_iters
+            kw["ns_guard"] = cfg.ngd_ns_guard
+            kw["angle"] = cfg.ngd_angle
         if cfg.optimizer == "ngd-pion-exact":
             kw["exact_every"] = cfg.ngd_exact_every
             kw["exact_tokens"] = cfg.ngd_exact_tokens
         if cfg.optimizer in ("ngd-pion-s", "ngd-pion-s-ref", "ngd-pion-damped",
-                             "ngd-pion-exact", "ngd-pion-m"):
+                             "ngd-pion-exact", "ngd-pion-m", "ngd-pion-u"):
             kw["beta_backward"] = cfg.ngd_beta_backward
             if cfg.ngd_fisher_mc_every:
                 # `D` is only fed on the sampling steps, so its EMA has to look

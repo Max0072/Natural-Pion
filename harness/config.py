@@ -226,6 +226,26 @@ class RunConfig:
     # moment is deliberately not taken: `F` already is one.
     ngd_momentum: str = "none"       # none | lie | ambient
     ngd_beta1: float = 0.9
+    # `ngd-pion-u` takes every algorithmic choice from the configuration rather
+    # than from the optimizer's name. The named variants remain presets.
+    ngd_use_s: bool = True
+    # Implementation choices. These are meant not to change the trajectory, or
+    # to change it by a bounded amount, and `tests/test_unified.py` checks them
+    # on that footing rather than against the classes they replace.
+    #
+    # `ns` is Newton-Schulz, measured at 0.18x of Cayley's cost, which is 54% of
+    # the step. It is an approximation whose error grows with the rotation
+    # angle -- 8.6e-6 at 0.5 rad, 1.2e-3 at 1.0, against measured angles that
+    # reach 1.3 to 3.5 -- so `ngd_ns_guard` sends a layer back to the exact
+    # solve above that angle. `0` disables the fallback, which is how to measure
+    # what it is worth instead of assuming it.
+    ngd_retraction: str = "cayley"   # cayley | ns
+    ngd_ns_iters: int = 2
+    ngd_ns_guard: float = 0.5
+    # `power` is the warm power iteration, `svd` the exact `matrix_norm` that
+    # once cost 69.5 s of a 73.5 s step, `off` skips it. The angle is read by
+    # the instrument and by the Newton-Schulz guard, never by the step.
+    ngd_angle: str = "power"         # power | svd | off
 
     # Shampoo on so(n) -- `shampoo-pion`. Read by nothing else; see
     # `ngd_pion/shampoo.py` for why the preconditioner is built from the
