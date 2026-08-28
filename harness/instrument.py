@@ -126,6 +126,12 @@ def layer_diagnostics(optimizer, names: dict | None = None, probe=None) -> list[
                     "quad": float(state.get("quad", float("nan"))),
                     "curv": float(state.get("curv", float("nan"))),
                     "curv_exact": float(state.get("curv_exact", float("nan"))),
+                    # The smoothed value the step actually divides by, beside the
+                    # raw estimate it comes from. Without both, an analysis of
+                    # whether the smoothing helped is blind to half of it -- which
+                    # is how the first pass at `exact_beta` was debugged with the
+                    # column missing.
+                    "curv_exact_smooth": float(state.get("curv_exact_smooth", float("nan"))),
                     "alpha_exact": float(state.get("alpha_exact", float("nan"))),
                     "quad_over_curv": float(state.get("quad_over_curv", float("nan"))),
                     "floor_share_in": float(state.get("floor_share_in", float("nan"))),
