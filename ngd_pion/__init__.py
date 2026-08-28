@@ -16,6 +16,7 @@ from .optimizer import NGDPion
 from .with_s import BackwardRecorder, NGDPionS, attach_backward
 from .with_s_fast import FastNGDPionS
 from .op_damped import OpDampedNGDPion
+from .momentum import MomentumNGDPionS
 from .shampoo import ShampooPion
 
 __all__ = [
@@ -24,6 +25,7 @@ __all__ = [
     "FastNGDPionS",
     "OpDampedNGDPion",
     "ShampooPion",
+    "MomentumNGDPionS",
     "attach_backward",
     "BackwardRecorder",
     "attach",

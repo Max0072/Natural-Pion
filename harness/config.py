@@ -217,6 +217,15 @@ class RunConfig:
     # which the harness already measures every logged step. With `lam`
     # carrying the trust region, `lr` is meant to stay at 1.
     ngd_lam_adapt: bool = True
+    # First-moment averaging for `ngd-pion-m`. `A` and `D` are already EMAs, but
+    # they are the *denominator*: `powered.py` shows the operator's eigenvalues
+    # are exactly the second moments of the generator components, so this method
+    # has Adam's `v` and has never had Adam's `m`. `"lie"` buffers the two
+    # generators separately -- the variant Pion's published 60M numbers use --
+    # `"ambient"` buffers the raw gradient first, `"none"` is off. Pion's second
+    # moment is deliberately not taken: `F` already is one.
+    ngd_momentum: str = "none"       # none | lie | ambient
+    ngd_beta1: float = 0.9
 
     # Shampoo on so(n) -- `shampoo-pion`. Read by nothing else; see
     # `ngd_pion/shampoo.py` for why the preconditioner is built from the

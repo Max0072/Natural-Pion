@@ -4417,3 +4417,101 @@ At step 2000, its best sampled arm is 4.3586 against `pion`'s best 4.0781 --
 3. Harness: abort on a non-finite loss with a clear message. A diverged run
    currently dies inside `linalg.solve` with "input matrix is singular", which
    reads as a numerical bug in the optimizer and is not one.
+
+
+## 2026-08-28 -- the step is 96% noise, and the memory we have is on the wrong side
+
+### The objection, and why it does not hold
+
+Raised by the user: `A` and `D` are EMAs, so the method already carries memory
+across steps -- is that not already momentum?
+
+It is not, and the distinction is which side of the quotient the memory sits on.
+
+    here        X = EMA(F)^-1 G      the metric is averaged
+    momentum    X = F^-1 EMA(G)      the direction is averaged
+
+Averaging the denominator stabilises the geometry; it enters multiplicatively
+and cannot cancel zero-mean noise in the numerator. The identification with
+Adam is exact rather than by analogy: `powered.py` establishes that in the
+basis `F` acts elementwise with eigenvalues `d_ij`, and `d_ij` **is** the second
+moment of that generator component. So `F` is Adam's `v` in Kronecker-factored
+form, and this method has been **RMSProp all along** -- second-moment memory,
+no first-moment memory.
+
+Two supporting facts, neither of them new but neither previously put together:
+Pion carries `beta1 = 0.9` in the Lie algebra and `pion_ablated`, which does
+not, is the worst arm on every board; and within our own runs AdamW applies
+`beta1 = 0.9` to the embedding, head and norm gains -- 56.5% of the model --
+while the 43.5% Pion owns get none.
+
+### The measurement, on the real model rather than the toy
+
+`scripts/probes/split_half_step.py`, on the checkpoint of the running
+full-length `ngd-pion-s` at **step 24499**. One batch split in half; both halves
+pushed through the **same frozen bases** and the same `A`, `D` from the
+checkpoint, with the activation recorder detached, so the only thing differing
+between them is the gradient. Any disagreement is numerator noise, which is
+exactly what `S` cannot reach.
+
+    cos(X1, X2) per layer          0.004 to 0.035
+    signal fraction of a real step (512 sequences)   0.0357
+    i.e. the step is 96.4% sampling noise
+
+The estimator checks itself: for two independent estimates of one mean,
+`cos(X1, X2)` equals the signal fraction identically, and the two columns agree
+to three digits. Two different computations of the same quantity landed on the
+same number.
+
+**This is far worse than the 47% `ALGORITHM.md` records**, which was measured
+at `d_out = 256` on roughly 80k tokens with the sample-size dependence flagged
+as unverified. It is now verified, and it goes the other way: the real model at
+131072 tokens a step is noisier, not cleaner. Two independent halves of one
+batch produce nearly orthogonal directions.
+
+An EMA with `beta = 0.9` averages `k = 19` draws and would take the signal
+fraction to **0.41**, a twelvefold improvement.
+
+### The caveat that could void all of it
+
+The probe measures noise *within* a batch. Momentum delivers the `k`-fold
+variance reduction only if the true direction `mu` is stable across the
+averaging window. The measured per-step rotation on this model is 0.2 to 0.7
+radians, so over nineteen steps the weights move a great distance and `mu` need
+not be stable at all; momentum would then be averaging stale directions.
+
+So 0.41 is an **upper bound**, not a prediction, and the case for momentum is
+"worth trying" rather than "will work". Distinguishing the two needs the
+across-step autocorrelation `cos(X_t, X_{t+1})`: if it sits near the
+within-batch 0.035, drift contributes nothing and the bound is tight; markedly
+lower and drift dominates.
+
+### Implemented
+
+`ngd_pion/momentum.py`, `MomentumNGDPionS`, registered as `ngd-pion-m`. Both of
+Pion's modes -- `"lie"` (separate buffers on the two generators, the variant
+their published 60M figures use, and the default here) and `"ambient"` (the raw
+gradient smoothed before extraction). **Their second moment is deliberately not
+taken**: `F` already is one, and dividing by `sqrt(v)` on top would divide by
+the second moment twice. No bias correction, as in theirs.
+
+Eight tests. The one that licenses the copied `_apply` is
+`test_momentum_none_is_bit_identical_to_the_parent` -- without it the two copies
+drift and the momentum arm ends up compared against something that has silently
+changed.
+
+**A finding from the tests, not planned.** `"lie"` and `"ambient"` differ only
+at second order: `generators` is linear in `G`, so they would coincide exactly
+if `W` were fixed, and the gap comes only from `W` drifting across the momentum
+window. Measured on the fixture: relative `1.8e-11` at `lr = 0.05` over six
+steps, `5.2e-08` at `lr = 0.5` over twenty. Pion presents these as distinct
+variants; at small rotations they are nearly the same operation. Whether that
+survives this method's 0.2-0.7 radian steps is untested and the test says so.
+
+### Pre-registered for the run
+
+`eta* ~ 2 SNR^2` implies `eta*` should rise by roughly `k = 19` with
+`beta1 = 0.9`, from 1e-2 to the order of 0.1-0.2. If `eta*` does not move, that
+account of `eta` is wrong -- which is worth knowing separately from whether the
+loss improves. `eta` must therefore be swept for the momentum arm rather than
+carried over, and at a horizon of at least 3000 steps.
