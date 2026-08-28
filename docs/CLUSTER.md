@@ -126,7 +126,22 @@ partitions cap at `MaxTime=1-00:00:00`. Billing weights are `gres/gpu=1.0`
 against `cpu=0.0625`, so the allocation is spent by GPU-hour and the eight
 cores each job asks for cost almost nothing.
 
-**As of 2026-08-28 the account reaches only `b200`.** `sbatch --test-only`
+**Partition access came back the same afternoon.** At 14:47 on 2026-08-28
+`sbatch --test-only -A p330` was accepted on `rtx` again and
+`sacctmgr show assoc` listed `b200`, `genoa` and `rtx` once more. So the
+morning's loss was transient, and this is the **second** time an access change
+here reversed itself within hours -- the first was `genoa`, refused at 10:02
+and accepted at 10:52 on 2026-08-25. **Re-test before believing any statement
+in this file about which partitions are reachable.** Pending jobs move without
+being resubmitted: `scontrol update jobid=<id> partition=rtx`.
+
+**The 8-GPU cap is not what it looked like either.** The morning's 15-task
+array was held at 8 by `QOSMaxGRESPerUser`, but with the association restored
+11 of this user's tasks ran at once across `b200` and `rtx`. Either the cap is
+per partition or it moved with the association; it was not re-derived, only
+observed, so treat 8 as a floor rather than a rule.
+
+**As of the morning of 2026-08-28 the account reached only `b200`, briefly.** `sbatch --test-only`
 under `-A p330` is refused on `rtx` and `genoa` with *"Invalid account or
 account/partition combination"* while `b200` is accepted, and
 `sacctmgr show assoc where account=p330 user=cy26ms1` lists a single
