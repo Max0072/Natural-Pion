@@ -126,7 +126,21 @@ partitions cap at `MaxTime=1-00:00:00`. Billing weights are `gres/gpu=1.0`
 against `cpu=0.0625`, so the allocation is spent by GPU-hour and the eight
 cores each job asks for cost almost nothing.
 
-**The account reaches three partitions.** `genoa` was added on 2026-08-25 --
+**As of 2026-08-28 the account reaches only `b200`.** `sbatch --test-only`
+under `-A p330` is refused on `rtx` and `genoa` with *"Invalid account or
+account/partition combination"* while `b200` is accepted, and
+`sacctmgr show assoc where account=p330 user=cy26ms1` lists a single
+partition-scoped association, `b200`. Both partitions still carry
+`AllowAccounts=ALL`, so the change is on the association side and is
+administrative, not a limit we hit. `rtx` nodes were idle at the time.
+
+That matters for planning rather than for correctness: every short experiment in
+this repository ran on `rtx`, and they now compete with our own long runs for
+the eight usable GPUs of `b201` (`b202` is reserved). Re-test before believing
+this paragraph -- the entry below records `genoa` being refused at 10:02 and
+accepted at 10:52 the same morning.
+
+**The account previously reached three partitions.** `genoa` was added on 2026-08-25 --
 it was refused at 10:02 and accepted at 10:52 the same morning, so re-test
 rather than trust this paragraph. `sbatch --test-only` under `-A p330` is
 accepted on `rtx`, `b200` and `genoa`, and still refused on `cpu`, `milan`,

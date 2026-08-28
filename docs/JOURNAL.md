@@ -4651,3 +4651,56 @@ early and lost late. **It had not.** Its speedup against the same baseline runs
 1, three to six times *slower* throughout, and slowly closing rather than
 slowly losing. A different shape entirely, and not a precedent for the arm
 running now.
+
+
+## 2026-08-28 -- 297391: the step is mostly the retraction, not the factorisation
+
+`scripts/probes/step_cost_phases.py`, on b200, real shapes, `T_fac = 25`:
+
+    phase                  per step    share
+    refactor / T_fac         46.3ms    11.8%
+    generators                5.9ms     1.5%
+    natural_gradient         16.4ms     4.2%
+    quad + curv              22.3ms     5.7%
+    angle                    87.9ms    22.5%
+    cayley                  212.5ms    54.3%
+
+    refactorisation raw: 1158.5 ms every 25 steps
+    Newton-Schulz retraction: 38.5 ms against Cayley's 212.5 ms -- 0.18x
+
+Phases timed in isolation do not sum to a launched step (240 ms), so the shares
+are the readable part, not the total.
+
+This contradicts what was assumed when the cost question was raised. The guesses
+on the table were the factorisation and the congruence path; the factorisation
+is **11.8%**, and more than half the step is the retraction.
+
+### What it makes worth doing, in order
+
+1. **Newton-Schulz for the retraction.** 0.18x on 54% of the step, so roughly
+   106 ms of the 240. `linalg.cayley_newton_schulz` already exists and was
+   "measured, then dropped" once. Its own docstring gives the condition:
+   convergence needs `(|c|/2)||X||_2 < 1`, and at two iterations the
+   orthogonality error is `8.6e-6` at an angle of 0.5 but `1.2e-3` at 1.0.
+   Measured angles on the real model are 0.2-0.7 median with a maximum reaching
+   1.3-3.5, so **some layers are outside the safe range** and it needs a
+   per-layer guard rather than a flag. The angle is already computed every
+   step, so the guard is free.
+2. **The angle diagnostic is 22.5% of the step and is pure diagnostic here.**
+   `angle_max` is a lever in `FastNGDPion` and is *not* wired for the S variant,
+   so for `ngd-pion-s` the number is read only by `harness.instrument`, every
+   100 steps. Computing it every step buys nothing. It is not free to throttle,
+   though: `spectral_norm` depends on a warm cached vector and degrades if the
+   iterate is not carried forward -- and item 1 would make the angle load-bearing
+   rather than diagnostic. Decide 1 before touching 2.
+3. **`T_fac`.** 11.8% amortised, and `alpha` sits at 0.98-1.00 across an entire
+   full-length run, so the basis does not go stale in 25 steps. Doubling
+   `T_fac` halves 46 ms. Real but the smallest of the three.
+
+Against the covariance accumulation at 257 ms, still the largest single item and
+still fixed by subsampling tokens: `A` and `D` are estimated from 131072 tokens
+a step into matrices of `512^2` and `1376^2`.
+
+Taken together the plausible target is 497 ms of optimizer down to roughly 150,
+which moves the cost ratio against `pion` from 2.10x to about 1.35x -- before
+any batch amortisation.
