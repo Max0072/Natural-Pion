@@ -71,6 +71,20 @@ the project moved to Shampoo's preconditioner on the same rotational geometry
 it is what the negative result is written from. See `ALGORITHM.md` §8 and
 `docs/RESUME.md`.
 
+**Where the method stands against the idea it started as.** The original thesis
+rested on three austerity claims, and measurement has taken all three:
+`eta* = 2` derived rather than tuned (dead: `kappa = 1.8e-3`,
+`kfac/exact = 0.0128`), momentum unnecessary (dead: momentum is the best arm),
+and `S = I` better than the measured `S` (dead: the measured `S` wins by
+0.23-0.32 once given its own `eta`). What survives is the core -- Fisher
+preconditioning of the rotation generator on the bivector tangent space, an
+exact Cayley retraction, a frozen spectrum -- and that core is what beats
+`pion`. **So NGD-Pion is now "Pion plus a Fisher preconditioner" rather than a
+leaner alternative to Pion.** A narrower claim, and a cleaner one: the
+differentiator is a single mechanism instead of a bundle of absences. The one
+absence that remains is RMS scaling, and the open question is whether the
+preconditioner substitutes for it well enough.
+
 **Not done, and this is the whole risk.** Nothing has been trained at scale.
 The only evidence the method helps is a toy least-squares with an exactly
 reachable target, where natural gradient wins almost tautologically. That test
@@ -216,7 +230,7 @@ not.
 
 | decision | why |
 |---|---|
-| `S = I` | **not** a claim that backward errors are isotropic — the measured `S` is strongly anisotropic and no simple model fits it. Using it is what makes the step worse: `S = I` reduced held-out loss 1.4-1.9x more than the measured `S` on a toy transformer, because a finite-sample covariance is too noisy to invert. Also collapses the out-side to an orthogonal `eigh` and removes the need for a backward hook |
+| ~~`S = I`~~ **reversed 2026-08-27** | it was decided on a toy transformer with ~80k tokens estimating `S` at `d_out = 256`, and the row below it said not to put the claim in the paper until checked at scale. Checked: job 273026 swept the measured `S` at **its own** `eta`, which is a hundred times smaller, and it wins by **0.23-0.32** against a 0.07 floor. The old comparison had never given it one. `ngd-pion-s` is the live arm and the one that beats `pion` |
 | Cayley, not their truncated exponential | `R^T R = I + A^4/4` exactly, so the truncation always inflates. More importantly, **ablating their RMS scaling makes it diverge within tens of steps**, so an exact retraction is a *precondition* of the ablation, not a preference |
 | one spectral floor `max(lam, eps*lam_max)`, not a shift | a floor is the identity above itself; a shift perturbs well-determined directions too. 134x more accurate on a wide layer at `eps = 1e-4` |
 | `eps = 1e-4` | **its lower bound is set by the compute dtype, not the problem.** fp32 machine epsilon is 1.2e-7, so `1e-8` is meaningless there — measured 2e-1 error against fp64 |
@@ -227,7 +241,7 @@ not.
 | `alpha_max = 1` | the trust-region ratio reads out basis staleness; capping at 1 keeps it one-sided, so a stale basis can only shorten the step |
 | the same corpus, not a bigger one | C4 with the T5 vocabulary, 9.6B tokens, as theirs. Their 9.6B comes out of roughly 156B, so both runs consume about 6% of C4 and neither sees a "full stream"; the shards are a deterministic partition of an already shuffled crawl, so our first 64 are exchangeable with any other 64. Tokenising the rest would cost ~156 core-hours, 312 GB and days of fairshare for a different draw from the same distribution, not a better one |
 | 9.6B tokens, not 4.9B | 73242 steps at 131072. The 37500-step reading of their shell script came from a **defect in their released code**, not from a second configuration; the paper's figure is the right one and `RunConfig.train_steps` follows it. `prepare_data.py` used to state the wrong number and default to a 5B corpus, which would have gone unnoticed: `TokenCorpus` samples with replacement and has no epoch, so an undersized corpus repeats tokens silently instead of failing |
-| no momentum, no RMS scaling in NGD-Pion | deliberate, and both are testable hypotheses rather than oversights. The comparison is against **ablated** Pion, so this is not a confound |
+| ~~no momentum~~ **reversed 2026-08-28**; no RMS scaling still holds | both were testable hypotheses and the momentum one failed. The step is **96.4% sampling noise** on the real model (`split_half_step.py`), `A` and `D` are EMAs of the *denominator* so the method was RMSProp with no `m`, and adding Pion's Lie momentum gives the best number the project has produced. RMS scaling is still absent, and the cross-layer angle spread of 18-61x is what that costs |
 
 ## Traps
 
