@@ -10,58 +10,83 @@ indexes are linked from `AGENTS.md`. This file is only ever *now*.
 
 ---
 
-## As of 2026-08-28, late evening
+## As of 2026-08-29, after midnight
 
-### The headline: a tie, inside their own noise
+### The headline: a tie, and the number is final
 
-Full length, 73242 steps, AdamW pinned at 1e-3:
+Full length, 73242 steps, AdamW pinned at 1e-3. Nine runs exist; sorted:
 
-    pion, eight runs   best 3.3719   median 3.4061   worst 3.4432   spread 0.071
-    ngd-pion-s         3.3868 at 96.4%, still falling
-    shampoo-pion       3.5456 FINAL
-    ngd-pion (S = I)   3.6728 FINAL   (the older run)
+    3.3719  pion
+    3.3860  <- ngd-pion-s, eta = 0.01      FINAL
+    3.3866  3.3937  3.4059  3.4062  3.4080  3.4414  3.4432   pion
 
-**`ngd-pion-s` sits inside `pion`'s own run-to-run spread**, between their
-second and third best. Ahead of their median by 0.02, behind their best by
-0.01. One run against eight. That is not "we beat Pion" and it is not "we lose
-to Pion"; it is a tie, and it should be written as one.
+    ngd-pion-s eta = 0.03   3.4343  FINAL
+    shampoo-pion            3.5456  FINAL
+    ngd-pion (S = I)        3.6728  FINAL   (the older run)
 
-The lead decayed monotonically and was flagged as decaying all day: +0.133 at
-step 500, +0.070 at 3000, +0.022 against the median at 70000. **Read the
-horizontal gap, not the vertical one** -- in step-equivalent terms it ran
-1.2-1.5x for most of the run.
+**`ngd-pion-s` sits inside `pion`'s own run-to-run spread**, second of nine.
+Ahead of their median by 0.020, behind their best by 0.014. One run against
+eight. That is not "we beat Pion" and it is not "we lose to Pion"; it is a tie,
+and it should be written as one. The lead decayed monotonically all the way:
++0.133 at step 500, +0.070 at 3000, +0.020 at the end. **Read the horizontal
+gap, not the vertical one** -- in step-equivalent terms it ran 1.2-1.5x for
+most of the run.
 
-### The distinctive result is not the loss
+### Momentum is the live hope, and it is ahead at every matched step
 
-**`eta` finds itself from a hundredfold range of starting rates.** Adapting it
-on the reduction ratio every 5 steps (job 297936):
+`ngd-pion-m` at full length is 9.3% in (job 298784, rtx6003, ~18h left):
+
+    step      ngd-s   ngd-m 1e-2   diff
+     500     4.6269     4.3435    -0.283
+    2000     4.0215     3.9404    -0.081
+    4000     3.8709     3.8139    -0.057
+    6500     3.7995     3.7414    -0.058
+
+The gap compresses to 0.058 and then holds flat for 3000 steps, which is the
+signature of a constant step-equivalent advantage rather than a fading head
+start. `eta = 1e-2` leads `2e-2` by 0.024 -- the reverse of the 3000-step
+sweep, and the third time a short protocol has reordered arms.
+
+### The adaptive-`eta` claim, now measured rather than hoped
+
+Target `rho ~ 1` (grow above 1.2, shrink below 0.8), 3000 steps, 100x range of
+starts:
 
     eta0     final effective eta    val@3000
-    0.002          0.133             4.2771
-    0.02           0.152             4.2400
-    0.2            0.200             4.3271
+    0.002          0.089             4.1196
+    0.02           0.030             4.1238
+    0.2            0.077             4.1150
+    control, fixed 0.02              3.9184
+    old band [0.25, 0.75], best      4.2400
 
-A 100x spread collapses to 1.5x and the losses land within 0.087. The claim is
-"there is no learning rate to tune", which is a property rather than a
-percentage, and it is the most paper-worthy thing the project has.
+The controller reaches its target -- `rho_med` is 1.00 from step 300 in all
+three arms -- and the losses now agree to **0.009** where they spread 0.087
+under the old band. But it lands 2-4x above the swept optimum and pays **0.20**
+for it, and the band is not the reason:
 
-**It settles on the wrong value -- and the reason is now measured, not
-guessed.** With `log_every = 97` (coprime with `t_fac = 25`, see the aliasing
-note below), `rho` over 625 measurements separates cleanly:
+* final rates differ 3x across arms while losses differ 0.009, so the outcome
+  does not depend on where it lands;
+* the arm closest to the swept optimum was the worst of the three.
 
-    eta = 0.02 (good)   0.47 0.33 0.45 0.81 1.02 1.15 1.14 1.35
-    eta = 0.15 (bad)    0.04 0.02 0.04 0.06 0.11 0.16 0.25 0.15
+**`rho` saturates.** It reads 0.02-0.25 at a catastrophic rate and 1.0 at both
+ends of the interval that costs 0.20. It asks whether the quadratic model
+predicted the drop, not whether the drop was the largest available. **No
+controller on `rho` alone will find the swept rate**, and no choice of band
+changes that. (Separate defect, worth fixing anyway: 1.5x every 5 steps with no
+dead zone, so the rate dithers 0.051/0.077/0.115 forever instead of settling.)
 
-So `rho` discriminates, and **K-FAC's band `[0.25, 0.75]` is exactly wrong
-here**: at the good rate `rho` sits mostly *above* 0.75, so the rule reads
-"be bolder", grows `eta`, and lands in the bad regime. The target should be
-`rho ~ 1`: grow above 1.2, shrink below 0.8. **That run has not been made.**
+So the paper's distinctive claim is weaker and more precise than "there is no
+learning rate to tune": **the rule converges reliably from a hundredfold range
+to a rate 2-4x too large, at a cost of 0.20 at 3000 steps.** It removes the
+search and pays for it. Strengthening it needs a signal that does not saturate
+-- a directional derivative along the step, or achieved-over-predicted measured
+at two step lengths. That is a design question, not a run to launch.
 
 ### What is settled, with the number
 
 | | |
 |---|---|
-| momentum | **+0.045 at 3000 steps**, doubling the margin over `pion` from 0.070 to 0.115. The best arm the project has. **Never run at full length.** |
+| momentum | best arm in the project: -0.058 against `ngd-pion-s` at matched steps and holding, at full length, in flight |
 | the trust region `quad/curv` | load-bearing: removing it costs **0.15** at its own best sampled rate, and `alpha < 1` on 37.1% of layer-steps |
 | `quad/curv_exact` per layer | a real trust region, and unusable: the per-layer signal is 8.4x under 109.5x of estimation noise. More tokens cannot close it -- the whole batch buys 5.7x against the 13x needed |
 | Shampoo on `so(n)` | **loses by 0.174 at full length**. Delivers the cleanest calibration in the project -- cross-layer angle spread **2.3-2.8x** against the Fisher variant's 4658-36496x, structurally rather than by Pion's `rms` fiat. And it is **prior art**: their own `pion_msign.py` is its memoryless case |
@@ -73,33 +98,33 @@ here**: at the good rate `rho` sits mostly *above* 0.75, so the rule reads
 
 ### The methodological findings, which may outlast the optimizer
 
-* **A 150-step protocol does not rank these optimizers -- it inverts.** `pion`
-  beats `ngd-pion` by 0.30 at 73242 steps and *loses* to it by 0.24 at 150. For
+* **A short protocol does not rank these arms -- it inverts.** `pion` beats
+  `ngd-pion` by 0.30 at 73242 steps and *loses* by 0.24 at 150. For
   `shampoo-pion`, `eta = 1e-1` is the worst arm at step 500 and the best from
-  step 1000. Every sweep in this repository before 2026-08-27 used 150 steps.
-* **Every `rho` ever quoted here was aliased.** `log_every = 100` is a multiple
-  of `t_fac = 25`, so every logged row sat on a refactorisation boundary with a
-  fresh basis, `alpha = 1` and the lowest `rho` of the cycle. Fixed: the harness
-  now reports `rho_med`, `rho_lo`, `rho_hi` over every measurement in the window.
+  1000. For `ngd-pion-m`, `2e-2` wins at 3000 and loses from 500 onward at
+  length. Every sweep here before 2026-08-27 used 150 steps.
+* **Every `rho` quoted before 2026-08-28 was aliased.** `log_every = 100` is a
+  multiple of `t_fac = 25`, so every logged row sat on a refactorisation
+  boundary with a fresh basis, `alpha = 1` and the lowest `rho` of the cycle.
+  Fixed: the harness reports `rho_med`, `rho_lo`, `rho_hi` over the window.
 * **Quote the speedup, not the loss difference.** Loss is compressive, so a
   constant step-equivalent advantage shows up as a shrinking gap.
 * **Dead-end verdicts in this repository are not evidence.** `damped.py` was
   closed on a mechanism that fired five times in its whole evaluation;
-  `ngd-pion-op` was closed on a sweep the journal itself records as unable to
-  show an effect. Both were 150-step.
+  `ngd-pion-op` was closed on a sweep the journal records as unable to show an
+  effect. Both were 150-step.
 
 ### What to do next, in order
 
-1. **`ngd-pion-m` at full length**, `eta = 2e-2`. It is the best arm at 3000
-   steps by 0.045 and it has never been run to length. ~20 rtx-hours. **This is
-   the single run most likely to turn the tie into a result.**
-2. **The corrected trust-region band**, `rho ~ 1` rather than `[0.25, 0.75]`,
-   at 3000 steps first. One hour. If it lands at the swept optimum from a
-   hundredfold range of starts, the paper has its distinctive claim.
-3. **A tuned AdamW baseline at full length.** There is none, and it is the
+1. **Let `ngd-pion-m` finish** (~18h). It is the only thing in flight and the
+   single result most likely to turn the tie into a win. Nothing else should
+   compete with it for rtx6003.
+2. **A tuned AdamW baseline at full length.** There is none, and it is the
    first thing a reviewer asks for. ~10 rtx-hours.
-4. **`pion_ablated` at full length.** Still never run, still the isolating
+3. **`pion_ablated` at full length.** Still never run, still the isolating
    baseline for any statement about what the preconditioner buys.
+4. **A non-saturating step-size signal**, if the adaptive claim is to be
+   strengthened. Design first, measure on the 3000-step protocol second.
 
 ### The honest arithmetic on cost
 
@@ -121,18 +146,20 @@ advantage to preserve.
   retraction, because the manifest serialises `RunConfig` while
   `build_optimizers` substitutes at construction.
 * `basis_congruence` crashed a run at step 41 500; `safe_eigh` has a fallback
-  ladder now but the long `ngd-pion-s` run reached 96% without needing it.
+  ladder now and the full-length `ngd-pion-s` run never needed it.
 * `is_identity` uses `atol = 1e-6` and misses a flat-spectrum fp32 weight at
   1.073e-06.
 * `shampoo-pion` does not approach the inert limit monotonically as `eta -> 0`.
+* the `rho` controller has no dead zone, so the effective rate never settles.
 
 ### Decided, do not re-litigate
 
 * **The Fisher self-scaling hypothesis is dead**, three measurements.
-* **`eta` is a tuned learning rate** -- or an adapted one, see item 2.
+* **`eta` is a tuned learning rate**; adapting it on `rho` converges but to the
+  wrong place, and `rho` cannot be made to find the right one.
 * **150 steps cannot rank these optimizers.**
 * **Never compare two configurations at a shared `eta`, and never compare a
-  grid edge against another arm's optimum.** Both were done today.
+  grid edge against another arm's optimum.**
 * **Concurrent runs on one node must share a seed.**
 * **Pin the node for arrays**; partition access and GPU caps here change within
   hours, so re-test rather than trust `docs/CLUSTER.md`.

@@ -5124,3 +5124,95 @@ any starting rate, and it converges to the wrong place.** Where the right place
 is cannot be read off the `rho` figures quoted so far, because they were all
 sampled in one phase. The next run needs an unaliased `log_every` -- 97 rather
 than 100 -- before any target band is chosen.
+
+---
+
+## 2026-08-29, after midnight -- the full-length number, and the ceiling on `rho`
+
+### `ngd-pion-s` finished: 3.3860
+
+Nine full-length runs now exist at 73242 steps with AdamW pinned at 1e-3.
+Sorted, with ours marked:
+
+    3.3719  pion
+    3.3860  <- ngd-pion-s, eta = 0.01
+    3.3866  3.3937  3.4059  3.4062  3.4080  3.4414  3.4432   pion
+
+Second of nine. Ahead of `pion`'s median by 0.020, behind their best by 0.014,
+one run against eight. The figure quoted at 96.4% was 3.3868, so nothing moved
+in the last 2600 steps and the tie stands exactly as written. `eta = 0.03`
+finished at 3.4343, inside their spread but near its bottom.
+
+This is the honest headline and it should not be dressed up. The claim the
+project can make on loss is "indistinguishable from Pion at full length".
+
+### Momentum at full length is ahead at every matched step
+
+`ngd-pion-m` is 9.3% in. Against `ngd-pion-s` at the same steps:
+
+    step      ngd-s   ngd-m 1e-2   diff
+     500     4.6269     4.3435    -0.283
+    2000     4.0215     3.9404    -0.081
+    4000     3.8709     3.8139    -0.057
+    6500     3.7995     3.7414    -0.058
+
+The gap compresses from 0.283 to 0.058 and then holds flat for 3000 steps.
+A decaying head start would keep decaying; a constant step-equivalent advantage
+shows up exactly like this, so the flat tail is the meaningful part.
+
+`eta = 1e-2` leads `2e-2` by 0.024 throughout. At 3000 steps in the tuning
+sweep `2e-2` was the better arm. **Third instance of a short protocol
+reordering arms**, and the first where it happened between two rates of the
+same optimizer rather than between optimizers.
+
+### The corrected band works as a controller and cannot find the optimum
+
+Target `rho ~ 1` (grow above 1.2, shrink below 0.8), 3000 steps, three starting
+rates spanning 100x:
+
+    eta0     final effective eta    val@3000
+    0.002          0.089             4.1196
+    0.02           0.030             4.1238
+    0.2            0.077             4.1150
+    control, fixed 0.02              3.9184
+    old band [0.25, 0.75], best      4.2400
+
+The rule hits its target: `rho_med` reaches 1.00 by step 300 in all three arms
+and stays. Against the old band it recovers 0.12 of the 0.32 deficit, and the
+losses now agree to **0.009** where they previously spread 0.087.
+
+But the deficit to a swept fixed rate is still **0.20**, and the reason is not
+the band:
+
+* The final effective rates differ by 3x across arms while the losses differ by
+  0.009. The outcome does not depend on where the controller lands.
+* The arm that landed *closest* to the swept optimum (0.030 against 0.02) was
+  the worst of the three, by a hair.
+
+**`rho` saturates.** At `eta = 0.15` it reads 0.02-0.25 and correctly reports
+disaster. Between 0.02 and 0.077 it reads 1.0 at both ends while the loss
+differs by 0.20. The reduction ratio asks whether the quadratic model predicted
+the drop, not whether the drop was the largest available; a step 4x too long
+can still be predicted accurately. So the quantity is a guard-rail, not an
+optimum-finder, and **no controller built on `rho` alone will find the swept
+rate.** Choosing a different band cannot fix this -- the signal is flat over
+precisely the interval that matters.
+
+A second, separate defect: the multiplier is 1.5x every 5 steps with no dead
+zone, so the effective rate dithers 0.051 / 0.077 / 0.115 indefinitely rather
+than settling. That is worth fixing regardless, but it is not what costs 0.20.
+
+### What this does to the paper's distinctive claim
+
+The claim was "there is no learning rate to tune". What is now measured is
+weaker and more precise: **the rule converges -- reliably, from a hundredfold
+range, to within 0.009 in loss -- to a rate 2-4x above the swept optimum, at a
+cost of 0.20 at 3000 steps.** It removes the *search* and pays for it. Whether
+that trade reads as a result depends on the cost of the search it replaces,
+which is an argument the paper can make honestly, and on whether the 0.20 gap
+survives to full length, which has not been measured.
+
+If the claim is to be strengthened rather than softened, the next signal has to
+be one that does not saturate -- a directional derivative along the step, or
+the ratio of achieved to predicted drop measured at two step lengths rather
+than one. That is a design question, not a run to launch.

@@ -1,6 +1,6 @@
 # Journal index
 
-Generated from `docs/JOURNAL.md` by `scripts/journal_index.py` -- 58 entries, 5126 lines. Do not edit by hand; re-run the script.
+Generated from `docs/JOURNAL.md` by `scripts/journal_index.py` -- 59 entries, 5218 lines. Do not edit by hand; re-run the script.
 
 Line numbers are for `sed -n 'Np,+40p' docs/JOURNAL.md`.
 
@@ -64,3 +64,4 @@ Line numbers are for `sed -n 'Np,+40p' docs/JOURNAL.md`.
 | 2026-08-28 | the Levenberg-Marquardt rule works; the variant carrying it does not | 4997 |
 | 2026-08-28 | correction: "the trust region fires zero times" was a hardcoded zero | 5046 |
 | 2026-08-28 | `eta` finds itself from a 100x range, and every `rho` we looked at was aliased | 5079 |
+| 2026-08-29 | after midnight -- the full-length number, and the ceiling on `rho` | 5130 |
