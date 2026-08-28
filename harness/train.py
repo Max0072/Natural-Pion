@@ -150,6 +150,8 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
             kw["trust"] = cfg.ngd_trust
             kw["exact_tokens"] = cfg.ngd_exact_tokens
             kw["exact_beta"] = cfg.ngd_exact_beta
+            kw["trust_lr"] = cfg.ngd_trust_lr
+            kw["trust_lr_cap"] = cfg.ngd_trust_lr_cap
         if cfg.optimizer == "ngd-pion-exact":
             kw["exact_every"] = cfg.ngd_exact_every
             kw["exact_tokens"] = cfg.ngd_exact_tokens
@@ -572,6 +574,8 @@ def train(
             # `curv_exact` without the smoothed value the step divides by.
             if rot is not None and "lam" in rot.param_groups[0]:
                 row["lam"] = float(rot.param_groups[0]["lam"])
+            if rot is not None and "lr_scale" in rot.param_groups[0]:
+                row["lr_scale"] = float(rot.param_groups[0]["lr_scale"])
             if isinstance(rot, DIAGNOSED):
                 rows = layer_diagnostics(rot, names, probe)
                 row.update(summarise(rows))

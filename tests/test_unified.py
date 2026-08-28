@@ -410,3 +410,48 @@ def test_the_smoothing_is_geometric_not_arithmetic():
     geo = math.exp(log_ema)
     assert geo < 3.0, geo            # stays with the bulk
     assert arith > 90.0, arith       # dragged by the single outlier
+
+
+def test_trust_lr_off_by_default_and_inert():
+    W, x, d, grads = _fixture(seed=20)
+    a, _ = _run(NGDPionUnified, W, x, d, grads)
+    b, _ = _run(NGDPionUnified, W, x, d, grads, trust_lr=False)
+    assert torch.equal(a, b)
+
+
+def test_trust_lr_follows_the_reduction_ratio():
+    """Shrink when the model over-promises, grow when it under-promises."""
+    p = torch.nn.Parameter(torch.zeros(4, 4, dtype=DT))
+    opt = NGDPionUnified([p], trust_lr=True)
+    g = opt.param_groups[0]
+    assert g["lr_scale"] == 1.0
+    opt.adapt_damping(0.1)                       # over-promised: pull in
+    assert g["lr_scale"] == pytest.approx(1 / 1.5)
+    opt.adapt_damping(0.9)                       # under-promised: go bolder
+    opt.adapt_damping(0.9)
+    assert g["lr_scale"] == pytest.approx(1.5)
+    opt.adapt_damping(0.5)                       # inside the band: unchanged
+    assert g["lr_scale"] == pytest.approx(1.5)
+    for _ in range(50):
+        opt.adapt_damping(0.9)
+    assert g["lr_scale"] == pytest.approx(100.0)  # capped
+    for bad in (float("nan"), float("inf")):
+        before = g["lr_scale"]
+        opt.adapt_damping(bad)
+        assert g["lr_scale"] == before            # not information
+
+
+def test_trust_lr_scales_the_step():
+    W, x, d, grads = _fixture(seed=21)
+    p = torch.nn.Parameter(W.clone())
+    opt = NGDPionUnified([p], lr=0.05, t_fac=3, compute_dtype=DT, trust_lr=True)
+    opt.param_groups[0]["lr_scale"] = 2.0
+    for G in grads[:1]:
+        opt.observe(p, x); opt.observe_backward(p, d)
+        p.grad = G.clone(); opt.step()
+    q = torch.nn.Parameter(W.clone())
+    ref = NGDPionUnified([q], lr=0.10, t_fac=3, compute_dtype=DT)
+    for G in grads[:1]:
+        ref.observe(q, x); ref.observe_backward(q, d)
+        q.grad = G.clone(); ref.step()
+    assert torch.allclose(p.detach(), q.detach(), rtol=1e-12, atol=1e-14)

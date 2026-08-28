@@ -162,6 +162,8 @@ class NGDPionUnified(NGDPionS):
         use_s: bool = True,
         momentum: str = "none",
         beta1: float = 0.9,
+        trust_lr: bool = False,
+        trust_lr_cap: float = 100.0,
         trust: str = "quad_curv",
         exact_beta: float = 0.0,
         exact_tokens: int = 4096,
@@ -175,6 +177,8 @@ class NGDPionUnified(NGDPionS):
             raise ValueError(f"momentum must be none/lie/ambient, got {momentum!r}")
         if not 0.0 <= beta1 < 1.0:
             raise ValueError(f"beta1 must be in [0, 1), got {beta1}")
+        if trust_lr_cap < 1.0:
+            raise ValueError(f"trust_lr_cap must be at least 1, got {trust_lr_cap}")
         if trust not in ("quad_curv", "exact", "none"):
             raise ValueError(f"trust must be quad_curv/exact/none, got {trust!r}")
         if trust == "exact" and not use_s:
@@ -203,7 +207,8 @@ class NGDPionUnified(NGDPionS):
                 use_s=use_s, momentum=momentum, beta1=beta1,
                 retraction=retraction, ns_iters=ns_iters, ns_guard=ns_guard,
                 angle=angle, trust=trust, exact_tokens=exact_tokens,
-                exact_beta=exact_beta,
+                exact_beta=exact_beta, trust_lr=trust_lr,
+                trust_lr_cap=trust_lr_cap, lr_scale=1.0,
             )
 
     # --- statistics ---------------------------------------------------------
@@ -214,6 +219,38 @@ class NGDPionUnified(NGDPionS):
             state = self.state.get(param, {})
             return "cov" in state and state["cov"].ready
         return super()._ready(param)
+
+    def adapt_damping(self, rho: float) -> None:
+        """The classical trust-region radius update, on `eta`.
+
+        The harness calls this hook `adapt_damping` because `damped.py` was its
+        only implementer and damping was that variant's radius. **What this
+        class adapts is the step scale**, which is this one's radius: `eta`
+        multiplies the step directly, and the floor stays where it is.
+
+        Why `eta` and not the floor. `damped.py` replaced the spectral floor
+        with Tikhonov damping and adapted that, and job 297755 measured the
+        result: the adaptation is worth 0.39, and the substitution costs 0.72.
+        The rule was never the problem; the thing it was bolted to was.
+
+        Why adapt at all. Measured `rho` on the full-length run runs **0.47 at
+        the start and 1.32 by step 33000**, crossing 1 around 15000: the step is
+        too long early and too short late, in that order. One scalar cannot be
+        both, and a sweep can only pick the compromise.
+
+        Thresholds and factor are K-FAC's, and the cadence comes from
+        `rho_every`, which kfac-jax sets to 5.
+        """
+        if rho is None or rho != rho or rho in (float("inf"), float("-inf")):
+            return
+        for group in self.param_groups:
+            if not group.get("trust_lr"):
+                continue
+            cap = group["trust_lr_cap"]
+            if rho > 0.75:
+                group["lr_scale"] = min(group["lr_scale"] * 1.5, cap)
+            elif rho < 0.25:
+                group["lr_scale"] = max(group["lr_scale"] / 1.5, 1.0 / cap)
 
     def _sampler(self, device: torch.device) -> torch.Generator:
         """One generator per device, seeded once, never the global RNG."""
@@ -411,7 +448,7 @@ class NGDPionUnified(NGDPionS):
             alpha = trust_region_alpha(quad, curv, group["alpha_max"])
         state["alpha"] = float(alpha)
 
-        c = group["lr"] * float(alpha)
+        c = group["lr"] * group.get("lr_scale", 1.0) * float(alpha)
         state["angle"], sigma = self._measure_angle(state, group, X_in, X_out, c)
         state["pred_drop"] = c * quad
 

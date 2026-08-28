@@ -253,6 +253,13 @@ class RunConfig:
     # perhaps five times in its entire evaluation. kfac-jax uses an interval of
     # **5**. One extra forward pass every `rho_every` steps is the whole cost.
     rho_every: int = 0
+    # Adapt `eta` on the reduction ratio -- the classical trust-region radius
+    # update, applied to the thing that actually scales the step. The floor
+    # stays. `damped.py` adapted a damping that *replaced* the floor, and that
+    # substitution measured 0.72 worse while the adaptation itself was worth
+    # 0.39, so the rule was never what failed.
+    ngd_trust_lr: bool = False
+    ngd_trust_lr_cap: float = 100.0
     # Implementation choices. These are meant not to change the trajectory, or
     # to change it by a bounded amount, and `tests/test_unified.py` checks them
     # on that footing rather than against the classes they replace.
