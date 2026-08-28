@@ -4816,3 +4816,65 @@ keeps its old numbers**: they are the record of what was run, not a menu.
 `scripts/sbatch/README.md` says so at the top.
 
 234 tests.
+
+
+## 2026-08-28 -- the trust region fires zero times in 338 steps, and `eta` is doing its job
+
+Raised by the user: the trust region cannot be working, given the optimum sits
+at `eta = 1e-2`. The conclusion is right and the mechanism is worth stating
+exactly, because it is not the one that suggests itself.
+
+**`alpha` does not depend on `eta` at all.** `quad = <G, X>` and
+`curv = <X, F(X)>` are both formed from `X = F^-1 G`, and `eta` enters neither.
+On a fresh basis `alpha = 1` by algebra at any learning rate. So the optimum
+being 1e-2 is not what makes `alpha` inert.
+
+**What makes it inert is that it is not a trust region.** A trust region
+compares a predicted decrease against an actual one and shrinks when the model
+over-predicts. `quad/curv` is a ratio of two *model* quantities computed with
+the same operator, so it is structurally incapable of noticing that the model
+is wrong. It can only detect that the basis has gone stale -- and `T_fac = 25`
+is conservative enough that it does not.
+
+Measured on the running full-length `ngd-pion-s`, 338 logged steps:
+
+    step        pred_drop      rho
+       0       1.4866e+00    0.4733
+    6600       5.1835e-01    0.9199
+   16500       2.5972e-01    1.4085
+   33000       2.3103e-01    1.3201
+
+    median rho 1.2159, min 0.0420, max 1.7199
+    alpha shortened the step on 0 of 338 steps
+
+**Zero of 338.** Not rarely -- never. `alpha_max = 1` makes the mechanism
+one-sided, and `alpha` sits at 1, so it can only ever fail to act.
+
+And `rho` near 1 at `eta = 1e-2` is the sharp form of the user's point: **the
+`eta` sweep is the trust region, applied by hand.** At the derived `eta = 2` the
+model would over-predict by roughly the 140 that `kappa = 1.8e-3` implies; the
+manual shrink of the same 140 is what brought `rho` to 1. Section 6 of the
+specification describes a mechanism whose work was done by a hyperparameter
+sweep.
+
+`rho` carries a known confound -- `clip_grad_norm_` runs before `rot.step()`,
+leaving a constant `1/s` on it -- so its absolute level is biased. The shape
+(crossing 1 around step 15000) and the count of zero are not affected by a
+constant.
+
+### What follows
+
+Two honest options, and they are exclusive.
+
+* **Drop the trust region** and say in the paper that `eta` is a tuned learning
+  rate. That is already true, and §6 currently claims otherwise.
+* **Implement a real one**, adapting on `rho` rather than on `quad/curv`. The
+  machinery exists: `damped.py` carries the Levenberg-Marquardt rule on the
+  reduction ratio, with `ngd_lam_adapt` already a `RunConfig` field. It is
+  listed as a dead end -- **and its verdict was reached at 150 steps**, the
+  horizon since measured to invert the ordering of these optimizers. Re-testing
+  it at 3000 steps costs fifty minutes.
+
+The second is the more interesting of the two, because `rho` rising through 1
+and settling near 1.3 says the step could be *longer* in the second half of
+training, which a fixed `eta` cannot express and an adaptive one can.
