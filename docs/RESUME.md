@@ -1,140 +1,138 @@
 # Start here
 
 A single page for picking this up cold. `AGENTS.md` is the settled state of
-play, `docs/JOURNAL.md` is the sequence that produced it (newest last, and long
-by now), `docs/CLUSTER.md` is the machine, `$DATA_p330/runs/README.md` says
-what every run directory holds. This file is only ever *now*.
+play, `docs/JOURNAL.md` is the sequence that produced it and
+`docs/JOURNAL_INDEX.md` indexes it, `docs/CLUSTER.md` is the machine,
+`$DATA_p330/runs/README.md` says what every run directory holds. Four more
+indexes are linked from `AGENTS.md`. This file is only ever *now*.
 
 **Rewrite this file rather than appending to it.** It is a snapshot, not a log.
 
 ---
 
-## As of 2026-08-28, small hours
+## As of 2026-08-28, late evening
 
-### In flight
+### The headline: a tie, inside their own noise
 
-Nothing. The crossover study (jobs 279222, 279617) finished.
+Full length, 73242 steps, AdamW pinned at 1e-3:
 
-### The headline, and for once it is in our favour
+    pion, eight runs   best 3.3719   median 3.4061   worst 3.4432   spread 0.071
+    ngd-pion-s         3.3868 at 96.4%, still falling
+    shampoo-pion       3.5456 FINAL
+    ngd-pion (S = I)   3.6728 FINAL   (the older run)
 
-**`ngd-pion-s` is ahead of `pion` at every horizon that has been measured.**
-Against the eight full-length `pion` runs already on disk -- configuration
-checked field by field, not assumed: same `adamw_lr` 1e-3, `adam_beta2` 0.95,
-`decay_norms_and_biases` False, seed, precision --
+**`ngd-pion-s` sits inside `pion`'s own run-to-run spread**, between their
+second and third best. Ahead of their median by 0.02, behind their best by
+0.01. One run against eight. That is not "we beat Pion" and it is not "we lose
+to Pion"; it is a tie, and it should be written as one.
 
-    step               500     1000     1500     2000     2500     3000
-    pion best of 8   4.7275   4.3150   4.1671   4.0781   4.0272   3.9880
-    pion median      4.8710   4.4212   4.2173   4.1241   4.0571   4.0133
-    ngd-pion-s       4.5947   4.2177   4.0866   4.0124   3.9619   3.9184
-    lead over best  +0.1328  +0.0973  +0.0805  +0.0657  +0.0653  +0.0696
+The lead decayed monotonically and was flagged as decaying all day: +0.133 at
+step 500, +0.070 at 3000, +0.022 against the median at 70000. **Read the
+horizontal gap, not the vertical one** -- in step-equivalent terms it ran
+1.2-1.5x for most of the run.
 
-The lead narrows to about 0.066 and then stops narrowing, holding 0.065-0.070
-from step 2000 to 3000; against the median of the eight it is 0.095 at 3000.
-This is the first time anything in this project has beaten `pion` like for
-like. It is **one run against eight, at 4% of the schedule**, and it is not a
-full-length result.
+### The distinctive result is not the loss
 
-### The methodological finding, which is the bigger one
+**`eta` finds itself from a hundredfold range of starting rates.** Adapting it
+on the reduction ratio every 5 steps (job 297936):
 
-**Every ranking this repository has taken at 150 steps is unreliable, and the
-short-horizon choice can be exactly inverted.**
+    eta0     final effective eta    val@3000
+    0.002          0.133             4.2771
+    0.02           0.152             4.2400
+    0.2            0.200             4.3271
 
-Two independent demonstrations:
+A 100x spread collapses to 1.5x and the losses land within 0.087. The claim is
+"there is no learning rate to tune", which is a property rather than a
+percentage, and it is the most paper-worthy thing the project has.
 
-* `pion` and `ngd-pion` are the only optimizers measured at both horizons. At
-  150 steps `ngd-pion` wins by 0.24; at 73 242 steps `pion` wins by 0.30. The
-  ordering reverses.
-* For `shampoo-pion` at `eps = 1e-6`, `eta = 1e-1` is the **worst** arm at step
-  500 and the **best** from step 1000 onward, while the 150-step optimum of the
-  same row was `3e-3`. `eta*` moves thirtyfold with horizon.
+**It settles on the wrong value -- and the reason is now measured, not
+guessed.** With `log_every = 97` (coprime with `t_fac = 25`, see the aliasing
+note below), `rho` over 625 measurements separates cleanly:
 
-So: **stop choosing `eta` at 150 steps.** Every hyperparameter this project has
-selected -- the initialisation sweep, the heavy-tail sweep, `S = I` against the
-measured `S`, `T_fac`, the `eta` and `eps x eta` grids -- was selected with an
-instrument that inverts on the one case where it can be checked. 3000 steps
-costs about 50 minutes on one GPU and five arms fit in the 8-GPU quota.
+    eta = 0.02 (good)   0.47 0.33 0.45 0.81 1.02 1.15 1.14 1.35
+    eta = 0.15 (bad)    0.04 0.02 0.04 0.06 0.11 0.16 0.25 0.15
 
-### Where Shampoo stands
+So `rho` discriminates, and **K-FAC's band `[0.25, 0.75]` is exactly wrong
+here**: at the good rate `rho` sits mostly *above* 0.75, so the rule reads
+"be bolder", grows `eta`, and lands in the bad regime. The target should be
+`rho ~ 1`: grow above 1.2, shrink below 0.8. **That run has not been made.**
 
-`shampoo-pion`, `eps = 1e-6`, is behind `pion` but closing:
+### What is settled, with the number
 
-    eta        500     1000     1500     2000     2500     3000
-    1e-2     5.1617   4.8495   4.7202   4.6456   4.5943   4.5593
-    3e-2     5.0759   4.7265   4.5858   4.5019   4.4434   4.4006
-    1e-1     5.3561   4.6801   4.4733   4.3586   4.2485   4.1778
+| | |
+|---|---|
+| momentum | **+0.045 at 3000 steps**, doubling the margin over `pion` from 0.070 to 0.115. The best arm the project has. **Never run at full length.** |
+| the trust region `quad/curv` | load-bearing: removing it costs **0.15** at its own best sampled rate, and `alpha < 1` on 37.1% of layer-steps |
+| `quad/curv_exact` per layer | a real trust region, and unusable: the per-layer signal is 8.4x under 109.5x of estimation noise. More tokens cannot close it -- the whole batch buys 5.7x against the 13x needed |
+| Shampoo on `so(n)` | **loses by 0.174 at full length**. Delivers the cleanest calibration in the project -- cross-layer angle spread **2.3-2.8x** against the Fisher variant's 4658-36496x, structurally rather than by Pion's `rms` fiat. And it is **prior art**: their own `pion_msign.py` is its memoryless case |
+| orthogonal init | 0.117 behind at 3000 steps, consistently |
+| no residual connections | nothing trains: AdamW flat at 7.26 for 3000 steps, orthogonal init does not rescue it |
+| Levenberg-Marquardt on damping | the rule works (+0.39 over fixed damping) but `damped.py` replaces the spectral floor with it, and that substitution costs 0.72 |
+| the step | **96.4% sampling noise** on the real model |
+| `kappa` | 1.8e-3 from the `rho` fit, `kfac/exact` 0.0128 from per-token contraction |
 
-Its deficit against `pion`'s best goes 0.63, 0.37, 0.31, 0.28, 0.22, 0.19 --
-steadily closing, and `1e-1` is still the largest `eta` sampled, so every
-number is an upper bound. It is not competitive with `ngd-pion-s` on anything
-measured. **Do not extrapolate either trend**; that is precisely the error the
-150-step protocol turned out to embody.
+### The methodological findings, which may outlast the optimizer
 
-What Shampoo does deliver, and it is a real result: the cross-layer spread of
-rotation angle falls from the Fisher variant's 4658x-36496x to **2.3x-2.8x**,
-structurally, where Pion buys the same calibration by fiat with
-`scaling="rms"`. Step cost 1.14 s against 0.98 for `ngd-pion-s`, memory 82.5 GB
-against 83.3.
-
-### There is no do-nothing baseline
-
-Freezing the matrices at initialisation and letting AdamW carry the rest is not
-a training configuration: 5.86 at step 100, 5.71 at 150, 23.1 at 500, 1769 at
-2000, dead at ~2300. An earlier reading of the 150-step board as "the rotation
-mostly hurts" was measuring the transient minimum of that diverging curve and
-has been withdrawn in the journal.
+* **A 150-step protocol does not rank these optimizers -- it inverts.** `pion`
+  beats `ngd-pion` by 0.30 at 73242 steps and *loses* to it by 0.24 at 150. For
+  `shampoo-pion`, `eta = 1e-1` is the worst arm at step 500 and the best from
+  step 1000. Every sweep in this repository before 2026-08-27 used 150 steps.
+* **Every `rho` ever quoted here was aliased.** `log_every = 100` is a multiple
+  of `t_fac = 25`, so every logged row sat on a refactorisation boundary with a
+  fresh basis, `alpha = 1` and the lowest `rho` of the cycle. Fixed: the harness
+  now reports `rho_med`, `rho_lo`, `rho_hi` over every measurement in the window.
+* **Quote the speedup, not the loss difference.** Loss is compressive, so a
+  constant step-equivalent advantage shows up as a shrinking gap.
+* **Dead-end verdicts in this repository are not evidence.** `damped.py` was
+  closed on a mechanism that fired five times in its whole evaluation;
+  `ngd-pion-op` was closed on a sweep the journal itself records as unable to
+  show an effect. Both were 150-step.
 
 ### What to do next, in order
 
-1. **`ngd-pion-s` at full length, `eta = 1e-2`, ~10 rtx-hours.** It leads `pion`
-   at every horizon from 500 to 3000 and has never been run to 73 242 steps.
-   The only full-length NGD run used `S = I` at `eta = 1.0` -- the variant now
-   known to be worse, at an `eta` chosen by a method now known to invert. This
-   is the run the paper would report and it does not exist.
-   **Caveat to state when it is launched:** `eta = 1e-2` was itself chosen at
-   150 steps. Consider validating it at 3000 first, which costs 4% of the run.
-2. `pion_ablated` at full length, still the isolating baseline for any claim
-   about what the preconditioner buys.
-3. Shampoo needs `eta` above `1e-1` before any comparison involving it is fair.
-4. Harness: abort on a non-finite loss with a clear message. A diverged run
-   currently dies inside `linalg.solve` reporting a singular matrix, which
-   reads as a numerical bug in the optimizer and is not one.
+1. **`ngd-pion-m` at full length**, `eta = 2e-2`. It is the best arm at 3000
+   steps by 0.045 and it has never been run to length. ~20 rtx-hours. **This is
+   the single run most likely to turn the tie into a result.**
+2. **The corrected trust-region band**, `rho ~ 1` rather than `[0.25, 0.75]`,
+   at 3000 steps first. One hour. If it lands at the swept optimum from a
+   hundredfold range of starts, the paper has its distinctive claim.
+3. **A tuned AdamW baseline at full length.** There is none, and it is the
+   first thing a reviewer asks for. ~10 rtx-hours.
+4. **`pion_ablated` at full length.** Still never run, still the isolating
+   baseline for any statement about what the preconditioner buys.
+
+### The honest arithmetic on cost
+
+Our step is **2.10x** Pion's (0.967 s against 0.460 on rtx), so a step-count
+advantage of 1.2-1.5x is a wall-clock **loss**. The optimizer is 497 ms of a
+967 ms step, of which 257 ms is accumulating statistics and 240 ms is the step;
+within the step the retraction is 54%, the angle diagnostic 22%, the
+factorisation 12%. Newton-Schulz would do the retraction at 0.18x. The
+optimizer's cost is per step, not per token, so it amortises with batch: the
+ratio falls to 1.29x at 4x the batch and 1.16x at 8x. **None of this has been
+done**, and none of it is worth doing until item 1 says whether there is an
+advantage to preserve.
 
 ### Open bugs
 
-* **`ngd_power` is silently inert for `ngd-pion-s`** -- reaches the manifest,
-  the hash and the directory name without reaching the optimizer.
-* **`pion_ablated` manifests record the un-ablated settings** (`momentum="lie"`,
-  `scaling="rms"`, `retraction="trunc"`) because the manifest serialises
-  `RunConfig` while `build_optimizers` substitutes `none`/`none`/`cayley` at
-  construction. The runs are correct; the record of them is not.
-* `powered.py`'s docstring calls `power = 1/2` "Adam, Shampoo". The exponents
-  agree arithmetically; the matrices being raised to them do not.
-* `basis_congruence` crashed a run at step 41 500. `safe_eigh` now has a
-  three-rung fallback, but the long `ngd-pion-s` run has never been attempted
-  and this is where it would bite.
-* `is_identity` uses `atol = 1e-6`; a flat-spectrum 512x512 fp32 weight misses
-  it at 1.073e-06.
-* `shampoo-pion` does not approach the inert limit monotonically as `eta -> 0`:
-  5.7071 at 1e-12 but 6.164 at 1e-4 (150 steps, `eps = 1e-6`). Unexplained,
-  deliberately.
+* `ngd_power` is inert for `ngd-pion-s` -- reaches the hash and the directory
+  name, not the optimizer.
+* `pion_ablated` manifests record the un-ablated momentum, scaling and
+  retraction, because the manifest serialises `RunConfig` while
+  `build_optimizers` substitutes at construction.
+* `basis_congruence` crashed a run at step 41 500; `safe_eigh` has a fallback
+  ladder now but the long `ngd-pion-s` run reached 96% without needing it.
+* `is_identity` uses `atol = 1e-6` and misses a flat-spectrum fp32 weight at
+  1.073e-06.
+* `shampoo-pion` does not approach the inert limit monotonically as `eta -> 0`.
 
 ### Decided, do not re-litigate
 
-* **The Fisher self-scaling hypothesis is dead**, by three direct measurements
-  (`kappa = 1.8e-3`, `kfac/exact = 0.0128`, `alpha_exact/alpha` 5e-3 to 1e-1).
-  `eta` is a tuned learning rate. Do not re-derive `eta* = 2`.
-* **150 steps cannot rank these optimizers.** See above. This supersedes the
-  older "a single 150-step run resolves about 0.05 in loss", which was true
-  about noise and silent about bias.
-* **The anchor is accepted** against its pre-registered criteria, deliberately,
-  by the user.
-* **Pin `--adamw-lr` for any sweep over `lr`.**
-* **Never compare two optimizers at a shared `eta`.**
-* **Concurrent runs on one node must share a seed** -- identical corpus windows
-  warm each other's page cache instead of competing. Measured: five co-located
-  arms reach 115229 tok/s while their own first window reads 23666.
-* **Pin the node for arrays** (`-w rtx6002,rtx6003`). Left to itself SLURM
-  packed eight tasks onto the one loaded node and step 0 took 185 s against 80.
-* **Concurrent GPUs cap at 8 per user**, whatever `sacctmgr` reports.
-* `shampoo-pion` is deterministic at 150 steps across nodes and days, to four
-  decimals. Do not assume the same of the Fisher variants.
+* **The Fisher self-scaling hypothesis is dead**, three measurements.
+* **`eta` is a tuned learning rate** -- or an adapted one, see item 2.
+* **150 steps cannot rank these optimizers.**
+* **Never compare two configurations at a shared `eta`, and never compare a
+  grid edge against another arm's optimum.** Both were done today.
+* **Concurrent runs on one node must share a seed.**
+* **Pin the node for arrays**; partition access and GPU caps here change within
+  hours, so re-test rather than trust `docs/CLUSTER.md`.
