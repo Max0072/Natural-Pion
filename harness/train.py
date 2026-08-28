@@ -13,7 +13,7 @@ import math
 import os
 import platform
 import time
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from dataclasses import replace
 from pathlib import Path
 
@@ -250,6 +250,65 @@ def _adamw(params, cfg: RunConfig) -> torch.optim.AdamW:
     return torch.optim.AdamW(groups, lr=cfg.adamw_lr or cfg.lr, betas=betas, eps=cfg.adam_eps)
 
 
+@contextmanager
+def _recorders_off(*recorders):
+    """Silence every recorder for the duration of a diagnostic forward.
+
+    `ActivationRecorder` hangs off `register_forward_pre_hook`, and a forward
+    pre-hook fires under `torch.no_grad()` like any other. So every forward the
+    harness ran *for measurement* was folding its activations into `A` exactly
+    as if it were a training batch.
+
+    That is not a rounding error, because `CovarianceAccumulator.observe`
+    blends with a fixed `1 - beta` **per call** rather than per sample: a
+    `rho_micro = 128` chunk carries the same EMA weight as a full 512-sequence
+    training batch while estimating the gram from a quarter of the tokens. At
+    `rho_every = 5` with `rho_micro = 128` that is four diagnostic calls per
+    five training calls -- **44% of `A`'s EMA weight**, drawn at post-step
+    weights, roughly halving the accumulator's effective horizon in steps.
+    Nine runs were affected (`trustlr`, `rhodist` at 44%, `lm` at 17%); no
+    full-length run or sweep set `rho_every`, so none of those are touched.
+
+    It also meant `rho_every` and `rho_micro` moved the trajectory, which the
+    project's own rule for implementation flags forbids. Measurement must not
+    move the thing being measured.
+    """
+    saved = [(r, r.enabled) for r in recorders if r is not None]
+    for recorder, _ in saved:
+        recorder.enabled = False
+    try:
+        yield
+    finally:
+        for recorder, was in saved:
+            recorder.enabled = was
+
+
+@torch.no_grad()
+def _measure_loss(model, x, y, chunk, cfg, device) -> float:
+    """Mean loss over `(x, y)`, chunked, with no side effect on any statistic.
+
+    Chunked because this is the one forward in the harness that was not. It
+    runs after `rot.step()`, so `A`, `D` and both bases are already resident,
+    and the head materialises `vocab x tokens` logits: 32100 x 131072 x 2 is
+    8.4 GB, against a measured 82.6 GB peak on a 96 GiB card. Reducing the
+    *frequency* does not help -- one evaluation is already too large -- so the
+    size is what has to give. The loss is a mean over tokens, so equal chunks
+    average, and a short final chunk is weighted by its own token count.
+    """
+    size = chunk or x.shape[0]
+    with _autocast(cfg, device):
+        if size >= x.shape[0]:
+            _, loss = model(x, y)
+            return float(loss)
+        total, n = 0.0, 0
+        for i in range(0, x.shape[0], size):
+            xb, yb = x[i : i + size], y[i : i + size]
+            _, part = model(xb, yb)
+            total += float(part) * xb.shape[0]
+            n += xb.shape[0]
+    return total / n
+
+
 def _autocast(cfg: RunConfig, device: str):
     """Autocast for the forward pass, or a no-op context.
 
@@ -405,6 +464,14 @@ def train(
 
     train_data = TokenCorpus(cfg.data_path, cfg.model.seq_len, seed=cfg.seed)
     val_data = TokenCorpus(cfg.val_path, cfg.model.seq_len, seed=cfg.seed + 1)
+    # A second reader over the *training* corpus, offset by its seed so it
+    # draws different windows. "Held out" here means independent of the batch
+    # that produced this step, which is what the noise question needs; it does
+    # not mean unseen, and overlap with past training data is irrelevant.
+    held_data = (
+        TokenCorpus(cfg.data_path, cfg.model.seq_len, seed=cfg.seed + 101)
+        if cfg.rho_holdout else None
+    )
     val_batches = val_data.fixed_batches(cfg.micro_batch, cfg.eval_batches, seed=1234, device=device)
 
     steps = max_steps or cfg.train_steps
@@ -442,6 +509,7 @@ def train(
     window_time, window_step = time.time(), first
     # `rho` values since the last logged row; see the note where it is appended.
     rho_window: list[float] = []
+    held_window: list[float] = []
     for step in range(first, steps):
         lr = lr_at(step, cfg)
         # Two schedules when `adamw_lr` is set, one when it is not. Sharing the
@@ -514,47 +582,45 @@ def train(
             torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
         # On logged steps, measure what a trust region is really for: the
         # decrease the model predicted against the decrease that happened.
-        # Taken on the *same* batch and *before* AdamW moves the embedding and
-        # the head, so neither the data changing nor the other optimizer
-        # contaminates it. One extra forward every `log_every` steps.
+        # Taken *before* AdamW moves the embedding and the head, so the other
+        # optimizer cannot contaminate it.
         watch = rot is not None and (
             step % cfg.log_every == 0
             or step == steps - 1
             or (cfg.rho_every and step % cfg.rho_every == 0)
         )
+        # The held-out half, which has to be taken before the step moves the
+        # weights. `rho` as measured above is evaluated on the very batch whose
+        # gradient produced the step, so it asks whether the quadratic model
+        # fit *that* batch -- a step several times too long still fits it,
+        # because it is descending that batch's own quadratic. With the step
+        # measured at 96.4% sampling noise, that is exactly the failure mode a
+        # step-size rule must be able to see. A fresh batch can see it.
+        held_batch = held_before = None
+        if watch and held_data is not None:
+            held_batch = held_data.batch(cfg.micro_batch, device)
+            with _recorders_off(recorder, backward, probe):
+                held_before = _measure_loss(model, *held_batch, cfg.rho_micro, cfg, device)
         if rot is not None:
             rot.step()
-        rho = predicted = None
+        rho = rho_held = predicted = None
         if watch:
             predicted = sum(
                 float(rot.state[p].get("pred_drop", 0.0))
                 for g in rot.param_groups for p in g["params"] if p in rot.state
             )
-            # Chunked, because this is the one forward in the harness that was
-            # not. It runs *after* `rot.step()`, so the optimizer's persistent
-            # state -- `A`, `D` and both bases -- is already resident, and the
-            # head materialises `vocab x tokens` logits: 32100 x 131072 x 2 is
-            # 8.4 GB. At a measured 82.6 GB peak on a 96 GiB card there is no
-            # room for it, and `rho_every` OOMed on rtx while running fine on
-            # b200's larger cards. Reducing the *frequency* does not help --
-            # one evaluation is already too large -- so the size is what has to
-            # give. The loss is a mean over tokens, so equal chunks average.
-            chunk = cfg.rho_micro or x.shape[0]
-            with torch.no_grad(), _autocast(cfg, device):
-                if chunk >= x.shape[0]:
-                    _, after = model(x, y)
-                    after = float(after)
-                else:
-                    total, n = 0.0, 0
-                    for i in range(0, x.shape[0], chunk):
-                        xb, yb = x[i : i + chunk], y[i : i + chunk]
-                        _, part = model(xb, yb)
-                        total += float(part) * xb.shape[0]
-                        n += xb.shape[0]
-                    after = total / n
+            with _recorders_off(recorder, backward, probe):
+                after = _measure_loss(model, x, y, cfg.rho_micro, cfg, device)
+                if held_before is not None:
+                    held_after = _measure_loss(model, *held_batch, cfg.rho_micro, cfg, device)
             rho = (loss_sum - after) / predicted if predicted else float("nan")
+            if held_before is not None:
+                rho_held = (held_before - held_after) / predicted if predicted else float("nan")
+                held_window.append(rho_held)
             # The trust region finally gets to read the number it exists
             # for. Only the damped variant listens; the rest ignore it.
+            # Deliberately still the same-batch value: the holdout is being
+            # measured here, not yet acted on, and one change at a time.
             if hasattr(rot, "adapt_damping"):
                 rot.adapt_damping(rho)
             # Every `rho` measured since the last logged row, not only the one
@@ -603,6 +669,8 @@ def train(
                 row["eigh_fallbacks"] = dict(EIGH_FALLBACKS)
             if rho is not None:
                 row["pred_drop"], row["rho"] = predicted, rho
+            if rho_held is not None:
+                row["rho_held"] = rho_held
             finite = [r for r in rho_window if r == r and abs(r) != float("inf")]
             if finite:
                 finite.sort()
@@ -611,6 +679,14 @@ def train(
                 row["rho_lo"] = finite[0]
                 row["rho_hi"] = finite[-1]
             rho_window = []
+            held = [r for r in held_window if r == r and abs(r) != float("inf")]
+            if held:
+                held.sort()
+                row["rho_held_n"] = len(held)
+                row["rho_held_med"] = held[len(held) // 2]
+                row["rho_held_lo"] = held[0]
+                row["rho_held_hi"] = held[-1]
+            held_window = []
             # The damping the Levenberg-Marquardt rule adapts. Without it a run
             # cannot answer whether the rule fired, which is how the first
             # attempt at this was launched -- the same blindness as recording

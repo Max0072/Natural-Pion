@@ -16,7 +16,13 @@ import torch.nn as nn
 from harness.config import RunConfig
 from harness.data import TokenCorpus
 from harness.model import ModelConfig, Transformer
-from harness.train import build_optimizers, lr_at, train
+from harness.train import (
+    _measure_loss,
+    _recorders_off,
+    build_optimizers,
+    lr_at,
+    train,
+)
 from ngd_pion.fast import FastNGDPion
 from ngd_pion.optimizer import NGDPion
 from ngd_pion.pion_baseline import Pion
@@ -714,3 +720,57 @@ def test_orthogonal_weights_survive_a_cayley_run():
         opt.step()
     after = torch.linalg.svdvals(p.detach().double())
     assert torch.allclose(before, after, rtol=1e-5, atol=1e-7)
+
+
+def test_diagnostic_forward_leaves_the_covariance_alone():
+    """A measurement forward must not feed `A`, and for four days it did.
+
+    `ActivationRecorder` hangs off `register_forward_pre_hook`, and a pre-hook
+    fires under `torch.no_grad()` like any other, so the forward that evaluates
+    `rho` was folding its activations into the covariance as though it were a
+    training batch. `CovarianceAccumulator.observe` blends with a fixed
+    `1 - beta` **per call**, not per sample, so a `rho_micro = 128` chunk of a
+    512-sequence batch carried a full training batch's EMA weight from a
+    quarter of the tokens -- four such calls every five steps at
+    `rho_every = 5`, which is 44% of `A`'s weight taken at post-step weights.
+
+    Nine runs were affected and one conclusion did not survive it: the trust
+    region's 0.20 deficit was measured with the controller arms at 44% and the
+    fixed-rate control at 1%, so the arms differed in two things at once.
+
+    Both halves are asserted, because the guard is only meaningful if the thing
+    it guards against would otherwise happen.
+    """
+    cfg = RunConfig(model=SMALL, optimizer="ngd-pion-s", lr=1e-2, micro_batch=4)
+    model = Transformer(SMALL)
+    rot, _, recorder = build_optimizers(model, cfg)
+    assert recorder is not None, "the S variant records activations; this test needs one"
+
+    x = torch.randint(0, SMALL.vocab_size, (4, SMALL.seq_len))
+    y = torch.randint(0, SMALL.vocab_size, (4, SMALL.seq_len))
+    _, loss = model(x, y)
+    loss.backward()
+
+    def covariances():
+        out = {}
+        for group in rot.param_groups:
+            for p in group["params"]:
+                acc = rot.state.get(p, {}).get("cov")
+                if acc is not None and acc.ready:
+                    out[id(p)] = acc.matrix.clone()
+        return out
+
+    before = covariances()
+    assert before, "no covariance was accumulated, so the test cannot see the bug"
+
+    with _recorders_off(recorder):
+        _measure_loss(model, x, y, 0, cfg, "cpu")
+    guarded = covariances()
+    for key, was in before.items():
+        assert torch.equal(was, guarded[key]), "a guarded diagnostic forward moved `A`"
+
+    _measure_loss(model, x, y, 0, cfg, "cpu")
+    unguarded = covariances()
+    assert any(
+        not torch.equal(before[key], unguarded[key]) for key in before
+    ), "an unguarded forward left `A` untouched, so the guard is pinning nothing"

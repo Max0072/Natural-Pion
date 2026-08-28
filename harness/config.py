@@ -263,6 +263,22 @@ class RunConfig:
     # while it ran fine on b200. Lowering `rho_every` does not help: one
     # evaluation is already too large.
     rho_micro: int = 0
+    # Measure the reduction ratio on a *fresh* batch as well as on the batch
+    # whose gradient produced the step, and log it as `rho_held`.
+    #
+    # `rho` as measured is evaluated on the batch it was fit to, so it asks
+    # whether the quadratic model described *that* batch. A step several times
+    # too long still describes it, because it is descending that batch's own
+    # quadratic -- and the step here is 96.4% sampling noise, so the batch's
+    # quadratic and the expected one are not the same object. That is the
+    # obvious candidate for why a controller targeting `rho ~ 1` settles two to
+    # four times above the swept optimum: the quantity it steers by is blind by
+    # construction to the error that makes the step too long.
+    #
+    # Costs two extra chunked forwards per measurement, on a second reader over
+    # the training corpus offset by its seed. Diagnostic only for now -- the
+    # controller still steers on the same-batch value.
+    rho_holdout: bool = False
     # Adapt `eta` on the reduction ratio -- the classical trust-region radius
     # update, applied to the thing that actually scales the step. The floor
     # stays. `damped.py` adapted a damping that *replaced* the floor, and that
