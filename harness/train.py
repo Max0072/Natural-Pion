@@ -526,9 +526,29 @@ def train(
                 float(rot.state[p].get("pred_drop", 0.0))
                 for g in rot.param_groups for p in g["params"] if p in rot.state
             )
+            # Chunked, because this is the one forward in the harness that was
+            # not. It runs *after* `rot.step()`, so the optimizer's persistent
+            # state -- `A`, `D` and both bases -- is already resident, and the
+            # head materialises `vocab x tokens` logits: 32100 x 131072 x 2 is
+            # 8.4 GB. At a measured 82.6 GB peak on a 96 GiB card there is no
+            # room for it, and `rho_every` OOMed on rtx while running fine on
+            # b200's larger cards. Reducing the *frequency* does not help --
+            # one evaluation is already too large -- so the size is what has to
+            # give. The loss is a mean over tokens, so equal chunks average.
+            chunk = cfg.rho_micro or x.shape[0]
             with torch.no_grad(), _autocast(cfg, device):
-                _, after = model(x, y)
-            rho = (loss_sum - float(after)) / predicted if predicted else float("nan")
+                if chunk >= x.shape[0]:
+                    _, after = model(x, y)
+                    after = float(after)
+                else:
+                    total, n = 0.0, 0
+                    for i in range(0, x.shape[0], chunk):
+                        xb, yb = x[i : i + chunk], y[i : i + chunk]
+                        _, part = model(xb, yb)
+                        total += float(part) * xb.shape[0]
+                        n += xb.shape[0]
+                    after = total / n
+            rho = (loss_sum - after) / predicted if predicted else float("nan")
             # The trust region finally gets to read the number it exists
             # for. Only the damped variant listens; the rest ignore it.
             if hasattr(rot, "adapt_damping"):

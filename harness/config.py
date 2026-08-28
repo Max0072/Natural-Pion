@@ -255,6 +255,14 @@ class RunConfig:
     # perhaps five times in its entire evaluation. kfac-jax uses an interval of
     # **5**. One extra forward pass every `rho_every` steps is the whole cost.
     rho_every: int = 0
+    # Sequences per chunk in the reduction-ratio forward. `0` evaluates it in
+    # one piece, which is what it always did. It runs after the optimizer step,
+    # so the optimizer's persistent state is resident and the head's
+    # `vocab x tokens` logits are 8.4 GB on top -- enough to OOM a 96 GiB card
+    # at a measured 82.6 GB peak, which is what happened to `rho_every` on rtx
+    # while it ran fine on b200. Lowering `rho_every` does not help: one
+    # evaluation is already too large.
+    rho_micro: int = 0
     # Adapt `eta` on the reduction ratio -- the classical trust-region radius
     # update, applied to the thing that actually scales the step. The floor
     # stays. `damped.py` adapted a damping that *replaced* the floor, and that

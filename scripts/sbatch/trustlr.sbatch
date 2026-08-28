@@ -51,7 +51,7 @@ apptainer exec --env PYTHONUNBUFFERED=1 --env PYTHONPATH="$REPO" \
     --nv --bind "$DATA_p330:$DATA_p330" --pwd "$REPO" "$SIF" \
     python -m harness.run \
         --optimizer ngd-pion-s --lr "$ETA" \
-        --ngd-trust-lr true --rho-every 5 \
+        --ngd-trust-lr true --rho-every 5 --rho-micro 128 \
         --ngd-t-fac 25 --adamw-lr 1e-3 --precision bf16 --seed 0 \
         --max-steps 3000 --log-every 100 --eval-every 500 --no-resume \
         --data-path "$DATA/c4_train.bin" --val-path "$DATA/c4_val.bin" \
