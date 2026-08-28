@@ -1,6 +1,6 @@
 # Journal index
 
-Generated from `docs/JOURNAL.md` by `scripts/journal_index.py` -- 54 entries, 4958 lines. Do not edit by hand; re-run the script.
+Generated from `docs/JOURNAL.md` by `scripts/journal_index.py` -- 55 entries, 4994 lines. Do not edit by hand; re-run the script.
 
 Line numbers are for `sed -n 'Np,+40p' docs/JOURNAL.md`.
 
@@ -60,3 +60,4 @@ Line numbers are for `sed -n 'Np,+40p' docs/JOURNAL.md`.
 | 2026-08-28 | the generator carries the half now, and it moved `pred_drop` with it | 4770 |
 | 2026-08-28 | the trust region fires zero times in 338 steps, and `eta` is doing its job | 4821 |
 | 2026-08-28 | the exact trust region: it works as a mechanism, and `curv_exact` is heavy-tailed | 4883 |
+| 2026-08-28 | Shampoo at full length: 3.5456, and it loses to `pion` by 0.17 | 4961 |

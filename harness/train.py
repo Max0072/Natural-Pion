@@ -511,7 +511,11 @@ def train(
         # Taken on the *same* batch and *before* AdamW moves the embedding and
         # the head, so neither the data changing nor the other optimizer
         # contaminates it. One extra forward every `log_every` steps.
-        watch = rot is not None and (step % cfg.log_every == 0 or step == steps - 1)
+        watch = rot is not None and (
+            step % cfg.log_every == 0
+            or step == steps - 1
+            or (cfg.rho_every and step % cfg.rho_every == 0)
+        )
         if rot is not None:
             rot.step()
         rho = predicted = None

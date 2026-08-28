@@ -243,6 +243,16 @@ class RunConfig:
     # whole batch buys 5.7x against the 13x needed -- so it has to be smoothed
     # in time, like `A` and `D` already are.
     ngd_exact_beta: float = 0.0
+    # How often the reduction ratio is measured, independently of logging. `0`
+    # keeps the old behaviour of measuring it only on logged steps.
+    #
+    # This mattered and nobody noticed: `rho` is what the Levenberg-Marquardt
+    # rule in `damped.py` adapts on, and it was tied to `log_every`. At
+    # `log_every = 100` the rule fired once every hundred steps, and the run
+    # that judged it a dead end was 150 steps long -- so the mechanism adapted
+    # perhaps five times in its entire evaluation. kfac-jax uses an interval of
+    # **5**. One extra forward pass every `rho_every` steps is the whole cost.
+    rho_every: int = 0
     # Implementation choices. These are meant not to change the trajectory, or
     # to change it by a bounded amount, and `tests/test_unified.py` checks them
     # on that footing rather than against the classes they replace.

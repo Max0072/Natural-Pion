@@ -4956,3 +4956,39 @@ not noticed until it broke something.
 
 1.05 s/step against 1.004 for the same optimizer without it. Measuring the true
 curvature every step, on every layer, is very nearly free.
+
+
+## 2026-08-28 -- Shampoo at full length: 3.5456, and it loses to `pion` by 0.17
+
+Jobs 280810_0 and 280810_1, `shampoo-pion`, `eps = 1e-6`, 73242 steps, finished.
+
+    pion, eight runs      best 3.3719   median 3.4061   worst 3.4432
+    shampoo-pion 0.3      3.5456
+    shampoo-pion 0.1      3.6759
+    ngd-pion (S = I)      3.6728        (the earlier full-length run)
+
+**Shampoo loses to `pion` by 0.174 against its best and 0.140 against its
+median**, both far outside the 0.07 practical floor. That is a settled negative
+result for this arm at this scale.
+
+The caveat, and it is the same one for the third time: **`eta = 0.3` was the top
+of the grid.** Shampoo's optimum has sat on an edge at every horizon measured --
+150 steps, 500/1000, 3000, and now the full run -- so 3.5456 is an upper bound.
+But the deficit it would have to close is 0.17, and the deficit has been stable
+rather than shrinking since step 10000, so a further `eta` is unlikely to be
+worth 0.17.
+
+It does beat the earlier `S = I` full-length run by 0.127, so within this
+family Shampoo is not the worst thing tried. It simply is not `pion`.
+
+### What this does and does not settle
+
+It settles Shampoo as a *loss* proposition at 60M. It does not touch what the
+construction was adopted for and what it delivered: the cross-layer rotation
+angle spread of **2.3x-2.8x** against the Fisher variant's 4658x-36496x,
+obtained structurally rather than by Pion's `scaling="rms"` fiat. That remains
+the cleanest calibration result in the project and it is worth reporting even
+though the arm carrying it lost.
+
+`ngd-pion-s` at 54.9% of its own full run is already at **3.5224**, below
+Shampoo's final. Its number lands tonight and it is the one that matters.
