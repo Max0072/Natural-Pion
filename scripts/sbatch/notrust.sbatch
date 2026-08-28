@@ -16,9 +16,18 @@
 # So `trust="none"` is a real change and not a no-op, and the preconditioner
 # has never been measured without a trust region wrapped around it.
 #
-# PRE-REGISTERED: removing it lengthens the step -- mean `alpha` 0.9563 -- so
-# `eta*` should fall by roughly the same few per cent, and the grid brackets
-# the incumbent `2e-2` on both sides rather than assuming it moves.
+# THE FIRST GRID WAS WRONG AND ITS REASONING WAS WORSE. It assumed removing the
+# trust region rescales the step by the mean `alpha` of 0.9563, so `eta*` would
+# fall a few per cent. **The shortening is not uniform**: the minimum is 0.0262
+# and 13.6% of layer-steps sit below 0.9, so what is removed is a *selective*
+# brake on the layer-steps where the basis has gone stale, and the compensation
+# is nothing like 5%. Measured, the optimum sits at or below `1e-2`, the bottom
+# of that grid, and comparing a grid edge against the control's own optimum is
+# the comparison this repository lists under "do not re-litigate".
+#
+# So the deficit of 0.59 read off the first pass is an **upper bound**, and
+# whether the trust region is load-bearing is not yet answerable. This grid
+# goes down to 1/16 of the incumbent to find the edge properly.
 #   * If the arm matches the control at its own optimum, the trust region is
 #     doing nothing a learning rate cannot do, and the honest thing is to drop
 #     it from the specification.
