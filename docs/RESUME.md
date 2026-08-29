@@ -83,7 +83,7 @@ swept optimum**, at a cost still being measured.
 | | |
 |---|---|
 | momentum | best arm in the project: -0.058 against `ngd-pion-s` at matched steps and holding, at full length, in flight |
-| the trust region `quad/curv` | load-bearing: removing it costs **0.15** at its own best sampled rate, and `alpha < 1` on 37.1% of layer-steps |
+| the trust region `quad/curv` | load-bearing: removing it costs **0.15** at its own best sampled rate. It is also far more active than was thought -- unaliased over 3000 steps at the good rate, `alpha = 1` on only **9.4%** of layer-steps and the median is **0.34**; at `eta = 0.077` the median is 0.026, absorbing a fortyfold overshoot. The old "37.1%" was aliased |
 | `quad/curv_exact` per layer | a real trust region, and unusable: the per-layer signal is 8.4x under 109.5x of estimation noise. More tokens cannot close it -- the whole batch buys 5.7x against the 13x needed |
 | Shampoo on `so(n)` | **loses by 0.174 at full length**. Delivers the cleanest calibration in the project -- cross-layer angle spread **2.3-2.8x** against the Fisher variant's 4658-36496x, structurally rather than by Pion's `rms` fiat. And it is **prior art**: their own `pion_msign.py` is its memoryless case |
 | orthogonal init | 0.117 behind at 3000 steps, consistently |
@@ -99,6 +99,8 @@ swept optimum**, at a cost still being measured.
   `shampoo-pion`, `eta = 1e-1` is the worst arm at step 500 and the best from
   1000. For `ngd-pion-m`, `2e-2` wins at 3000 and loses from 500 onward at
   length. Every sweep here before 2026-08-27 used 150 steps.
+* **Every `alpha` this project has quoted was aliased too**, found 2026-08-29 by the same arithmetic. `log_every = 100` is a multiple of `t_fac = 25`, so all 41048 diagnostic rows of the full-length run sit at `step % 25 == 1`, one step after a refactorisation and the freshest the basis ever is. Use `log_every = 97`.
+* **`t_fac = 25` and `beta_D = 0.5` disagree by 12x.** The basis is built from a `D` that is forgotten two steps later and then used for twenty-three more, and `alpha` spends the cycle compensating. Job 299611 sweeps the pair.
 * **Every `rho` quoted before 2026-08-28 was aliased.** `log_every = 100` is a
   multiple of `t_fac = 25`, so every logged row sat on a refactorisation
   boundary with a fresh basis, `alpha = 1` and the lowest `rho` of the cycle.
