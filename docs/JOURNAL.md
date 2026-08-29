@@ -5381,3 +5381,90 @@ of each at a fixed `eta` reads the factor straight off `pred_drop`. That is job
 298985, and the sweep's grid gets centred on what it says rather than on what
 seems reasonable -- seven grid-edge errors in one day is the reason for the
 rule.
+
+---
+
+## 2026-08-29, evening -- three hypotheses closed in a day, none of them the one
+
+### Momentum at full length: it loses
+
+    3.3719  pion, best of eight
+    3.3860  ngd-pion-s      eta = 0.01
+    3.3881  ngd-pion-m      eta = 0.02
+    3.3941  ngd-pion-m      eta = 0.01
+    3.4061  pion, median
+
+`ngd-pion-m` was recorded as "the single run most likely to turn the tie into a
+result". It finished **behind** `ngd-pion-s`. The step-equivalent advantage was
+real and decayed monotonically -- 1.60x at 10000 steps, 1.36x at 25000, 1.19x
+at 40000, 1.10x at 50000, below 1 by the end. This was visible as a decaying
+*vertical* gap from early on and I twice attributed that to the compressive
+nature of loss; the horizontal reading, which is the one this project's own
+rule prescribes, showed it was not.
+
+`eta = 0.01` led `0.02` for the whole middle of the run and finished behind it.
+Fourth instance of an ordering that does not survive to the end.
+
+### The true Fisher: no effect
+
+Eight arms, each half on its own measured `eta` grid (job 299598), grids centred
+on the calibration in job 299571 rather than on a guess:
+
+    mc = 0    best 3.9091 at eta = 0.006
+    mc = 1    best 3.9102 at eta = 0.007
+
+0.001 apart, both optima interior. The empirical-versus-true Fisher distinction,
+which is the standard published explanation for natural gradient
+underdelivering, does nothing here.
+
+A curiosity left open: the calibration measured the true Fisher to be 7.3x
+smaller and the rotation angle 4.9x larger at fixed `eta`, yet the optimum
+`eta` is the same. A fivefold longer step, equally good.
+
+### The cadence: the mechanism is confirmed and the cure makes it worse
+
+    t_fac  beta_D   median alpha   val@3000
+        1     0.9         1.000      3.9475
+        5     0.9         0.856      3.9326
+       25     0.9         0.290      3.9257
+       25     0.5         0.245      3.9312   <- the current algorithm
+
+`alpha` is governed by `t_fac` and `beta_D` exactly as predicted, and reaches 1
+when the basis is rebuilt every step -- the staleness was real and is now
+measured. But removing it *costs* loss, and the best cell of the grid still does
+not reach the fixed-`eta` optimum of 3.9091. So basis staleness is not a disease
+to be cured: the trust region shortening the step is doing useful work, not
+compensating for a defect.
+
+One thing worth keeping: **`beta_D = 0.9` beats the default 0.5 at every
+`t_fac`** -- 3.9860 -> 3.9475, 4.0129 -> 3.9326, 3.9312 -> 3.9257. Systematic,
+small (0.006 at the current cadence), and never tested before today.
+
+### Where that leaves the diagnosis
+
+Closed today, each by measurement: the spectral floor is not eating the
+preconditioner (`iso-cos` 0.82 at the median, 3443x of dynamic range); the
+empirical Fisher is not the problem; basis staleness is not the problem;
+momentum does not win at length.
+
+What remains is the reading the `96.4%` figure always supported. `F^-1`
+lengthens the step in the directions of least curvature -- that is the whole
+idea -- and those are exactly the directions the data constrains least. The
+method takes its longest steps where its estimate is worst. Amari's advantage
+is stated for the deterministic gradient flow; at 96% noise that regime is far
+away. It also explains why more preconditioning does not help while the trust
+region's shortening does: the spectral floor is a crude shrinkage toward the
+identity, and we are already past the point where more `F^-1` pays.
+
+That reading makes a sharp prediction -- the advantage should appear as the
+noise falls, and batch size is the cheapest way to lower it. **Batch size has
+never been varied in this project.** `scripts/probes/noise_vs_batch.py`
+measures the curve before any training run is spent on it (job 300319).
+
+### A note on the cluster, again
+
+Job 300318 was pinned to rtx6002 with `-w` and sat in the queue for forty
+minutes because another user took the whole node. Pinning is right after the
+rtx6001 packing incident, but a pinned job should be checked for `(Resources)`
+rather than assumed to be running -- the same lesson as the three hours lost
+this morning, in a different disguise.

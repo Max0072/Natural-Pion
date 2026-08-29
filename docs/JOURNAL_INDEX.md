@@ -1,6 +1,6 @@
 # Journal index
 
-Generated from `docs/JOURNAL.md` by `scripts/journal_index.py` -- 60 entries, 5322 lines. Do not edit by hand; re-run the script.
+Generated from `docs/JOURNAL.md` by `scripts/journal_index.py` -- 62 entries, 5470 lines. Do not edit by hand; re-run the script.
 
 Line numbers are for `sed -n 'Np,+40p' docs/JOURNAL.md`.
 
@@ -66,3 +66,5 @@ Line numbers are for `sed -n 'Np,+40p' docs/JOURNAL.md`.
 | 2026-08-28 | `eta` finds itself from a 100x range, and every `rho` we looked at was aliased | 5079 |
 | 2026-08-29 | after midnight -- the full-length number, and the ceiling on `rho` | 5130 |
 | 2026-08-29 | the measurement was feeding the thing it measured | 5222 |
+| 2026-08-29 | is the floor eating the Fisher? No. | 5326 |
+| 2026-08-29 | evening -- three hypotheses closed in a day, none of them the one | 5387 |
