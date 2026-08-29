@@ -58,6 +58,17 @@
 # `beta_D` stays at the default 0.5 even though 0.9 measured better today, so
 # that this varies batch and nothing else.
 #
+# `micro_batch = 256`, not the usual 512. At 512 the run peaks at 82.58 GB of a
+# 96 GB card and eight of them side by side OOM intermittently in the allocator
+# (`expandable_segments: memory mapping failed`, job 300471): the B=512 arms
+# never reached step 0 and the B=2048 arms stopped after it. The cards were
+# verified clean afterwards, so nothing had leaked -- thirteen gigabytes of
+# headroom is simply not enough. Why the identically-configured `fisher` grid
+# survived on rtx6002 is not explained; 256 removes the question by halving the
+# activation peak. The covariance then sees 256 sequences a step instead of 512,
+# uniformly across every arm, and `config.py` already argues one micro-batch is
+# far more than it needs.
+#
 #   sbatch -p rtx scripts/sbatch/batchscale.sbatch
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
@@ -88,8 +99,9 @@ apptainer exec --env PYTHONUNBUFFERED=1 --env PYTHONPATH="$REPO" \
     --nv --bind "$DATA_p330:$DATA_p330" --pwd "$REPO" "$SIF" \
     python -m harness.run \
         --optimizer "$O" --lr "$L" \
-        --batch-sequences "$B" --micro-batch 512 \
+        --batch-sequences "$B" --micro-batch 256 \
         --train-steps "$STEPS" \
+        --rho-micro 128 \
         --ngd-t-fac 25 --adamw-lr 1e-3 --precision bf16 --seed 0 \
         --log-every 97 --eval-every "$EVERY" --no-resume \
         --data-path "$DATA/c4_train.bin" --val-path "$DATA/c4_val.bin" \
