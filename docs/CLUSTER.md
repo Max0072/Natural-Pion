@@ -532,3 +532,26 @@ UUIDs). So this is a property of rtx6001 on the day, not of the submission.
 Every GPU sbatch script now prints `CUDA_VISIBLE_DEVICES` and the card's UUID
 before starting. Distinct UUIDs across tasks is the check; identical ones mean
 cancel immediately rather than wait. Three hours were lost to not having it.
+
+## rtx6003 wedges an eight-task array (2026-08-29, evening)
+
+Job 300486, eight `ngd-pion-s` arms, `-w rtx6003`, one GPU each and eight
+distinct UUIDs confirmed at startup. Every arm wrote its step-0 row and then
+stopped. Attaching with `srun --overlap --jobid=<real JobId>`:
+
+    GPU utilisation   0 %
+    memory used       49309 MiB
+    load average      8.00 on 64 cores   (one spinning thread per process)
+
+Memory allocated, cards idle, nothing in stderr. That is the same signature
+already recorded for rtx6004. The node had run a 20-hour job and two probes
+without trouble earlier the same day, so it is eight-way concurrency that
+provokes it, not the node as such -- rtx6002 ran an identical eight-arm array
+(job 299598) to completion an hour earlier.
+
+Two practical notes. `srun --overlap --jobid=` needs the **real** `JobId` from
+`scontrol show job <array>_<task>`, not the `ArrayJobId`; passing the array id
+fails with "Job is pending execution". And `log_every` doubles as the monitoring
+interval: at 97 there is no way to tell a wedged run from a slow one for the
+first 97 steps, which cost most of an hour here. Keep it small on a grid whose
+speed is not yet known.

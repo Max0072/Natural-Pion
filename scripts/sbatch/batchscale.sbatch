@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH -A p330
 #SBATCH -J batchscale
-#SBATCH --array=0-15%8
-#SBATCH -w rtx6003
+#SBATCH --array=0-15%7
+#SBATCH -w rtx6002
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH -t 04:00:00
@@ -69,6 +69,11 @@
 # uniformly across every arm, and `config.py` already argues one micro-batch is
 # far more than it needs.
 #
+# `log_every = 23`, coprime with `t_fac = 25`. Not 25, which would re-create
+# the aliasing that spoiled every `rho` and every `alpha` this project has
+# quoted, and small enough that a wedged run is distinguishable from a slow one
+# within a minute -- at 97 it was not, and that cost most of an hour on rtx6003.
+#
 #   sbatch -p rtx scripts/sbatch/batchscale.sbatch
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
@@ -103,6 +108,6 @@ apptainer exec --env PYTHONUNBUFFERED=1 --env PYTHONPATH="$REPO" \
         --train-steps "$STEPS" \
         --rho-micro 128 \
         --ngd-t-fac 25 --adamw-lr 1e-3 --precision bf16 --seed 0 \
-        --log-every 97 --eval-every "$EVERY" --no-resume \
+        --log-every 23 --eval-every "$EVERY" --no-resume \
         --data-path "$DATA/c4_train.bin" --val-path "$DATA/c4_val.bin" \
         --out-dir "$OUT"
