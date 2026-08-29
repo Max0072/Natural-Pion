@@ -2,7 +2,7 @@
 #SBATCH -A p330
 #SBATCH -J cadence
 #SBATCH --array=0-8%8
-#SBATCH -w rtx6001
+#SBATCH -w rtx6002
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH -t 06:00:00
@@ -68,7 +68,15 @@ T="${TFAC[$SLURM_ARRAY_TASK_ID]}"
 B="${BETAD[$SLURM_ARRAY_TASK_ID]}"
 
 echo "node $(hostname)  task ${SLURM_ARRAY_TASK_ID}  t_fac=$T  beta_D=$B  eta adaptive from 0.02"
-nvidia-smi --query-gpu=name --format=csv,noheader
+# WHICH physical card, not just which model. Job 299611 put eight array tasks on
+# rtx6001 and SLURM packed them onto fewer GPUs than it handed out: tasks 6 and 7
+# hit `expandable_segments: memory mapping failed ... free: 5832704` in their
+# first second, and all eight sat at step 0 for three hours retrying. The
+# giveaway was OOM warnings agreeing to the microsecond across processes that
+# were supposed to be on separate cards. Printing the UUID makes that visible
+# immediately instead of after three wasted hours.
+echo "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-unset}"
+nvidia-smi --query-gpu=uuid,name,memory.used --format=csv,noheader
 
 apptainer exec --env PYTHONUNBUFFERED=1 --env PYTHONPATH="$REPO" \
     --env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \

@@ -506,3 +506,29 @@ linear layers instead of `nn.Linear`, a fused QKV projection, and an all-reduced
 covariance under tensor parallelism. It is worth doing for **one** run, and only
 if the anchor fails in our harness in a way the known differences do not
 explain.
+
+
+## rtx6001 packed an eight-task array onto fewer GPUs than it granted (2026-08-29)
+
+Job 299611 submitted `--array=0-8%8 -w rtx6001 --gres=gpu:1`, which should place
+one task per card on an eight-GPU node that `sinfo` reported idle and
+`scontrol` confirmed was allocated to us alone. It did not. All eight tasks sat
+at step 0 for **two hours and forty-nine minutes**, looping on
+
+    expandable_segments: memory mapping failed with OOM on device 0 while
+    trying to map 20971520 bytes (free: 5832704, total: 101975851008)
+
+The tell was that the warnings agreed to the microsecond across processes that
+were supposed to own separate cards (`11:00:31.360537`, `.360472`, `.360877`),
+and that tasks 6 and 7 -- which started 24 minutes after the first six -- hit
+OOM in their first second, with the node already full. After cancelling, an
+`srun` on rtx6001 showed all eight cards at 0 MiB, so nothing had leaked; the
+memory had been ours.
+
+**The identical array ran fine on rtx6002** minutes earlier (job 299598, eight
+arms, 3000 steps each) and again afterwards (job 299817, eight distinct GPU
+UUIDs). So this is a property of rtx6001 on the day, not of the submission.
+
+Every GPU sbatch script now prints `CUDA_VISIBLE_DEVICES` and the card's UUID
+before starting. Distinct UUIDs across tasks is the check; identical ones mean
+cancel immediately rather than wait. Three hours were lost to not having it.
