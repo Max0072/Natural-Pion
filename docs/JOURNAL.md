@@ -5320,3 +5320,64 @@ C repairs the broken number: it is A's own settings plus the controller, so the
 deficit becomes a one-variable comparison. Nothing on disk could be reused for
 it, because every earlier fixed-rate run had `rho_every` unset -- which is the
 bug restated as a fact about the archive.
+
+---
+
+## 2026-08-29 -- is the floor eating the Fisher? No.
+
+The question came from the user: natural gradient is supposed to converge much
+faster than ordinary methods, and here it does not obviously do so, so perhaps
+the Fisher is being computed wrong. The cheapest way that happens without any
+visible bug is the spectral floor swallowing the spectrum -- `natural_gradient`
+divides by `2(lam_i + lam_j)` with `lam` already floored, so if most of `lam`
+sits on the floor the division is a scalar multiply and the method is the raw
+gradient on the rotation group with an expensive no-op attached.
+
+`scripts/probes/floor_bites.py`, on the finished full-length checkpoint, at the
+`eps = 1e-4` that **all 163 `ngd` runs in this project have used**:
+
+                    median over 56 layers    worst layer
+    A floored              0.2%                 96.5%
+    A iso-cos              0.82                  0.99
+    D floored              0.0%                 47.3%
+    D iso-cos              0.88                  0.35
+
+`iso-cos` is the cosine between `F^-1 G` and `G` for isotropic `G`, in closed
+form `mean(1/d)/sqrt(mean(1/d^2))` over the denominator; it is exactly 1 iff
+the operator is a scalar. At the median the floor touches 0.2% of `A`, the
+denominator keeps 3443x of dynamic range, and `iso-cos` is 0.82. **The
+preconditioner is alive.** Lowering `eps` to 1e-6 or below does not move the
+median at all (3443 -> 3443), so there is no lever there either.
+
+The tail is real though, and it is the shape the hypothesis predicted. Sorted
+by `iso-cos`, the layers where the floor does not bite are the ones doing the
+most preconditioning (0.56-0.73), while the layers with 96.5%, 74%, 72% and
+66.7% of `A` under the floor all have `iso-cos >= 0.90` -- on those we are
+running a raw gradient. A handful out of 56, so a narrow lever, but it is the
+first evidence that `eps` is not innocent, and it was chosen once and never
+revisited.
+
+### What the hypothesis narrows to
+
+Two things at the centre of the Fisher estimate that have never been varied:
+
+* **`beta_D = 0.5`, in all 76 runs that have it.** An EMA horizon of two calls.
+  One of the two factors we invert is estimated from the last two batches.
+* **The empirical Fisher.** Every headline run has `mc_every = 0`. The true
+  (MC) Fisher was evaluated exactly once, in `mcfisher2`, at **150 steps** --
+  the protocol this project has since caught inverting rankings three separate
+  times -- and confounded with two other changes, which the journal entry for
+  it already says it failed to separate. The inadequacy of the empirical Fisher
+  as a curvature matrix away from the optimum is the standard published reason
+  natural gradient underdelivers, and here it is untested.
+
+### Calibration before the sweep
+
+`mc = 1` changes the *scale* of `D`, hence of `F`, hence the natural step
+length, so comparing `mc = 0` against `mc = 1` at a shared `eta` would be the
+error this project has a standing rule against. It does not have to be guessed:
+`quad = <G, F^-1 G>` scales as `1/k` when `F` scales as `k`, so a hundred steps
+of each at a fixed `eta` reads the factor straight off `pred_drop`. That is job
+298985, and the sweep's grid gets centred on what it says rather than on what
+seems reasonable -- seven grid-edge errors in one day is the reason for the
+rule.
