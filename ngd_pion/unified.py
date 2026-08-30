@@ -176,6 +176,7 @@ class NGDPionUnified(NGDPionS):
         ns_iters: int = 2,
         ns_guard: float = 0.5,
         angle: str = "power",
+        power: float = 1.0,
         **kwargs,
     ) -> None:
         if momentum not in ("none", "lie", "ambient"):
@@ -210,12 +211,26 @@ class NGDPionUnified(NGDPionS):
             )
         if ns_iters < 1:
             raise ValueError(f"ns_iters must be at least 1, got {ns_iters}")
+        if not 0.0 <= power <= 1.0:
+            raise ValueError(f"power must lie in [0, 1], got {power}")
+        if power != 1.0 and trust != "none":
+            # `alpha = quad / curv` is derived from `X = F^-1 G` holding exactly,
+            # which is what makes it dimensionless. At `power = 1/2`, `curv` is
+            # `sum g^2` while `quad` is `sum g^2 / sqrt(d)`, so the ratio carries
+            # units of `1/sqrt(d)` and is not a multiplier at all. `powered.py`
+            # silently forces `alpha = 1`; here the caller is told instead,
+            # because a trust region that quietly stops being one is exactly the
+            # kind of thing this project has spent days chasing.
+            raise ValueError(
+                f"power={power} is not a natural gradient, so quad/curv has units "
+                "and cannot scale the step; pass trust='none' to mean it"
+            )
         super().__init__(params, **kwargs)
         for group in self.param_groups:
             group.update(
                 use_s=use_s, momentum=momentum, beta1=beta1,
                 retraction=retraction, ns_iters=ns_iters, ns_guard=ns_guard,
-                angle=angle, trust=trust, exact_tokens=exact_tokens,
+                angle=angle, trust=trust, exact_tokens=exact_tokens, power=power,
                 exact_beta=exact_beta, trust_lr=trust_lr,
                 trust_lr_cap=trust_lr_cap, lr_scale=1.0,
                 trust_lr_lo=trust_lr_lo, trust_lr_hi=trust_lr_hi,
@@ -351,10 +366,16 @@ class NGDPionUnified(NGDPionS):
                 if is_identity(gram_in)
                 else basis_congruence(A, gram_in, eps)
             )
+            # `power` rides on the basis, where `Basis.denominator` raises
+            # `2(lam_i + lam_j)` to it. `1.0` is the natural gradient and is the
+            # default, so this reconstructs exactly what it used to.
+            power = group["power"]
             for i, p in enumerate(members):
                 self.state[p]["bases"] = (
-                    type(basis_in)(basis_in.P[i], basis_in.lam[i], basis_in.orthogonal),
-                    type(basis_out)(basis_out.P[i], basis_out.lam[i], basis_out.orthogonal),
+                    type(basis_in)(basis_in.P[i], basis_in.lam[i], basis_in.orthogonal,
+                                   None, power),
+                    type(basis_out)(basis_out.P[i], basis_out.lam[i], basis_out.orthogonal,
+                                    None, power),
                 )
                 self.state[p]["since_refactor"] = 0
 

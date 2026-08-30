@@ -178,6 +178,27 @@ class RunConfig:
     # Exponent on the operator's eigenvalues for `ngd-pion-pow`: 1.0 is the
     # natural gradient, 0.5 is what Adam does to its second moment.
     ngd_power: float = 0.5
+    # The same exponent, for the measured-`S` variants, and deliberately a
+    # SEPARATE field with a different default.
+    #
+    # `ngd_power` exists for `ngd-pion-pow`, where 1/2 is the whole point of the
+    # variant, so its default is 0.5. Routing that field into `ngd-pion-s` would
+    # silently change the algorithm for every configuration already on disk.
+    # Reusing one name for two quantities is precisely how `ngd_power` came to
+    # reach the run hash without reaching the optimizer in the first place; see
+    # the note beside `ShampooPion` in `harness/train.py`.
+    #
+    #     1.0   the natural gradient, and what every run so far has used
+    #     0.5   the Adam and Shampoo analogue
+    #     0.0   no preconditioning at all
+    #
+    # At 1/2 the cross-layer scale fixes itself: with `d ~ ||A|| ||S||` and
+    # `G_in ~ W delta x`, the step comes out independent of the backward signal,
+    # the activations and the weights alike. That is the calibration Pion takes
+    # by fiat with `scaling="rms"`, and whose absence was measured here as a
+    # per-layer rotation-angle spread of 4658x to 36496x against Shampoo-on-so(n)'s
+    # 2.3-2.8x. Anything other than 1.0 requires `ngd_trust="none"`.
+    ngd_s_power: float = 1.0
     # Draw the labels for `E[dd^T]` from the model instead of from the data,
     # every this many steps; `0` keeps the empirical Fisher. Only `ngd-pion-s`
     # reads it.

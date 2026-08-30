@@ -455,3 +455,60 @@ def test_trust_lr_scales_the_step():
         ref.observe(q, x); ref.observe_backward(q, d)
         q.grad = G.clone(); ref.step()
     assert torch.allclose(p.detach(), q.detach(), rtol=1e-12, atol=1e-14)
+
+
+# --- the exponent on the operator -------------------------------------------
+
+
+def test_power_one_is_the_natural_gradient_unchanged():
+    """The default must reproduce every result already on disk, bit for bit."""
+    W, x, d, grads = _fixture(seed=3)
+    a, _ = _run(NGDPionUnified, W, x, d, grads, use_s=True)
+    b, _ = _run(NGDPionUnified, W, x, d, grads, use_s=True, power=1.0)
+    assert torch.equal(a, b), (a - b).abs().max()
+
+
+def test_power_reaches_the_optimizer():
+    """The bug this exists to prevent: a flag that reaches the hash, not the step.
+
+    `ngd_power` was carried in `RunConfig`, hashed into every run name, and never
+    passed to `ngd-pion-s` -- `build_optimizers` set it for `ngd-pion-pow` alone.
+    Every sweep over it on the measured-`S` variant was therefore a sweep over
+    nothing, and the directory names said otherwise.
+
+    Asserting that the group carries the value is not enough, because that was
+    true of `ngd-pion-pow` as well. What has to be asserted is that the *weights*
+    move differently.
+    """
+    W, x, d, grads = _fixture(seed=3)
+    full, opt = _run(NGDPionUnified, W, x, d, grads, use_s=True, power=1.0)
+    half, opt_half = _run(
+        NGDPionUnified, W, x, d, grads, use_s=True, power=0.5, trust="none"
+    )
+    assert opt_half.param_groups[0]["power"] == 0.5
+    assert not torch.equal(full, half), "power=0.5 left the trajectory untouched"
+    # and the bases are what carry it, not some parallel copy
+    basis_in, basis_out = next(iter(opt_half.state.values()))["bases"]
+    assert basis_in.power == 0.5 and basis_out.power == 0.5
+
+
+def test_power_below_one_refuses_a_trust_region():
+    """`quad/curv` stops being dimensionless, so it stops being a multiplier.
+
+    `powered.py` handles this by silently pinning `alpha = 1`. Here the caller is
+    told, because a trust region that quietly stops being one is the shape of
+    several days lost on this project.
+    """
+    with pytest.raises(ValueError, match="quad/curv has units"):
+        NGDPionUnified(
+            [torch.nn.Parameter(torch.randn(M, N, dtype=DT))],
+            lr=0.05, compute_dtype=DT, power=0.5,
+        )
+
+
+def test_power_zero_removes_the_preconditioner_from_the_denominator():
+    """At `power = 0` the denominator is 1 and the step is the raw generator."""
+    W, x, d, grads = _fixture(seed=4)
+    _, opt = _run(NGDPionUnified, W, x, d, grads, use_s=True, power=0.0, trust="none")
+    basis_in, _ = next(iter(opt.state.values()))["bases"]
+    assert torch.allclose(basis_in.denominator, torch.ones_like(basis_in.denominator))
