@@ -555,3 +555,29 @@ fails with "Job is pending execution". And `log_every` doubles as the monitoring
 interval: at 97 there is no way to tell a wedged run from a slow one for the
 first 97 steps, which cost most of an hour here. Keep it small on a grid whose
 speed is not yet known.
+
+## Only rtx6002 runs job arrays today (2026-08-30)
+
+The wedge first seen on rtx6003 (job 300486) repeated on rtx6001 with only four
+tasks (job 301831): every arm wrote its step-0 row and stopped, and attaching
+showed the same signature.
+
+    GPU utilisation   0 %
+    memory used       49309 MiB
+    load average      4.04 with four processes   (one spinning thread each)
+
+Memory is fine -- these ran at `micro_batch = 256`, peaking at 41.95 GB of 96 --
+so it is not the allocator. Nor is it concurrency alone: four tasks is not eight.
+
+The day's tally, which is what to act on rather than any theory of the cause:
+
+    rtx6002   every array completed        fisher (8), cadence (8), bslow (6)
+    rtx6001   wedged                       packing in the morning, 4 tasks later
+    rtx6003   wedged 8 tasks               single-GPU jobs and a 20-hour run were fine
+    rtx6004   wedged                       recorded earlier
+
+**Pin arrays to rtx6002 and queue behind our own work rather than spreading
+across nodes.** Single-GPU jobs appear safe anywhere. Check for the signature
+within a minute of the first row rather than assuming a slow start: `srun
+--overlap --jobid=<real JobId from scontrol show job <array>_<task>>` and read
+`utilization.gpu`.
