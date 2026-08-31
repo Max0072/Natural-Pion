@@ -581,3 +581,17 @@ across nodes.** Single-GPU jobs appear safe anywhere. Check for the signature
 within a minute of the first row rather than assuming a slow start: `srun
 --overlap --jobid=<real JobId from scontrol show job <array>_<task>>` and read
 `utilization.gpu`.
+
+### Staggering the starts does not fix it (2026-08-31)
+
+Tested, because the natural guess was that an array brings every task up at the
+same instant and they contend for the same container image and corpus over the
+shared filesystem. Job 304658 delayed each task by `20 * (task % 9)` seconds on
+rtx6003. Every arm still wrote its step-0 row and stopped, exactly as before.
+
+So the wedge is a property of the node, not of simultaneous starts, and not of
+job arrays as such. Three workarounds have now failed: a different node, a
+stagger, and (earlier) reducing concurrency from eight tasks to four.
+
+**Do not spend time routing around it. Queue everything on rtx6002 and accept
+the serialisation.** Roughly an hour was lost today rediscovering this.
