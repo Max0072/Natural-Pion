@@ -5,7 +5,7 @@
 #SBATCH -w rtx6002
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
-#SBATCH -t 04:00:00
+#SBATCH -t 02:30:00
 #SBATCH -o logs/%x-%A_%a.out
 #SBATCH -e logs/%x-%A_%a.err
 # AdamW owns 56.5% of the model and has never been tuned. Both rates, together.
@@ -39,8 +39,15 @@
 # control. **The B=512 cells are swept too**, or a tuned large batch would be
 # compared against an untuned small one, which is the same error in the mirror.
 #
-# 786M tokens either way -- 6000 steps at 512 sequences, 1500 at 2048 -- full
-# cosine in both, evaluations at matched token counts.
+# 393M tokens either way -- 3000 steps at 512 sequences, 750 at 2048 -- full
+# cosine in both, evaluations at matched token counts every 65.5M so the curves
+# stay comparable with the 786M runs already on disk.
+#
+# HALF THE BUDGET ON PURPOSE, as a first pass to confirm the setup runs before a
+# full night is committed to it. Read it as a check and a direction, not as the
+# answer: this project has caught a short protocol reordering arms five separate
+# times, so whichever cell wins here still has to be repeated at the full budget
+# before anything is concluded from it.
 #
 # Any cell whose optimum lands on an edge is not an answer and gets extended;
 # that has been the day's most reliable way to waste a grid.
@@ -64,7 +71,7 @@ case $CELL in
   3) OPT=pion;       B=2048; ROT=(3e-4 1e-3 3e-3); ADW=(1e-3 2e-3 4e-3) ;;
 esac
 L="${ROT[$RI]}"; A="${ADW[$AI]}"
-if [ "$B" = "512" ]; then STEPS=6000; EVERY=500; else STEPS=1500; EVERY=125; fi
+if [ "$B" = "512" ]; then STEPS=3000; EVERY=500; else STEPS=750; EVERY=125; fi
 
 echo "node $(hostname)  task $T  cell $CELL  $OPT  batch=$B  rot=$L  adamw=$A  steps=$STEPS"
 echo "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-unset}"
