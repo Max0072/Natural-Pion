@@ -119,10 +119,13 @@ implicit learning-rate warmup (median 0.001 in the first 100 steps, about 0.15 t
 step 500, 0.4 at 1000-1500, 0.93 at 2000-2500, 1.000 in the last 500, seed 1), and
 the runs have `warmup_steps = 0` for both arms as in Pion's own script. The gap to
 Pion (mean of four seeds) is +0.179 at step 500, +0.076 at 1000, +0.029 at 1500,
-+0.026 at 2000, +0.038 at 3000: mostly made early. If a warmup on Pion, or an
-explicit warmup in place of `alpha` on NGD-Pion, reproduces the gap, then the
-advantage is an early-training effect and the horizon decay has an explanation.
-Both are cheap (3000 steps) and neither has been run.
++0.026 at 2000, +0.038 at 3000: mostly made early. If an explicit warmup in place
+of `alpha` on NGD-Pion reproduces what `alpha` does, then the early advantage is
+a step-length effect and the horizon decay has an explanation. Cheap (3000 steps),
+not yet run, and to be made after B says whether removing `alpha` costs loss.
+**Not planned, by decision (ADR 0013): a warmup for Pion.** The baseline keeps the
+published recipe; Pion's step is normalised from step 0 and there is nothing in it
+to warm up.
 
 ## Stages, in order
 

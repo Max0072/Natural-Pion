@@ -5866,3 +5866,15 @@ are not touched by this.
 **For C**, the property to preserve is not "trust region" but "small step while the
 statistics are cold". A derived replacement therefore starts from that requirement,
 not from the Lyapunov-style argument the section 6 name suggests.
+
+## 2026-09-22, 02:46 -- no warmup for the Pion baseline (ADR 0013)
+
+I had proposed giving Pion a tuned warmup, as a fairness check against an
+NGD-Pion whose `alpha` acts as an implicit one. The user objected, and was right:
+Pion's rotational step is normalised from the first step and the transformation is
+orthogonal, so there is nothing in it to warm up; the AdamW half is the only
+classical place and the authors' script has none. My reason had been a guess about
+the origin of the early gap, and I had no run of published Pion showing a loss early.
+The proposal is withdrawn from the plan. The warmup question is asked on the NGD-Pion
+side only (an explicit warmup with `alpha` off, after B). Recorded as ADR 0013; PLAN
+H5 corrected. The published Pion stays untouched, tuned on `rot` and `adamw` only.
