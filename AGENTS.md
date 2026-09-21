@@ -23,7 +23,11 @@ not between two branches of it.
 0. **[`docs/RESUME.md`](docs/RESUME.md)** — start here if you are picking this
    up cold. What is in flight, the criteria already fixed, and the decision
    already taken for the case where the current attempt misses. It is a
-   snapshot: rewrite it, do not append to it.
+   snapshot: rewrite it, do not append to it. Then
+   **[`docs/PLAN.md`](docs/PLAN.md)** -- what to do next and what would kill each
+   claim, criteria fixed before the numbers -- and
+   **[`docs/VALIDATION.md`](docs/VALIDATION.md)** -- the audit of 2026-09-22:
+   what each number is and is not, including the correction to the "tie".
 1. **[`ALGORITHM.md`](ALGORITHM.md)** — the specification. Every design decision
    with the measurement that produced it. Each module implements one of its
    sections and says so in its docstring.
@@ -57,7 +61,7 @@ Carlo, the closed-form solve against an explicit Kronecker system, the descent
 lemma, the sign, Cayley's exactness, spectrum preservation. The optimizer, the
 Pion baseline with ablation switches, a LLaMA-60M harness in their
 configuration, the anchor machinery, SLURM scripts, a container definition.
-204 tests, 26 s in the container on four threads. One is skipped by design --
+262 tests, 34 s in the container on four threads (re-counted 2026-09-22). One is skipped by design --
 `square W has no kernel` -- and **none of them touches a GPU**, which is a
 property of checking the torch path against a numpy oracle rather than an
 oversight, but it does mean anything device-specific has to be checked by
@@ -341,7 +345,7 @@ Things that look right and are not. Every one of these cost real time here.
 ## Running things
 
 ```bash
-pytest -q                                        # 140 tests, 24 s
+pytest -q                                        # 262 passed, 1 skipped, ~34 s
 python -m harness.run --optimizer ngd-pion --lr 1e-3  # one run
 python -m harness.run --anchor bilateral         # the calibration run
 ```

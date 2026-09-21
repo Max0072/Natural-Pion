@@ -122,6 +122,8 @@ floored at `max(λ, ε·λ_max)`, and nothing else is damped anywhere.
 | | |
 |---|---|
 | **[`docs/RESUME.md`](docs/RESUME.md)** | **start here** — what is running right now, and what to do next |
+| **[`docs/PLAN.md`](docs/PLAN.md)** | the plan: claims stated so they can fail, stages, cost |
+| **[`docs/VALIDATION.md`](docs/VALIDATION.md)** | audit of what the numbers are, and are not |
 | **[`ALGORITHM.md`](ALGORITHM.md)** | the specification — every decision with the measurement behind it |
 | **[`AGENTS.md`](AGENTS.md)** | state of play, decisions not to reopen, traps already hit |
 | **[`docs/CLUSTER.md`](docs/CLUSTER.md)** | the cluster sequence, in order |
@@ -170,7 +172,7 @@ belong to another optimizer, which is how Pion splits parameters too.
 ## Running
 
 ```bash
-pytest -q                                        # 140 tests, 24 s
+pytest -q                                        # 262 passed, 1 skipped, ~34 s
 python scripts/prepare_data.py --out data --target-tokens 1e10
 python -m harness.run --optimizer ngd-pion --lr 1e-3
 python -m harness.run --anchor bilateral         # calibration; read AGENTS.md first
@@ -199,9 +201,14 @@ The mathematics is verified against independent routes: the Fisher operator
 against Monte Carlo, the closed-form solve against an explicit Kronecker
 system, the descent lemma, the sign, Cayley's exactness, spectrum preservation.
 
-**Nothing has been trained at scale.** The only evidence the method helps is a
-toy least-squares with an exactly reachable target, where natural gradient wins
-almost tautologically. It was a kill criterion, not a result.
+**It has been trained at scale, and the result is small.** Full-length runs
+(73 242 steps, 9.6B tokens) exist for every live variant. With AdamW pinned at
+1e-3, `ngd-pion-s` ends 0.014 behind the like-for-like Pion run (3.3860 against
+3.3719, one run each). At the classical batch with both optimizers tuned it is
+ahead early: 3.7954 against 3.8412 after 3000 steps, one seed, no error bar yet.
+What is known and what is not is in [`docs/VALIDATION.md`](docs/VALIDATION.md);
+what to do next is in [`docs/PLAN.md`](docs/PLAN.md). The toy least-squares
+check that once stood here was a kill criterion, not a result.
 
 ## Tests
 

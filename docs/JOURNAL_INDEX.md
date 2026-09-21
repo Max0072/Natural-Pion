@@ -1,6 +1,6 @@
 # Journal index
 
-Generated from `docs/JOURNAL.md` by `scripts/journal_index.py` -- 62 entries, 5470 lines. Do not edit by hand; re-run the script.
+Generated from `docs/JOURNAL.md` by `scripts/journal_index.py` -- 63 entries, 5532 lines. Do not edit by hand; re-run the script.
 
 Line numbers are for `sed -n 'Np,+40p' docs/JOURNAL.md`.
 
@@ -68,3 +68,4 @@ Line numbers are for `sed -n 'Np,+40p' docs/JOURNAL.md`.
 | 2026-08-29 | the measurement was feeding the thing it measured | 5222 |
 | 2026-08-29 | is the floor eating the Fisher? No. | 5326 |
 | 2026-08-29 | evening -- three hypotheses closed in a day, none of them the one | 5387 |
+| 2026-09-22 | audit: the "tie" was a comparison against non-replicates | 5472 |

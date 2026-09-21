@@ -5468,3 +5468,65 @@ minutes because another user took the whole node. Pinning is right after the
 rtx6001 packing incident, but a pinned job should be checked for `(Resources)`
 rather than assumed to be running -- the same lesson as the three hours lost
 this morning, in a different disguise.
+
+## 2026-09-22 -- audit: the "tie" was a comparison against non-replicates
+
+Nothing was submitted today. Read from disk: the two 2026-08-30/31 sweeps
+(`runs/batchscale`, `runs/adamw2d`), the manifests of every full-length run, the
+optimizer construction and the sampler; ran `pytest -q` in the container on the
+login node (262 passed, 1 skipped, 33.6 s). Full write-up in
+`docs/VALIDATION.md`; the plan that follows from it in `docs/PLAN.md`.
+
+### What was found
+
+**1. The 08-29 headline was wrong.** RESUME called `ngd-pion-s` 3.3860 "second
+of nine, inside `pion`'s own run-to-run spread". The manifests of those Pion
+runs show they are not replicates: two are `pion_alternate = True`, and six
+predate the two harness fixes of 2026-08-25 (AdamW `beta2` 0.999, norm gains
+decayed) that the journal itself measured at about 0.045. Only two Pion runs
+share the harness state `ngd-pion-s` ran on, and against the matching bilateral
+one (3.3719) NGD-Pion is **behind by 0.014**, n = 1 each. It was a comparison
+against a distribution that did not exist.
+
+**2. The tuned head-to-head at the classical batch finished** (job 305234, last
+log 2026-08-31 16:38) and nobody recorded it. B = 512, 3000 steps, both arms
+tuned in (rot, adamw), seed 0: `ngd-pion-s` 3.7954 (6e-3, 8e-3) against `pion`
+3.8412 (1e-3, 8e-3), gap **+0.046**, adamw bracketed for both. No error bar:
+no seed-to-seed spread exists at 3000 steps or full length.
+
+**3. The `pion` arm is published Pion**, and differs from `ngd-pion-s` in five
+things (preconditioner, momentum, RMS scaling, retraction, per-head Q), so the
++0.046 is not the contribution of `F^-1`. `pion_ablated` has never been run
+tuned or beyond 150 steps.
+
+**4. Gap against horizon and batch**, all one seed: pinned AdamW, B = 512, gap
++0.024 at 786M tokens and -0.014 at 9.6B (shrinks with length); B = 512 -> 2048
+at fixed tokens, gap +0.046 -> at most +0.108 tuned and +0.024 -> +0.136 pinned
+(grows with batch). The larger batch is worse in absolute terms by 0.26 (NGD) and
+0.32 (Pion) at the same tokens, so the growth is inside a dominated regime.
+
+### A correction to my own reasoning in this session
+
+Earlier today I quoted "sd about 0.03 between eight Pion runs" as the scale of
+the noise against which +0.046 should be read. That number came from the same
+eight non-replicates. It is void. The only measured noise is 0.002 (same seed,
+other hardware, full length) and sd 0.024 at 150 steps.
+
+### Decisions
+
+* The claim is now stated so that it can fail (`docs/PLAN.md`): four hypotheses,
+  each with a criterion for holding and for dying, written before any number.
+* **Stage 1 before everything else**: three more seeds per arm at the two
+  optima, B = 512, 3000 steps, about 2.5 h, the only thing that can put an error
+  bar on +0.046. Seeds go in waves, one seed per wave, because concurrent runs on
+  one node must share a seed.
+* **Stage 2 is the one the paper depends on**: `pion_ablated`, tuned. It is the
+  only claim in the audit's ledger with no measurement at all.
+* `ALGORITHM.md` left unedited: its decision tables still say `S = I`, no
+  momentum and `t_fac = 100`. Rewriting a specification is its own pass.
+* Corrected in place: test counts in `AGENTS.md` and `README.md`, and the
+  `README.md` status paragraph that said nothing had been trained at scale.
+
+### Not submitted, waiting on the user
+
+All of `docs/PLAN.md` stages 1-5. The deadline date decides how far it goes.
