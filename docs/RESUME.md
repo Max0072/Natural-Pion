@@ -21,7 +21,9 @@ below is seed 0, one run per cell, unless it says otherwise.
 
 ## As of 2026-09-22
 
-Nothing is running and nothing is queued. The last commit is 2026-08-31.
+Job 332045 is running (stage 1: seeds 1-3 for both arms, B = 512, 3000 steps,
+all six concurrent on `rtx6002`, output in `$DATA_p330/runs/seedshead/`). Last
+commit before today: 2026-08-31.
 
 ### The headline, corrected
 
@@ -68,15 +70,17 @@ Two further readings, each one seed:
 
 The `pion` arm is **published Pion** (Lie momentum, RMS scaling, truncated
 exponential, per-head Q). `ngd-pion-s` differs from it in five things at once,
-so the +0.046 is NGD-Pion against Pion and not the contribution of the Fisher
-preconditioner. The isolating arm, `pion_ablated`, has never been run tuned or
-beyond 150 steps. See `docs/VALIDATION.md` V2 and `docs/PLAN.md` H3.
+so the +0.046 is one whole method against another, and no single component is
+claimed. **The baseline is published Pion and nothing else** (user, 2026-09-22):
+`pion_ablated` is not a baseline, is not planned, and its old 150-step numbers
+are void. See `docs/VALIDATION.md` V2 and `docs/PLAN.md` (H3 withdrawn).
 
 ### What to do next, in order (full reasoning in `docs/PLAN.md`)
 
-1. **Seeds.** Three more seeds per arm at the two optima above, B = 512,
-   3000 steps: an error bar on the +0.046. About 2.5 h. Needs a go-ahead.
-2. **`pion_ablated`, tuned.** The one measurement the mechanism claim lacks.
+1. **Seeds.** Job 332045, submitted 2026-09-22, three more seeds per arm at the
+   two optima above: an error bar on the +0.046. Read the six vals, diff the
+   manifests against seed 0, apply the rule in `docs/PLAN.md` H1.
+2. ~~`pion_ablated`, tuned.~~ Withdrawn: the baseline is published Pion.
 3. **Horizon ladder** at 15000 steps, then the full-length pair with AdamW tuned
    for both, if the trend is not negative.
 4. Decide with the user how the paper is framed once 1 and 2 have landed.

@@ -102,11 +102,13 @@ presets in `harness/train.py::build_optimizers` and the `RunConfig` defaults:
 | refactorisation | -- | every `t_fac = 25` steps |
 
 So the `a2dhead` gap of +0.046 is **NGD-Pion against published Pion**, which is
-the comparison a reviewer asks for. It is *not* the contribution of `F^-1`:
-five things differ at once. The isolating baseline is `pion_ablated` (no
-momentum, no scaling, Cayley -- one variable away from `ngd-pion-s`), and it
-has never been run at a tuned AdamW nor beyond 150 steps. That is stage 2 of
-`docs/PLAN.md`.
+the comparison a reviewer asks for and, by the user's decision of 2026-09-22,
+the only one this project makes. It is a comparison of two whole methods: five
+things differ at once and none is claimed to be responsible. An "ablated Pion"
+(`pion_ablated`: no momentum, no scaling, Cayley) was considered as an isolating
+baseline and rejected -- it is not Pion, and it was never run beyond 150 steps,
+where it is 0.40 worse than freezing the matrices. Its retraction is forced on
+it, since their truncated exponential diverges once the RMS scaling is off.
 
 A trap seen in the code and worth writing down: `_adamw` takes
 `lr = cfg.adamw_lr or cfg.lr`, so `--adamw-lr 0` (the default) silently runs
@@ -188,6 +190,7 @@ a reproduction of theirs. This belongs in the paper as a stated limitation.
 | `README.md` "Status" | "Nothing has been trained at scale ... The only evidence the method helps is a toy" | fifteen full-length runs exist and a tuned B = 512 head-to-head; corrected in this pass |
 | `docs/RESUME.md` (old) | full-length result is a tie, "second of nine" | V1; rewritten |
 | `docs/RESUME.md` (old) open bugs | `ngd_power` inert for `ngd-pion-s` | commit `40a7886` (2026-08-30) says it now reaches the measured-`S` variant. **Not re-tested here**; the calibration job `scripts/sbatch/powercal.sbatch` was written but no `runs/powercal` exists, so the exponent has never been measured on the live arm |
+| `ALGORITHM.md` "Дизайн сравнения" | `pion_ablated` as the honest baseline, one variable from NGD-Pion | rejected 2026-09-22; the baseline is published Pion. Left in place, like the rows below |
 | `ALGORITHM.md` "Решения и почему", "Гиперпараметры", "без momentum", `T_fac = 100` | `S = I`, no momentum, `T_fac` 100 | reversed on 2026-08-27 and 2026-08-28 (`S` measured, momentum is an arm, `t_fac` 25). `AGENTS.md` carries the reversals with strikethroughs; **`ALGORITHM.md` does not**. Left unedited: it is the specification and a rewrite deserves its own pass |
 
 ## The idea, claim by claim
@@ -207,10 +210,12 @@ What the method rests on, with the status of each piece.
 | NGD-Pion beats Pion at B = 512 | **seed 0, 3000 steps only** | V1, V3, V4 |
 | the advantage grows with batch | **one seed, two protocols agree** | gap 0.046 -> at most 0.108 (tuned AdamW, 393M tokens) and 0.024 -> 0.136 (AdamW pinned, 786M tokens); both inside a worse regime (V3b) |
 | the advantage survives to full length | **no evidence, some against** | pinned AdamW: +0.024 at 786M tokens, -0.014 at 9.6B; the two are the only comparable pair and it goes the wrong way |
-| `F^-1` is what produces the advantage | **not tested** | needs `pion_ablated` at a tuned AdamW (V2) |
+| `F^-1` is what produces the advantage | **not claimed** | no ablated-Pion baseline by decision, 2026-09-22 (V2); NGD-Pion is compared to Pion as a whole |
 
-The last row is the one the paper's claim actually depends on, and it is the
-only one of the twelve with no measurement at all.
+The last row is deliberately without a measurement: the paper's claim is that
+NGD-Pion beats Pion, and the rows it depends on are "beats Pion at B = 512"
+(one seed, stage 1 is adding three), "survives to full length" (no evidence, some
+against) and the noise account of the batch dependence (one seed).
 
 ## Not checked
 

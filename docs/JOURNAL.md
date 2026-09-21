@@ -5569,3 +5569,45 @@ gaps (seed 0 plus these three) all positive and mean gap / standard error > 2.35
 
 Expected finish about 01:45 cluster time. Next: read the six final vals, diff the
 manifests against seed 0, apply the rule, rewrite RESUME.
+
+## 2026-09-22, night -- the baseline is published Pion; `pion_ablated` and stage 2 withdrawn
+
+The user, on being walked through stage 2 (`pion_ablated`, tuned): "this is
+nonsense, it should be deleted. Our baseline is plain Pion. It shouldn't work,
+because the algorithm only works whole."
+
+**Decision.** The baseline is published Pion and nothing else. NGD-Pion is
+compared to it as a whole method, and the plan makes no claim about which
+component is responsible. Hypothesis H3 and stage 2 of `docs/PLAN.md` are
+withdrawn (numbers kept, marked withdrawn, so journal references stay readable).
+`docs/PLAN.md`, `docs/VALIDATION.md`, `docs/RESUME.md`, `AGENTS.md`, `README.md`
+and `ngd_pion/README.md` now say so.
+
+**Why the user is right, from what this repository already recorded**, which is
+why it is written down here and not only accepted:
+
+* Ablating Pion's RMS scaling makes its own retraction (the truncated
+  exponential, `R^T R = I + A^4/4`) diverge within tens of steps, so the ablated
+  arm cannot run on Pion's retraction and borrows Cayley. It is not Pion with
+  one thing removed; it is a different optimizer.
+* At 150 steps it is 0.40 *worse than freezing the matrices* (6.109 against
+  5.7071), and no run of it exists past 150 steps. The journal of 2026-08-27
+  already said it "is not an isolating baseline at this horizon".
+* Its manifests record `momentum=lie, scaling=rms, retraction=trunc`, the opposite
+  of what ran, so a reader cannot tell the arm from the file.
+* My own reading of what the experiment would have shown was already weak: a
+  large gap to NGD-Pion would have meant "the preconditioner replaces the
+  normalisation Pion has for free", not "curvature helps", and separating the two
+  needs an arm ("NGD + RMS scaling") that does not exist in `unified.py`.
+
+**What this costs.** The paper can say NGD-Pion beats Pion (if stage 1 and the
+horizon stages bear that out); it cannot say the Fisher preconditioner is the
+reason. The audit ledger row for that claim now reads "not claimed".
+
+**Not done, asked.** Whether to delete `pion_ablated` from the code as well. It is
+referenced from `harness/config.py`, `harness/train.py`, three test files,
+`ngd_pion/direction.py`, `ngd_pion/shampoo.py` and seven sbatch scripts that made
+the 150-step sweeps still on disk; nothing was removed from the code.
+
+Also fixed in passing: `AGENTS.md` still said "nothing has been trained at
+scale", which the audit had already corrected in `README.md`.

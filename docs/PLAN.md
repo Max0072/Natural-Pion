@@ -4,8 +4,9 @@ Read `docs/VALIDATION.md` first: it says what the numbers below are and are not.
 Notation (`val`, `rot`, `adamw`, `B`, gap, seed) is defined at the top of that
 file and used the same way here.
 
-**Nothing in this plan has been submitted.** Every stage marked `[compute]`
-needs an explicit go-ahead before it runs, because the cluster is shared.
+**Status, 2026-09-22 night:** stage 1 is running (job 332045, see the journal);
+nothing else has been submitted. Every other stage marked `[compute]` needs an
+explicit go-ahead before it runs, because the cluster is shared.
 
 ## The claim, stated so it can fail
 
@@ -14,11 +15,19 @@ needs an explicit go-ahead before it runs, because the cluster is shared.
 `adamw` -- NGD-Pion (`ngd-pion-s`) reaches a lower val than published Pion
 (`pion`). Expected size: small, a few hundredths.
 
-**Mechanism claim.** The advantage comes from the Fisher preconditioner
-`F^-1`, and it grows with batch size, because the step is about 96% sampling
-noise (measured) and a more accurate preconditioner only pays when the noise is
-low. Same picture as K-FAC in the literature (Shallue et al. 2018; Zhang et al.
+**Supporting observation, not a claim the paper depends on.** The advantage
+should grow with batch size, because the step is about 96% sampling noise
+(measured) and a more accurate preconditioner only pays when the noise is low.
+Same picture as K-FAC in the literature (Shallue et al. 2018; Zhang et al.
 2019 -- as I recall them; not re-checked against the papers).
+
+**The baseline is published Pion, and only that.** Decision of the user,
+2026-09-22. NGD-Pion is compared to Pion as a whole, the way a method is
+compared to a method. There is no ablated-Pion arm in this plan: an optimizer
+built by switching off Pion's momentum and RMS scaling and forcing a different
+retraction is not Pion, and no result on it says anything about Pion. The plan
+therefore makes no claim about which component of NGD-Pion is responsible for a
+gain, only whether there is one.
 
 **What is already on disk, and how much it supports** (all seed 0, n = 1):
 
@@ -63,23 +72,17 @@ Pion's AdamW edge is closed (its optimum at 2048 is still moving outward).
 *Never claim:* that a larger batch is a reason to use the method. At the same
 tokens B = 2048 is 0.26-0.32 worse than B = 512 for both arms.
 
-**H3 -- `F^-1` is what produces the gap.**
-Today's gap is NGD-Pion against *published* Pion, which differs in five things
-(see V2 of the validation file). *Test:* `pion_ablated` -- no momentum, no
-scaling, Cayley, so one variable from `ngd-pion-s` -- at B = 512, 3000 steps,
-with its own tuned `rot` and `adamw`.
-*Prediction if `F^-1` matters:* val(`pion_ablated`) is clearly worse than
-val(`ngd-pion-s`) by more than the seed noise from H1.
-*Dies if:* `pion_ablated` matches `ngd-pion-s` within that noise. Then what
-beats Pion is not the preconditioner but the removal of RMS scaling and the
-exact retraction, and the paper's mechanism claim has to be rewritten around
-that. This is the most important stage in the plan and the only one of the
-paper's claims with no measurement yet.
-*Dose-response, if H3 holds:* the exponent `p` in `F^-p`. `ngd_s_power` now
-reaches the live arm (commit `40a7886`) and `scripts/sbatch/powercal.sbatch`
-exists but was never run. If gain rises with `p` the mechanism is the
-preconditioner and not a side effect. Needs a step-scale calibration first,
-which the sbatch file already argues for.
+**H3 -- withdrawn.** It was "the preconditioner `F^-1` is what produces the gap",
+to be tested against `pion_ablated`. Withdrawn on 2026-09-22 at the user's
+decision: the ablated arm is not a baseline (see above), and the comparison that
+matters is against published Pion. The hypothesis number is kept so that the
+journal's references to it stay readable. What the audit found about that arm,
+so that it does not get rebuilt by someone who has not read this: at 150 steps
+it is 0.40 *worse than freezing the matrices* (val 6.109 against 5.7071), its
+Cayley retraction is forced on it rather than chosen (their truncated
+exponential diverges within tens of steps once the RMS scaling is off), its
+manifests record the un-ablated settings, and no run of it exists beyond 150
+steps.
 
 **H4 -- the advantage survives to the full 9.6B tokens.**
 Pinned-AdamW evidence points the wrong way (+0.024 at 786M, -0.014 at 9.6B).
@@ -98,10 +101,10 @@ difference (loss is compressive; see the 2026-08-28 entry).
 |---|---|---|---|
 | **0** | documentation and audit: this file, `VALIDATION.md`, `RESUME.md`, journal, stale-number fixes | none, **done 2026-09-22** | -- |
 | **1** `[compute]` | **H1: seeds.** Seeds 1, 2, 3 for `ngd-pion-s` (rot 6e-3, adamw 8e-3) and `pion` (rot 1e-3, adamw 8e-3), B = 512, 3000 steps. Six runs | about 42 min per `ngd-pion-s` run and about half that for `pion`, measured from the `a2dhead` timestamps with seven jobs sharing a node. Two runs per seed at a time, three seeds one after another: **about 2.5 h wall** | user go-ahead |
-| **2** `[compute]` | **H3: `pion_ablated`** at B = 512, 3000 steps. First a calibration of `rot` (its old sweep was 150 steps at pinned adamw and is void, `runs/ablated/`), then a `rot` x `adamw` grid on seed 0, then the seeds from stage 1 at its optimum | calibration under 1 h; grid about 5-8 runs of ~25 min; seeds 3 runs | stage 1 result |
-| **3** `[compute]` | **H4 ladder:** both arms at their optima, 15000 steps (1.97B tokens, 20% of the budget), AdamW neighbours on both sides | about 3.5 h per `ngd-pion-s` run, about 1.7 h per `pion`; four to six runs | stages 1-2 |
+| **2** | ~~H3: `pion_ablated`~~ **withdrawn 2026-09-22** by the user's decision: the baseline is published Pion | -- | -- |
+| **3** `[compute]` | **H4 ladder:** both arms at their optima, 15000 steps (1.97B tokens, 20% of the budget), AdamW neighbours on both sides | about 3.5 h per `ngd-pion-s` run, about 1.7 h per `pion`; four to six runs | stage 1 |
 | **4** `[compute]` | **H4 full length:** the two arms, 73 242 steps, tuned `adamw` carried from stage 3, one neighbouring `adamw` each | `ngd-pion-s` about 19.7 h (0.967 s/step on rtx, close to the 24 h partition cap; resubmitting resumes from the checkpoint), `pion` about 9.4 h | stage 3 shows the trend is not negative |
-| **5** optional `[compute]` | H2 extension (B = 128) and the `F^-p` dose-response | a grid each | after 1-2 |
+| **5** optional `[compute]` | H2 extension (B = 128) | a grid | after stage 1 |
 
 Stage 1 comes before every other compute stage because it costs about 2.5 h,
 it is the only stage that can put an error bar on today's headline number, and
@@ -109,10 +112,11 @@ it decides whether stages 3-4 are worth 30 GPU-hours.
 
 ### Rules for every stage (the project's own, and why)
 
-* **Concurrent runs on one node must share a seed.** Different seeds read
-  different corpus windows and starve each other for I/O. So stage 1 goes as
-  three waves, one seed per wave, both arms inside a wave, not as six runs at
-  once.
+* **Concurrent runs on one node should share a seed**, because different seeds
+  read different corpus windows and can starve each other for I/O. The user
+  waived this for stage 1 ("run them all in parallel") and all six runs share
+  one node at once; the step time against the solo figure is the check that the
+  rule was not needed.
 * **Pin the node** (`-w rtx6002`, the one that has been reliable) and **check
   that the step counter advances** a few minutes after start: RUNNING in SLURM
   does not mean computing, and a pinned job can sit `(Resources)` behind
@@ -132,10 +136,12 @@ it decides whether stages 3-4 are worth 30 GPU-hours.
 
 | outcome | what can be written |
 |---|---|
-| H1 holds, H3 holds, H4 holds | the main claim, with an error bar, mechanism attributed to `F^-1`. The strong version |
-| H1 holds, H3 holds, H4 negative | "NGD-Pion is more sample-efficient at the classical batch and the advantage grows with batch, but is absorbed at long horizons": a regime paper, stated as a step-equivalent speed-up |
-| H1 holds, H3 dies | the advantage is real but not the preconditioner's; the contribution is the exact-retraction, unscaled rotation. A different and smaller paper |
+| H1 holds, H4 holds | the main claim, with an error bar: NGD-Pion beats published Pion at the classical setting, both tuned. The strong version |
+| H1 holds, H4 negative | "NGD-Pion is more sample-efficient at the classical batch and the advantage grows with batch, but is absorbed at long horizons": a regime paper, stated as a step-equivalent speed-up |
 | H1 dies | no measurable advantage at the classical batch; what remains is the noise-regime analysis (H2) and the lr-robustness result already on disk (the `rho` controller converges from a hundredfold range of starting rates) |
+
+None of these attributes a gain to one component of the method. NGD-Pion is a
+bundle and is measured as one against Pion.
 
 The user has said the paper should rest on a positive empirical result. The
 table above is the reason to run stage 1 first: it is the cheapest way to learn
@@ -149,19 +155,25 @@ plan is tiered so that it survives either answer:
 
 * **a day or less:** stage 1 only (about 2.5 h) and write what it shows, with
   V1's correction in place of the "tie";
-* **about a week:** stages 1, 2 and 3;
+* **about a week:** stages 1 and 3;
 * **longer:** all of it, stage 4 being about a day of wall-clock for the pair.
 
 Partition access and GPU caps change within hours, so re-test with `sinfo` and
 `sbatch --test-only` before relying on `docs/CLUSTER.md`.
 
-## Decisions for the user
+## Decisions taken, and still open
 
-1. The date of the deadline, which fixes the tier.
-2. Seeds: three extra per arm (four in total) is what H1's threshold assumes.
-   Fewer means a weaker test, more costs more waves.
-3. Whether stage 2 (`pion_ablated`) may be started in parallel with stage 1 on
-   a second node, or waits for it.
-4. Whether to rewrite `ALGORITHM.md` to carry the reversals (`S` measured,
-   momentum as an arm, `t_fac` 25); it is the specification and currently says
-   the opposite in three tables.
+Taken, 2026-09-22: no deadline pressure ("just do it"); stage 1 may run and was
+submitted as job 332045, all three seeds concurrent; everything goes to `main`;
+**the baseline is published Pion and there is no ablated arm** (H3, stage 2).
+
+Open:
+
+1. Whether to delete `pion_ablated` from the code as well as from the plan. It is
+   referenced from `harness/config.py`, `harness/train.py`, three test files,
+   `ngd_pion/direction.py`, `ngd_pion/shampoo.py` (where `power = 0` is described
+   as exactly that arm) and seven sbatch scripts that produced the 150-step
+   sweeps still on disk.
+2. Whether to rewrite `ALGORITHM.md`, which still carries the ablated design in
+   "Дизайн сравнения" and, in three tables, the reversed `S = I`, no-momentum and
+   `t_fac = 100`.

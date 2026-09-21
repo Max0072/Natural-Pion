@@ -89,11 +89,14 @@ differentiator is a single mechanism instead of a bundle of absences. The one
 absence that remains is RMS scaling, and the open question is whether the
 preconditioner substitutes for it well enough.
 
-**Not done, and this is the whole risk.** Nothing has been trained at scale.
-The only evidence the method helps is a toy least-squares with an exactly
-reachable target, where natural gradient wins almost tautologically. That test
-was a kill criterion — failing it would have stopped the project — and passing
-it means very little.
+**Where the evidence stands (rewritten 2026-09-22).** The method has been trained
+at scale, and the result is small. Full-length, AdamW pinned: `ngd-pion-s` 3.3860
+against 3.3719 for the like-for-like Pion, 0.014 behind, one run each. At the
+classical batch with both optimizers tuned it is ahead after 3000 steps, 3.7954
+against 3.8412, one seed and no error bar yet (three more seeds are running,
+job 332045). `docs/VALIDATION.md` says what each of these numbers is and is not;
+the 2026-08-29 "tie, second of nine" reading was wrong. The toy least-squares
+check that stood here was a kill criterion, not a result.
 
 **Cluster shape.** `rtx` has 4 nodes of 8 GPUs, `b200` has 2 of 8, and **every
 partition caps at 24 hours**. Both pools are Blackwell — `rtx` carries RTX PRO
@@ -386,7 +389,13 @@ there when it was submitted.
   throughout; the readings of it did not.
 - **Every claim in `ALGORITHM.md` carries its number.** Keep it that way — a
   decision without a measurement beside it will be reopened by the next reader.
-- **One variable per run.** The comparison is `pion_ablated` against `ngd`.
-  Published Pion runs alongside only as context.
+- **The baseline is published Pion.** ~~The comparison is `pion_ablated` against
+  `ngd`, one variable apart.~~ **Reversed 2026-09-22 by the user:** an optimizer
+  made by switching off Pion's momentum and RMS scaling and forcing a different
+  retraction is not Pion, works only as a whole, and says nothing about it.
+  NGD-Pion is compared to Pion as a bundle; no claim is made about which part of
+  it does the work. `pion_ablated` is still in the code and its 150-step numbers
+  are void. Within any two arms that *are* being compared, still change one
+  thing at a time and diff the manifests to prove it.
 - **Tests pin findings, not just behaviour.** Several tests exist because a
   subtle result would otherwise silently regress; their docstrings say which.

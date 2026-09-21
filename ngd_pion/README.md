@@ -29,7 +29,8 @@ against the class it replaced.
 | -- | `FastNGDPionS` | `with_s_fast.py` | **oracle, no longer run.** Kept so `tests/test_unified.py` has something to check against |
 | -- | `MomentumNGDPionS` | `momentum.py` | **oracle, no longer run.** Same |
 | `shampoo-pion` | `ShampooPion` | `shampoo.py` | **live alternative.** Preconditioner from the generators themselves, no hooks. Behind `ngd-pion-s` on loss; the only arm with a cross-layer angle spread near 1 |
-| `pion`, `pion_ablated` | `Pion` | `pion_baseline.py` | **the baseline.** `pion_ablated` switches off momentum, RMS scaling and the truncated retraction, and is what an isolating comparison needs |
+| `pion` | `Pion` | `pion_baseline.py` | **the baseline** -- published Pion, and the only one |
+| `pion_ablated` | `Pion` | `pion_baseline.py` | **not a baseline.** Momentum, RMS scaling and the truncated retraction switched off; rejected 2026-09-22 as an isolating comparison. Kept in the code for the 150-step runs on disk, whose numbers are void |
 | `ngd-pion` | `FastNGDPion` | `fast.py` | superseded, and **not** folded into the unified class: it carries `angle_max`, a per-step cap on the rotation that the unified class does not implement. The default is `0`, so nothing has used it, but removing a lever silently is worse than leaving a module |
 | `ngd-pion-ref` | `NGDPion` | `optimizer.py` | reference. Unoptimised orchestration, checked against `reference.py` |
 | `ngd-pion-s-ref` | `NGDPionS` | `with_s.py` | reference for the `S` family. Now carries the power-iteration angle itself |

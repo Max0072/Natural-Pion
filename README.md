@@ -141,7 +141,7 @@ ngd_pion/
   factorization.py   §4  the bases
   direction.py       §1 §5 §6  generators through trust region
   optimizer.py       §7  orchestration and retraction
-  pion_baseline.py   vanilla Pion, with the switches an ablation needs
+  pion_baseline.py   published Pion, the baseline (ablation switches kept, unused)
 harness/
   model.py           LLaMA-60M in their configuration
   data.py            memmapped token corpus
@@ -183,17 +183,17 @@ change a result, so a sweep is a job array over flags.
 
 ## Comparison design
 
-The measurement is `pion_ablated` against `ngd`: identical but for `F^-1`.
-Published Pion runs alongside as context, so the ablated baseline cannot be
-called a straw man.
+The baseline is **published Pion**, and the measurement is `ngd-pion-s` against
+`pion`, each with its own tuned learning rates, same seed, same data, same
+hardware. It compares two whole methods and claims nothing about which component
+of NGD-Pion does the work.
 
-Ablating Pion's RMS scaling **forces** an exact retraction. Their degree-2
-truncated exponential satisfies `R^T R = I + A^4/4`, so it inflates every step;
-the scaling is what holds the rotation angle small enough for that to stay
-negligible. Switch the scaling off and it diverges within tens of steps. Cayley
-is exactly orthogonal at any angle, which makes it a precondition of the
-ablation rather than a preference — and removes the confound instead of adding
-one.
+An earlier design compared against `pion_ablated` (Pion with momentum and RMS
+scaling switched off, so that one variable separated the arms). It was dropped on
+2026-09-22: Pion's RMS scaling is what keeps its truncated exponential from
+diverging (`R^T R = I + A^4/4`, so it inflates every step unless the angle stays
+small), so an ablated Pion must borrow Cayley and is no longer Pion. At 150 steps
+it was also worse than freezing the matrices. See `docs/VALIDATION.md` V2.
 
 ## Status
 
