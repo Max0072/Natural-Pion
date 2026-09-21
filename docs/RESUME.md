@@ -156,6 +156,12 @@ until the advantage has an error bar.
 * `ngd_power`: commit `40a7886` (2026-08-30) says the exponent now reaches the
   measured-`S` variant. **Not re-tested**; `scripts/sbatch/powercal.sbatch` was
   written and never run.
+* **The "trust region" is mislabelled and is the least understood part of the
+  method** (journal 2026-09-22, `docs/VALIDATION.md`). `alpha = quad/curv` cannot
+  notice that the model is wrong, only that the eigenbasis is stale; at the tuned
+  rate it is below 0.9 on 67% of layer-steps (median 0.64), so it sets the
+  effective per-layer step and the tuned `rot` is fitted around it. Removing it
+  cost 0.15 in an older sweep; never measured at the tuned classical setting.
 * `_adamw` uses `cfg.adamw_lr or cfg.lr`, so an unset `--adamw-lr` silently
   means "same as `--lr`". Always pass it.
 * The `pion_ablated` optimizer was **removed from the code on 2026-09-22**

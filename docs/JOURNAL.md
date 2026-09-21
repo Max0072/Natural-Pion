@@ -5759,3 +5759,60 @@ memory 50 GB. About 1 s/step for `ngd-pion-s` and 0.5 s/step for `pion`, as
 budgeted; no sign of the contention or the wedge documented in `docs/CLUSTER.md`.
 Resubmitting resumes from the checkpoint written every ~4 minutes; the checkpoints
 are 780 MB each and should be deleted once the numbers are read.
+
+## 2026-09-22, 03:00 -- the "trust region" is not one, and it is the biggest step multiplier in the method; and a literature check
+
+**The user's suspicion.** "Something is murky in the part of NPion connected with
+the trust zone." Checked against the code, the journal and current data.
+
+**What the code does** (`ngd_pion/direction.py::trust_region_alpha`):
+`alpha = min(1, quad/curv)` with `quad = <G, X>` and `curv = <X, F(X)>`, where
+`X = F^-1 G`. Both are built with the same operator, so on a fresh basis
+`alpha == 1` identically, by algebra. It moves only when the eigenbasis, rebuilt
+every `t_fac = 25` steps, has drifted from the current statistics. A trust region
+compares a predicted decrease with an actual one; this cannot see that the model
+is wrong. The journal of 2026-08-28 already said "it is not a trust region", and
+`ALGORITHM.md` section 6 still calls it one.
+
+**What it does at the setting we now use** (new measurement; seed 1 of job 332045,
+`ngd-pion-s` rot 6e-3 adamw 8e-3, `log_every 23` which is coprime with `t_fac = 25`
+so the readings are not aliased; `diagnostics.jsonl`, 7392 layer-step readings):
+
+    alpha == 1        17.4%      alpha < 0.9   67.4%
+    alpha < 0.5       41.9%      alpha < 0.1   12.8%      min 0.0000
+    median 0.641   mean 0.587
+    by layer, median:  wv 0.20   wq 0.38   wo 0.45   ffn.down 0.47   wk 0.55
+                       ffn.up 0.85   ffn.gate 0.90
+
+So it is not a safeguard that rarely fires. It cuts the step in half on typical
+layer-steps and to a fifth on the value projections, and the tuned `rot = 6e-3` is
+fitted around it. The two earlier figures in this journal are superseded: "fires
+zero times" was a literal, and "37.1%" was aliased (every logged row sat one step
+after a refactorisation).
+
+**What is and is not known about its worth.** Removing it cost 0.15 in an older
+3000-step sweep with AdamW pinned, at the best rate sampled, which is not the
+present setting. The cadence experiment of 2026-08-29 points the same way and
+sideways: rebuilding the basis every step makes `alpha` exactly 1.000 and makes
+the loss *worse* (3.9475 against 3.9257). So it is not repairing a defect, it is
+acting as a step-length damper, and why that helps is not established. Trying to
+replace it with a real one on the reduction ratio `rho` failed: `rho` is measured
+on the batch that produced the step and adapting on it converges 2-4x above the
+swept optimum (decided, 2026-08-29).
+
+**Consequence.** Any statement of the form "NGD-Pion beats Pion" carries this
+component inside it, unexamined, and a reviewer will ask. Options recorded for the
+user: (A) rename and describe it honestly, with the distribution above; (B) an
+ablation of our own component, `ngd_trust = none` with its own tuned `rot` and
+`adamw`, to learn how much of +0.035 lives in it; (C) replace it by something
+derived. Nothing was run. (B) is not the ablated-Pion arm of ADR 0008: that
+rejected an ablated *baseline*; this ablates a part of the method under test.
+
+**Literature check** (same session), recorded in `docs/LITERATURE.md`: no work
+found that preconditions Pion's or POET's rotation generators with a Fisher, K-FAC
+or Shampoo-type operator; Pion's own paper never mentions curvature. Prior art to
+cite: Cayley SGD/Adam (ICLR 2020) for the retraction, Riemannian natural gradient
+(2207.07287) for the general idea, K-FAC and Shampoo for the factorisations, ISO
+(2607.19331) as a concurrent spectrum-preserving method. Limits stated there: the
+search is not an index (three citing papers found for Pion), papers were read
+through summaries, and "not found" is not "does not exist".

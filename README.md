@@ -124,6 +124,7 @@ floored at `max(λ, ε·λ_max)`, and nothing else is damped anywhere.
 | **[`docs/RESUME.md`](docs/RESUME.md)** | **start here** — what is running right now, and what to do next |
 | **[`docs/PLAN.md`](docs/PLAN.md)** | the plan: claims stated so they can fail, stages, cost |
 | **[`docs/VALIDATION.md`](docs/VALIDATION.md)** | audit of what the numbers are, and are not |
+| **[`docs/LITERATURE.md`](docs/LITERATURE.md)** | the literature check on novelty: what was searched, what is prior art, what the check cannot show |
 | **[`docs/decisions/`](docs/decisions/README.md)** | decision records: what was decided, why, on what evidence |
 | **[`runs-record/`](runs-record/README.md)** | `manifest.json` and `log.jsonl` of every run: the source of every number in `docs/` |
 | **[`ALGORITHM.md`](ALGORITHM.md)** | the specification — every decision with the measurement behind it |

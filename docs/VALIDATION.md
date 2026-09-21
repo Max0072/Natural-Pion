@@ -207,6 +207,7 @@ What the method rests on, with the status of each piece.
 | Cayley keeps singular values exactly; Pion's truncated exponential does not | verified | drift over 2000 steps at angle 0.05: 7.1e-15 against 2.4e-4 |
 | the spectrum survives on the GPU | **needs a card** | TF32 destroys it by a relative 1.0 unless switched off; `scripts/gpu_smoke.py` checks it, no CPU test can. Not re-run today |
 | the step is 96.4% sampling noise | measured | `split_half_step.py`, real model, one model state |
+| the "trust region" `alpha = quad/curv` is a trust region | **no, and it is not a rarely-firing safeguard either** | it compares two model quantities built with the same operator, so it is 1 on a fresh basis by algebra and reads out only basis staleness. Measured 2026-09-22 on seed 1 at the tuned rate, 7392 layer-step readings: `alpha` = 1 on 17.4%, below 0.9 on 67.4%, below 0.5 on 41.9%, median 0.64, `wv` median 0.20. It is the largest per-layer step multiplier in the method and is not derived from any argument. Journal 2026-09-22 |
 | the Fisher supplies the step scale (`eta* = 2` is derived) | **refuted** | `kappa` 1.8e-3, `kfac/exact` 0.0128 |
 | the preconditioned step is the *natural* gradient | **weaker than named** | K-FAC independence gives 0.0128 of the true curvature along the step; what is applied is an input-covariance-whitened rotation, and "natural gradient" over-describes it |
 | the measured `S` beats `S = I` | measured | +0.23 to 0.32 at its own `eta` |
