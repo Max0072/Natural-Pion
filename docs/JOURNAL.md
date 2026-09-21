@@ -5760,7 +5760,7 @@ budgeted; no sign of the contention or the wedge documented in `docs/CLUSTER.md`
 Resubmitting resumes from the checkpoint written every ~4 minutes; the checkpoints
 are 780 MB each and should be deleted once the numbers are read.
 
-## 2026-09-22, 03:00 -- the "trust region" is not one, and it is the biggest step multiplier in the method; and a literature check
+## 2026-09-22, 02:28 -- the "trust region" is not one, and it is the biggest step multiplier in the method; and a literature check
 
 **The user's suspicion.** "Something is murky in the part of NPion connected with
 the trust zone." Checked against the code, the journal and current data.

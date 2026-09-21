@@ -75,4 +75,4 @@ Line numbers are for `sed -n 'Np,+40p' docs/JOURNAL.md`.
 | 2026-09-22 | night -- ADR 0011 and 0012 accepted: `pion_ablated` removed, run records archived | 5655 |
 | 2026-09-22 | 02:14 -- stage 1 result: H1 holds | 5683 |
 | 2026-09-22 | 02:20 -- stage 3 submitted: the horizon ladder (job 332064) | 5723 |
-| 2026-09-22 | 03:00 -- the "trust region" is not one, and it is the biggest step multiplier in the method; and a literature check | 5763 |
+| 2026-09-22 | 02:28 -- the "trust region" is not one, and it is the biggest step multiplier in the method; and a literature check | 5763 |
