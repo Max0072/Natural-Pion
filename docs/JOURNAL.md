@@ -5719,3 +5719,43 @@ Pion's in wall-clock, so a step-count advantage is not yet a time advantage.
 The archive `runs-record/` was refreshed (the six runs are complete now).
 Next: the horizon ladder (15 000 steps, both arms tuned), which is the stage that
 decides whether the advantage survives length.
+
+## 2026-09-22, 02:20 -- stage 3 submitted: the horizon ladder (job 332064)
+
+The user said to start item 1 of the list after the stage-1 result. Submitted
+`scripts/sbatch/ladder15k.sbatch`, array `0-9`, pinned to `rtx6002`, one GPU each:
+**15 000 steps** (1.97B tokens, 20% of the budget), B = 512, seed 0 for every run,
+`log_every 23`, `eval_every 1000`, output in `$DATA_p330/runs/ladder15k/`.
+
+**Grid: a cross of five cells around each arm's 3000-step optimum**, ten runs:
+
+    ngd-pion-s  rot 6e-3 adamw 8e-3 (centre); rot 3e-3, 1.2e-2; adamw 4e-3, 1.6e-2
+    pion        rot 1e-3 adamw 8e-3 (centre); rot 5e-4, 2e-3;    adamw 4e-3, 1.6e-2
+
+I had said "four to six runs" in the plan and that I would describe the grid
+before launching; the user said to launch. The grid is ten because both rates
+have to be bracketed at a new horizon (the optimum moves with length), which the
+six-run version (adamw neighbours only) would not do. Cost about 30 GPU-hours,
+about 6 h wall. It is more than the plan said, so it is recorded here rather than
+absorbed.
+
+**Rule fixed before any number** (in the sbatch header and in `docs/PLAN.md` H4):
+`gap15` = val(best `pion` cell) - val(best `ngd-pion-s` cell), each best over its
+own five cells. `>= +0.020` persists, full-length pair justified; `+0.010` to
+`+0.020` decaying but present; `< +0.010` inside noise or gone, and the full
+length is not spent as the headline. A best cell on the edge of its cross means
+the grid gets extended and the number is not quoted. Both bests come from seed 0,
+so they share a selection bias that largely cancels in the gap; not cancelled is
+that this is n = 1 and the grid is coarse.
+
+**Placement.** Another user holds one GPU on `rtx6002`, so seven of the ten started
+at once (tasks 0-6: all five `ngd-pion-s` cells and the `pion` centre and
+rot 5e-4) and tasks 7-9 (`pion` rot 2e-3, adamw 4e-3, adamw 1.6e-2) wait for a
+card. Expected finish 06:30-07:00.
+
+**Checked that it computes, not only that it runs**: about two minutes in the
+seven runs are at steps 92 (`ngd-pion-s`) and 161 (`pion`), GPU utilisation 99%,
+memory 50 GB. About 1 s/step for `ngd-pion-s` and 0.5 s/step for `pion`, as
+budgeted; no sign of the contention or the wedge documented in `docs/CLUSTER.md`.
+Resubmitting resumes from the checkpoint written every ~4 minutes; the checkpoints
+are 780 MB each and should be deleted once the numbers are read.

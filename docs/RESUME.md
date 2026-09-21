@@ -26,9 +26,13 @@ below is seed 0, one run per cell, unless it says otherwise.
 
 ## As of 2026-09-22
 
-Nothing is running. Stage 1 (job 332045, seeds 1-3 for both arms) finished
-cleanly in 43 minutes; its result is below. Output in
-`$DATA_p330/runs/seedshead/`, archived in `runs-record/`.
+**Job 332064 is running** (stage 3, the horizon ladder; submitted 2026-09-22
+02:19, expected to finish about 06:30-07:00): ten runs at 15 000 steps, both arms
+tuned by a cross around their 3000-step optima, output in
+`$DATA_p330/runs/ladder15k/`. The rule for reading it is fixed in the header of
+`scripts/sbatch/ladder15k.sbatch` and in `docs/PLAN.md` H4. Stage 1 (job 332045,
+seeds 1-3 for both arms) finished cleanly in 43 minutes; its result is below.
+Output in `$DATA_p330/runs/seedshead/`, archived in `runs-record/`.
 
 ### The headline, corrected
 
@@ -100,8 +104,9 @@ claimed. **The baseline is published Pion and nothing else** (user, 2026-09-22):
    and does not show: a real advantage at 393M tokens (4.1% of the budget), where
    both arms have the same AdamW rate. It says nothing yet about the horizon.
 2. ~~`pion_ablated`, tuned.~~ Withdrawn: the baseline is published Pion.
-3. **Horizon ladder** at 15000 steps, then the full-length pair with AdamW tuned
-   for both, if the trend is not negative.
+3. **Horizon ladder** at 15000 steps: **submitted, job 332064.** Then the
+   full-length pair with AdamW tuned for both, if the ladder does not show the
+   gap gone (rule in `docs/PLAN.md` H4).
 4. Decide with the user how the paper is framed once 1 and 2 have landed.
 
 ### Standing results, with the number

@@ -5,8 +5,8 @@ Notation (`val`, `rot`, `adamw`, `B`, gap, seed) is defined at the top of that
 file and used the same way here.
 
 **Status, 2026-09-22 night:** stage 1 is done (job 332045): **H1 holds**, mean gap
-+0.038 (seeds 1-3 alone +0.035), all four seeds positive, mean/SE 13.6. Nothing
-else has been submitted. Every other stage marked `[compute]` needs an
++0.038 (seeds 1-3 alone +0.035), all four seeds positive, mean/SE 13.6. **Stage 3
+(the horizon ladder) is running, job 332064.** Nothing else has been submitted. Every other stage marked `[compute]` needs an
 explicit go-ahead before it runs, because the cluster is shared.
 
 ## The claim, stated so it can fail
@@ -89,6 +89,14 @@ steps.
 Pinned-AdamW evidence points the wrong way (+0.024 at 786M, -0.014 at 9.6B).
 *Test:* first a horizon ladder at tuned settings, 3000 -> 15000 steps, to see
 the trend cheaply; then, if the trend holds up, the full pair.
+*Ladder design and rule (job 332064, fixed before the numbers):* both arms, a
+cross of five cells each around the 3000-step optimum (rot at half and double,
+adamw at half and double), seed 0, 15 000 steps. With `gap15` = val(best `pion`
+cell) - val(best `ngd-pion-s` cell): `>= +0.020` the advantage persists and the
+full-length pair is justified; `+0.010` to `+0.020` decaying but present, still
+worth running; `< +0.010` inside noise or gone, and the full length is not spent
+as the headline. A best cell on the edge of the cross means the grid is extended
+and the number is not quoted.
 *Report as:* one tuned run against one tuned run, labelled n = 1 each. Do not
 say "ahead" or "tied" without the seed noise from H1 beside it.
 *If it goes negative at full length:* the positive result is a horizon
@@ -103,7 +111,7 @@ difference (loss is compressive; see the 2026-08-28 entry).
 | **0** | documentation and audit: this file, `VALIDATION.md`, `RESUME.md`, journal, stale-number fixes | none, **done 2026-09-22** | -- |
 | **1** `[compute]` | **H1: seeds.** Seeds 1, 2, 3 for `ngd-pion-s` (rot 6e-3, adamw 8e-3) and `pion` (rot 1e-3, adamw 8e-3), B = 512, 3000 steps. Six runs | about 42 min per `ngd-pion-s` run and about half that for `pion`, measured from the `a2dhead` timestamps with seven jobs sharing a node. Two runs per seed at a time, three seeds one after another: **about 2.5 h wall** | user go-ahead |
 | **2** | ~~H3: `pion_ablated`~~ **withdrawn 2026-09-22** by the user's decision: the baseline is published Pion | -- | -- |
-| **3** `[compute]` | **H4 ladder:** both arms at their optima, 15000 steps (1.97B tokens, 20% of the budget), AdamW neighbours on both sides | about 3.5 h per `ngd-pion-s` run, about 1.7 h per `pion`; four to six runs | stage 1 |
+| **3** `[compute]` | **H4 ladder:** both arms, 15000 steps (1.97B tokens, 20% of the budget), a five-cell cross around each 3000-step optimum. **Submitted 2026-09-22 as job 332064** | about 4 h per `ngd-pion-s` run, about 2.1 h per `pion`; ten runs, about 30 GPU-hours, about 6 h wall on `rtx6002` | stage 1, done |
 | **4** `[compute]` | **H4 full length:** the two arms, 73 242 steps, tuned `adamw` carried from stage 3, one neighbouring `adamw` each | `ngd-pion-s` about 19.7 h (0.967 s/step on rtx, close to the 24 h partition cap; resubmitting resumes from the checkpoint), `pion` about 9.4 h | stage 3 shows the trend is not negative |
 | **5** optional `[compute]` | H2 extension (B = 128) | a grid | after stage 1 |
 
