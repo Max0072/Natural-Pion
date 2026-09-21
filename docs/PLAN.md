@@ -167,12 +167,13 @@ Taken, 2026-09-22: no deadline pressure ("just do it"); stage 1 may run and was
 submitted as job 332045, all three seeds concurrent; everything goes to `main`;
 **the baseline is published Pion and there is no ablated arm** (H3, stage 2).
 
-Open:
+Recorded in `docs/decisions/` (ADR 0008-0010). Open, and also there as `Proposed`
+(ADR 0011 and 0012 -- the latter, archiving the 13 MB of run records in git, is new):
 
 1. Whether to delete `pion_ablated` from the code as well as from the plan. It is
    referenced from `harness/config.py`, `harness/train.py`, three test files,
    `ngd_pion/direction.py`, `ngd_pion/shampoo.py` (where `power = 0` is described
-   as exactly that arm) and seven sbatch scripts that produced the 150-step
+   as exactly that arm) and six sbatch scripts that produced the 150-step
    sweeps still on disk.
 2. Whether to rewrite `ALGORITHM.md`, which still carries the ablated design in
    "Дизайн сравнения" and, in three tables, the reversed `S = I`, no-momentum and

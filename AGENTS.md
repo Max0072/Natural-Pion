@@ -28,6 +28,9 @@ not between two branches of it.
    claim, criteria fixed before the numbers -- and
    **[`docs/VALIDATION.md`](docs/VALIDATION.md)** -- the audit of 2026-09-22:
    what each number is and is not, including the correction to the "tie".
+   Decisions live in **[`docs/decisions/`](docs/decisions/README.md)**, one
+   record per decision with its reason and evidence; add one when a decision is
+   taken or reversed, and supersede rather than edit.
 1. **[`ALGORITHM.md`](ALGORITHM.md)** — the specification. Every design decision
    with the measurement that produced it. Each module implements one of its
    sections and says so in its docstring.
@@ -389,6 +392,10 @@ there when it was submitted.
   throughout; the readings of it did not.
 - **Every claim in `ALGORITHM.md` carries its number.** Keep it that way — a
   decision without a measurement beside it will be reopened by the next reader.
+- **Record every decision as an ADR** in `docs/decisions/` (template there), in
+  the same commit that acts on it. The journal tells the story; the ADRs are the
+  list of what was decided and why, so a reversal is a new record that supersedes
+  the old one and not a silent edit.
 - **The baseline is published Pion.** ~~The comparison is `pion_ablated` against
   `ngd`, one variable apart.~~ **Reversed 2026-09-22 by the user:** an optimizer
   made by switching off Pion's momentum and RMS scaling and forcing a different

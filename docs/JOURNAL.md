@@ -5606,7 +5606,7 @@ reason. The audit ledger row for that claim now reads "not claimed".
 
 **Not done, asked.** Whether to delete `pion_ablated` from the code as well. It is
 referenced from `harness/config.py`, `harness/train.py`, three test files,
-`ngd_pion/direction.py`, `ngd_pion/shampoo.py` and seven sbatch scripts that made
+`ngd_pion/direction.py`, `ngd_pion/shampoo.py` and six sbatch scripts that made
 the 150-step sweeps still on disk; nothing was removed from the code.
 
 Also fixed in passing: `AGENTS.md` still said "nothing has been trained at
@@ -5622,3 +5622,32 @@ step 828 (about 0.87 s/step against 0.967 solo) and `pion` at step 1334 (about
 4.5122 for seeds 1, 2, 3; val at step 1000, `pion`: 4.2468, 4.2682, 4.2338. No
 contention: the corpus was resident on that node. One node in one cache state; if
 a later seed batch runs several times slower than solo, suspect this first.
+
+## 2026-09-22, night -- decision records (`docs/decisions/`)
+
+The user asked for an ADR log to record decisions in. Decisions had been spread
+over a 5500-line journal, `AGENTS.md`'s "decisions already made" table and the
+`RESUME.md` do-not-relitigate list, none of which says *when* a decision changed
+or what replaced it.
+
+**Done.** `docs/decisions/`: a template, an index with statuses, and twelve
+records. 0001-0007 are the settled engineering and method decisions the
+repository already carried (Cayley, fp32 with TF32 off, the one spectral floor,
+the corpus and budget, the anchor accepted by override, the measured backward
+covariance, "short runs do not rank"), written retroactively from `AGENTS.md`,
+`ALGORITHM.md` and the journal and marked as such. 0008-0010 are today's:
+the baseline is published Pion, the comparison protocol, and the concurrent seed
+array. 0011 (delete the `pion_ablated` code) and 0012 (archive the 13 MB of run
+records in git) are `Proposed`, i.e. open questions for the user, nothing acted on.
+
+Rule adopted, in `AGENTS.md`: a decision is recorded in the commit that acts on
+it, and a reversal is a new record that supersedes the old one rather than an
+edit. The journal keeps telling the story.
+
+**Not backfilled:** the many smaller findings (`t_fac`, `beta_D`, the trust
+region, momentum's fate at length, Shampoo on so(n)) are results, not decisions,
+and stay in `RESUME.md` and the journal. Anything that turns out to have been a
+decision gets a record when it is next relied on.
+
+**A slip corrected along the way:** the entries above said seven sbatch scripts
+still reference `pion_ablated`; it is six.

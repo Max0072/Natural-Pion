@@ -3,7 +3,9 @@
 A single page for picking this up cold. `AGENTS.md` is the settled state of
 play, `docs/PLAN.md` is what to do next and why, `docs/VALIDATION.md` is the
 audit of what the numbers are and are not, `docs/JOURNAL.md` is the sequence
-that produced all of it and `docs/JOURNAL_INDEX.md` indexes it, `docs/CLUSTER.md`
+that produced all of it and `docs/JOURNAL_INDEX.md` indexes it, `docs/decisions/` holds one record per
+decision with its reason and evidence (ADR 0008 is the baseline, 0009 the
+comparison protocol), `docs/CLUSTER.md`
 is the machine, `$DATA_p330/runs/README.md` says what every run directory
 holds. This file is only ever *now*.
 
