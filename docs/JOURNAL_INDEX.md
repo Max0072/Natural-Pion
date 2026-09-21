@@ -1,6 +1,6 @@
 # Journal index
 
-Generated from `docs/JOURNAL.md` by `scripts/journal_index.py` -- 65 entries, 5613 lines. Do not edit by hand; re-run the script.
+Generated from `docs/JOURNAL.md` by `scripts/journal_index.py` -- 65 entries, 5624 lines. Do not edit by hand; re-run the script.
 
 Line numbers are for `sed -n 'Np,+40p' docs/JOURNAL.md`.
 

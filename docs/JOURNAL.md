@@ -5611,3 +5611,14 @@ the 150-step sweeps still on disk; nothing was removed from the code.
 
 Also fixed in passing: `AGENTS.md` still said "nothing has been trained at
 scale", which the audit had already corrected in `README.md`.
+
+### Addendum, 01:07 -- did running three seeds at once cost anything?
+
+The 2026-08-26 memory of this project measured two jobs differing only in seed at
+18.7 s/step against 4.4 s/step alone, so this was checked rather than assumed.
+About twelve minutes in, on `rtx6002` with all six runs going: `ngd-pion-s` at
+step 828 (about 0.87 s/step against 0.967 solo) and `pion` at step 1334 (about
+0.54 s/step against 0.46 solo). Val at step 500, `ngd-pion-s`: 4.5027, 4.4743,
+4.5122 for seeds 1, 2, 3; val at step 1000, `pion`: 4.2468, 4.2682, 4.2338. No
+contention: the corpus was resident on that node. One node in one cache state; if
+a later seed batch runs several times slower than solo, suspect this first.
