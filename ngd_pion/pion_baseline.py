@@ -4,12 +4,14 @@ A faithful transcription of `pion.py` from the reference implementation
 (github.com/Sphere-AI-Lab/pion), reduced to what the comparison needs: the
 same generators, the same RMS scaling, the same ambient momentum, and the same
 degree-2 truncated exponential -- plus switches to turn each off, which is
-what an ablated baseline requires.
+what an ablation would require.
 
-The point of having this here is that the comparison must differ in exactly
-one thing. NGD-Pion drops momentum and scaling and uses an exact retraction;
-measuring it against published Pion would confound four changes at once, so
-the baseline has to be runnable with those same three settings.
+**Only the published configuration is used as a baseline** (ADR 0008). The
+switches are kept because the class API and two tests that pin findings need
+them -- the truncated exponential diverging once scaling is off, and Shampoo's
+`power = 0` limit -- not because an ablated Pion is compared against anything.
+The `pion_ablated` optimizer name that used to select them was removed
+(ADR 0011).
 
 Two departures from their code, both forced:
 

@@ -66,12 +66,13 @@ def test_spectrum_holds_only_under_cayley(retraction, limit):
 
 
 def test_unscaled_truncated_exponential_diverges():
-    """Why the ablated baseline cannot use their retraction.
+    """Why Pion cannot be run without its RMS scaling on its own retraction.
 
     RMS scaling is load-bearing for Pion, not cosmetic: it keeps the rotation
     angle small enough that the truncated exponential's inflation does not
     compound. Switch the scaling off and the same retraction blows up within
-    tens of steps, which is what forces the ablated baseline onto Cayley.
+    tens of steps. This is the finding that made an "ablated Pion" a different
+    optimizer rather than Pion with a part removed (ADR 0008).
     """
     W0 = orth(24, seed=6)
     diverged = {}

@@ -64,7 +64,7 @@ Carlo, the closed-form solve against an explicit Kronecker system, the descent
 lemma, the sign, Cayley's exactness, spectrum preservation. The optimizer, the
 Pion baseline with ablation switches, a LLaMA-60M harness in their
 configuration, the anchor machinery, SLURM scripts, a container definition.
-262 tests, 34 s in the container on four threads (re-counted 2026-09-22). One is skipped by design --
+261 tests, 28 s in the container on four threads (re-counted 2026-09-22, after ADR 0011). One is skipped by design --
 `square W has no kernel` -- and **none of them touches a GPU**, which is a
 property of checking the torch path against a numpy oracle rather than an
 oversight, but it does mean anything device-specific has to be checked by
@@ -351,7 +351,7 @@ Things that look right and are not. Every one of these cost real time here.
 ## Running things
 
 ```bash
-pytest -q                                        # 262 passed, 1 skipped, ~34 s
+pytest -q                                        # 261 passed, 1 skipped, ~28 s
 python -m harness.run --optimizer ngd-pion --lr 1e-3  # one run
 python -m harness.run --anchor bilateral         # the calibration run
 ```
@@ -401,8 +401,8 @@ there when it was submitted.
   made by switching off Pion's momentum and RMS scaling and forcing a different
   retraction is not Pion, works only as a whole, and says nothing about it.
   NGD-Pion is compared to Pion as a bundle; no claim is made about which part of
-  it does the work. `pion_ablated` is still in the code and its 150-step numbers
-  are void. Within any two arms that *are* being compared, still change one
+  it does the work. `pion_ablated` was **removed from the code on 2026-09-22** (ADR
+  0011) and its 150-step numbers on disk are void. Within any two arms that *are* being compared, still change one
   thing at a time and diff the manifests to prove it.
 - **Tests pin findings, not just behaviour.** Several tests exist because a
   subtle result would otherwise silently regress; their docstrings say which.

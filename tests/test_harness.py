@@ -127,7 +127,7 @@ def test_missing_corpus_says_what_to_run():
 @pytest.mark.parametrize(
     "optimizer,expected",
     [("ngd-pion", FastNGDPion), ("ngd-pion-ref", NGDPion),
-     ("pion", Pion), ("pion_ablated", Pion), ("adamw", None)],
+     ("pion", Pion), ("adamw", None)],
 )
 def test_optimizer_wiring(optimizer, expected):
     model = Transformer(SMALL)
@@ -139,17 +139,23 @@ def test_optimizer_wiring(optimizer, expected):
         recorder.remove()
 
 
-def test_ablated_pion_is_wired_with_an_exact_retraction():
-    """Ablating the scaling forces Cayley -- their truncation diverges without it."""
+def test_pion_is_wired_as_published():
+    """The baseline is Pion as published: RMS scaling, Lie momentum, truncated exp."""
     model = Transformer(SMALL)
-    rot, _, _ = build_optimizers(model, RunConfig(optimizer="pion_ablated", model=SMALL))
+    rot, _, _ = build_optimizers(model, RunConfig(optimizer="pion", model=SMALL))
     group = rot.param_groups[0]
-    assert group["scaling"] == "none"
-    assert group["momentum"] == "none"
-    assert group["retraction"] == "cayley"
+    assert group["scaling"] == "rms"
+    assert group["momentum"] == "lie"
+    assert group["retraction"] == "trunc"
 
 
-@pytest.mark.parametrize("optimizer", ["ngd-pion", "pion", "pion_ablated", "adamw"])
+def test_pion_ablated_is_gone():
+    """ADR 0008 and 0011: there is no ablated Pion, and asking for one fails loudly."""
+    with pytest.raises(ValueError, match="unknown optimizer"):
+        build_optimizers(Transformer(SMALL), RunConfig(optimizer="pion_ablated", model=SMALL))
+
+
+@pytest.mark.parametrize("optimizer", ["ngd-pion", "pion", "adamw"])
 def test_run_end_to_end_and_reduce_loss(optimizer, corpus, tmp_path):
     cfg = RunConfig(
         optimizer=optimizer, model=SMALL, batch_sequences=8, micro_batch=4,

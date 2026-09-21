@@ -173,7 +173,7 @@ belong to another optimizer, which is how Pion splits parameters too.
 ## Running
 
 ```bash
-pytest -q                                        # 262 passed, 1 skipped, ~34 s
+pytest -q                                        # 261 passed, 1 skipped, ~28 s
 python scripts/prepare_data.py --out data --target-tokens 1e10
 python -m harness.run --optimizer ngd-pion --lr 1e-3
 python -m harness.run --anchor bilateral         # calibration; read AGENTS.md first
@@ -190,8 +190,8 @@ hardware. It compares two whole methods and claims nothing about which component
 of NGD-Pion does the work.
 
 An earlier design compared against `pion_ablated` (Pion with momentum and RMS
-scaling switched off, so that one variable separated the arms). It was dropped on
-2026-09-22: Pion's RMS scaling is what keeps its truncated exponential from
+scaling switched off, so that one variable separated the arms). It was dropped,
+and removed from the code, on 2026-09-22: Pion's RMS scaling is what keeps its truncated exponential from
 diverging (`R^T R = I + A^4/4`, so it inflates every step unless the angle stays
 small), so an ablated Pion must borrow Cayley and is no longer Pion. At 150 steps
 it was also worse than freezing the matrices. See `docs/VALIDATION.md` V2.

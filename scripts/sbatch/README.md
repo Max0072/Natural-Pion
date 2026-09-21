@@ -5,7 +5,7 @@ was pre-registered before it ran, and what the arms are compared against. That
 header is the point; the srun line underneath is the least interesting part.
 
 **The generator convention changed on 2026-08-28** and with it the meaning of
-`eta` for every NGD variant and for `pion_ablated`: `generators` now returns
+`eta` for every NGD variant (and for `pion_ablated`, removed 2026-09-22): `generators` now returns
 `skew(W^T G)` rather than twice it, so an `eta` written before that date means
 **half** what the same number means now. `momentum.sbatch`, `crossover.sbatch`
 and `full.sbatch` have had their NGD rates doubled so they still run the

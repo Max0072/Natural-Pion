@@ -97,7 +97,7 @@ def machine(device: str | None = None) -> dict:
 @dataclass(frozen=True)
 class RunConfig:
     # what is being compared
-    optimizer: str = "ngd-pion"     # ngd-pion | ngd-pion-ref | pion | pion_ablated | adamw
+    optimizer: str = "ngd-pion"     # ngd-pion | ngd-pion-ref | pion | adamw
     lr: float = 1e-3
     # AdamW's learning rate. `0` means "follow `lr`", which is what their
     # published configuration does -- one rate for both optimizers, 1e-3 --
@@ -337,8 +337,8 @@ class RunConfig:
     #
     # Exponent per side. `0.25` is the original Shampoo, so the two sides
     # compose to Adagrad's `-1/2`. `0.0` disables preconditioning and leaves
-    # the raw generator, which is ablated Pion and therefore the control arm
-    # that costs nothing to run in the same harness.
+    # the raw generator step with an exact retraction: a control that costs
+    # nothing to run in the same harness, and not a Pion baseline (ADR 0008).
     shampoo_power: float = 0.25
     # `0` accumulates a plain sum, as the original does. That carries an
     # implicit `t^-1/2` decay which compounds with the cosine schedule over
@@ -365,12 +365,10 @@ class RunConfig:
     pion_momentum: str = "lie"      # the variant their published 60M numbers use
     pion_retraction: str = "trunc"
     # Bilateral, which is their better published number for this model -- 3.3575
-    # against 3.3654 for alternate -- and the one `pion_ablated` is forced to.
-    # This default said `True` for a while with nothing defending it, which
-    # would have run the context arm in a variant the measurement arm does not
-    # use, putting a second difference between them. The context arm exists so
-    # the ablated baseline cannot be called a straw man, and that argument only
-    # works if the context is Pion at its best.
+    # against 3.3654 for alternate -- and the variant NGD-Pion matches, since it
+    # rotates both sides every step. This default said `True` for a while with
+    # nothing defending it, which would have put Pion in a variant the arm it is
+    # compared with does not use. The baseline has to be Pion at its best.
     #
     # `anchor_config` sets this from `update_side` and does not read the
     # default, so the anchors were never affected either way.

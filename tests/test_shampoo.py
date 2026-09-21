@@ -173,8 +173,8 @@ def test_spectrum_is_preserved():
     assert torch.allclose(before, after, rtol=1e-9, atol=1e-11)
 
 
-def test_power_zero_is_ablated_pion():
-    """`power = 0` leaves the raw generator, which is the natural control arm."""
+def test_power_zero_is_the_raw_generator_step():
+    """`power = 0` leaves the raw generator step with an exact retraction."""
     W, G = _weights()
     p = torch.nn.Parameter(W.clone())
     opt = ShampooPion([p], lr=0.05, power=0.0, compute_dtype=DT)

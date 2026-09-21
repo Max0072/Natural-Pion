@@ -163,7 +163,8 @@ class ShampooPion(torch.optim.Optimizer):
             variants, and must be swept rather than carried over.
         power: exponent per side. `0.25` is the original, so the two sides
             compose to the `-1/2` of Adagrad. `0` disables preconditioning and
-            recovers ablated Pion, which makes it the natural control.
+            leaves the raw generator step with an exact retraction, which makes
+            it the natural control (not a Pion baseline: ADR 0008).
         beta: `0` accumulates a plain sum, as the original does; the resulting
             implicit `t^-1/2` decay then compounds with the cosine schedule,
             which is a real interaction on a 73242-step run and not an

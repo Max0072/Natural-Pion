@@ -34,5 +34,5 @@ restate.
 | [0008](0008-baseline-is-published-pion.md) | The baseline is published Pion; there is no ablated arm | Accepted | 2026-09-22 |
 | [0009](0009-classical-head-to-head-protocol.md) | How NGD-Pion is compared with Pion: classical batch, both tuned, seed-paired | Accepted | 2026-09-22 |
 | [0010](0010-stage-1-seeds-run-concurrently.md) | Stage 1 runs all three seeds at once on one node | Accepted | 2026-09-22 |
-| [0011](0011-delete-pion-ablated-code.md) | Delete `pion_ablated` from the code? | Proposed | 2026-09-22 |
+| [0011](0011-delete-pion-ablated-code.md) | Delete `pion_ablated` from the code | Accepted | 2026-09-22 |
 | [0012](0012-archive-run-records-in-git.md) | Archive the small run records in git? | Proposed | 2026-09-22 |

@@ -188,29 +188,27 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
         # No hooks and no recorder: the preconditioner is a function of the
         # gradients alone, so there is nothing to observe in the forward pass.
         recorder = None
-    elif cfg.optimizer in ("pion", "pion_ablated"):
-        ablated = cfg.optimizer == "pion_ablated"
+    elif cfg.optimizer == "pion":
+        # Published Pion, every setting from `RunConfig` -- the baseline, and the
+        # only Pion arm (ADR 0008, 0011). There used to be a `pion_ablated` name
+        # that switched off momentum and scaling and forced Cayley; it was not
+        # Pion and has been removed.
         rot = Pion(
             weights, lr=cfg.lr,
-            scaling="none" if ablated else cfg.pion_scaling,
+            scaling=cfg.pion_scaling,
             rms=cfg.pion_rms,
-            momentum="none" if ablated else cfg.pion_momentum,
-            # ablating the scaling forces an exact retraction: without it their
-            # truncated exponential inflates and diverges within tens of steps
-            retraction="cayley" if ablated else cfg.pion_retraction,
-            alternate=False if ablated else cfg.pion_alternate,
+            momentum=cfg.pion_momentum,
+            retraction=cfg.pion_retraction,
+            alternate=cfg.pion_alternate,
             beta1=cfg.pion_beta1,
             beta2=cfg.pion_beta2 if cfg.pion_second_moment else None,
-            # Per-head Q blocks are their published configuration, so the
-            # anchor needs them -- but only the anchor. `pion_ablated` is the
-            # arm `ngd` is measured against, `NGDPion` rotates whole matrices,
-            # and giving one arm a finer granularity than the other would put a
-            # second variable in a comparison whose whole claim is that it has
-            # one. Lifting this means teaching `NGDPion` about blocks, not
-            # turning it on here.
+            # Per-head Q blocks are their published configuration, and this arm
+            # is published Pion. `NGDPion` rotates whole matrices; that is one of
+            # the several differences between the two methods and is listed with
+            # the others in docs/VALIDATION.md V2.
             row_blocks=(
                 {id(m.weight): cfg.model.heads for m in model.query_projections()}
-                if cfg.pion_split_q_per_head and not ablated
+                if cfg.pion_split_q_per_head
                 else None
             ),
         )
@@ -220,7 +218,7 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
             f"unknown optimizer {cfg.optimizer!r}; expected one of "
             + ", ".join(
                 repr(k) for k in (
-                    *NGD_IMPLEMENTATIONS, "shampoo-pion", "pion", "pion_ablated", "adamw"
+                    *NGD_IMPLEMENTATIONS, "shampoo-pion", "pion", "adamw"
                 )
             )
         )

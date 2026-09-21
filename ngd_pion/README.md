@@ -30,7 +30,7 @@ against the class it replaced.
 | -- | `MomentumNGDPionS` | `momentum.py` | **oracle, no longer run.** Same |
 | `shampoo-pion` | `ShampooPion` | `shampoo.py` | **live alternative.** Preconditioner from the generators themselves, no hooks. Behind `ngd-pion-s` on loss; the only arm with a cross-layer angle spread near 1 |
 | `pion` | `Pion` | `pion_baseline.py` | **the baseline** -- published Pion, and the only one |
-| `pion_ablated` | `Pion` | `pion_baseline.py` | **not a baseline.** Momentum, RMS scaling and the truncated retraction switched off; rejected 2026-09-22 as an isolating comparison. Kept in the code for the 150-step runs on disk, whose numbers are void |
+| ~~`pion_ablated`~~ | -- | -- | **removed 2026-09-22** (ADR 0008, 0011). Momentum, RMS scaling and the truncated retraction switched off; it was not Pion. Its five 150-step runs in `runs/ablated/` are void |
 | `ngd-pion` | `FastNGDPion` | `fast.py` | superseded, and **not** folded into the unified class: it carries `angle_max`, a per-step cap on the rotation that the unified class does not implement. The default is `0`, so nothing has used it, but removing a lever silently is worse than leaving a module |
 | `ngd-pion-ref` | `NGDPion` | `optimizer.py` | reference. Unoptimised orchestration, checked against `reference.py` |
 | `ngd-pion-s-ref` | `NGDPionS` | `with_s.py` | reference for the `S` family. Now carries the power-iteration angle itself |
@@ -76,9 +76,10 @@ variable in a comparison.
   `tests/test_momentum.py` pin the wiring for the two newest optimizers; the
   older ones are unpinned.
 * **A manifest that records the configuration rather than the object built from
-  it.** `pion_ablated` runs record `momentum="lie"`, `scaling="rms"`,
-  `retraction="trunc"` because `build_optimizers` substitutes at construction.
-  The runs are correct; their record is not.
+  it.** The removed `pion_ablated` runs record `momentum="lie"`,
+  `scaling="rms"`, `retraction="trunc"` because `build_optimizers` substituted
+  at construction. The runs were correct; their record was not. The general
+  hazard stands for any future preset.
 * **A subclass whose reason for existing has lapsed.** `FastNGDPionS` was faster
   than its parent until the parent absorbed the change. Its docstring now says
   so, and a test pins the equality.

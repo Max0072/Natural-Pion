@@ -74,8 +74,8 @@ The `pion` arm is **published Pion** (Lie momentum, RMS scaling, truncated
 exponential, per-head Q). `ngd-pion-s` differs from it in five things at once,
 so the +0.046 is one whole method against another, and no single component is
 claimed. **The baseline is published Pion and nothing else** (user, 2026-09-22):
-`pion_ablated` is not a baseline, is not planned, and its old 150-step numbers
-are void. See `docs/VALIDATION.md` V2 and `docs/PLAN.md` (H3 withdrawn).
+`pion_ablated` is not a baseline, was removed from the code, and its old
+150-step numbers are void. See `docs/VALIDATION.md` V2 and `docs/PLAN.md` (H3 withdrawn).
 
 ### What to do next, in order (full reasoning in `docs/PLAN.md`)
 
@@ -136,10 +136,9 @@ until the advantage has an error bar.
   written and never run.
 * `_adamw` uses `cfg.adamw_lr or cfg.lr`, so an unset `--adamw-lr` silently
   means "same as `--lr`". Always pass it.
-* `pion_ablated` manifests record the un-ablated momentum, scaling and
-  retraction, because the manifest serialises `RunConfig` while
-  `build_optimizers` substitutes at construction. A manifest does not tell you
-  which arm ran; the code path does.
+* The `pion_ablated` optimizer was **removed from the code on 2026-09-22**
+  (ADR 0011); `runs/ablated/` still holds its five 150-step runs, whose numbers
+  are void and whose manifests record the opposite of what ran.
 * `basis_congruence` crashed a run at step 41 500; `safe_eigh` has a fallback
   ladder now.
 * `is_identity` uses `atol = 1e-6` and misses a flat-spectrum fp32 weight at

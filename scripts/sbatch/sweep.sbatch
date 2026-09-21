@@ -38,6 +38,9 @@ SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"
 DATA="${DATA:-$DATA_p330/c4}"
 RUNS="${RUNS:-$DATA_p330/runs}"
 
+# STALE, kept for the record of how the 1x-Chinchilla sweeps were launched: `ngd`
+# is not a registered optimizer name, and `pion_ablated` was removed from the
+# harness on 2026-09-22 (ADR 0008, 0011). Do not submit this as it stands.
 OPTIMIZERS=(ngd pion_ablated pion)
 LRS=(1e-4 3e-4 1e-3 3e-3)
 

@@ -35,7 +35,7 @@ def generators(W: torch.Tensor, G: torch.Tensor) -> tuple[torch.Tensor, torch.Te
 
     * `natural_gradient` is linear in `G`, and `alpha = quad/curv` has the
       factor in both halves, so **doubling `eta` reproduces the old trajectory
-      exactly** for every NGD variant and for `pion_ablated`.
+      exactly** for every NGD variant.
     * `pion` with `scaling="rms"` normalises the update it applies, so the
       factor is absorbed and its `eta` is unchanged. The anchor is unaffected.
     * `shampoo-pion` is scale invariant by construction -- `P` goes as `1/4`,
