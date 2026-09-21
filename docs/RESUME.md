@@ -7,7 +7,10 @@ that produced all of it and `docs/JOURNAL_INDEX.md` indexes it, `docs/decisions/
 decision with its reason and evidence (ADR 0008 is the baseline, 0009 the
 comparison protocol), `docs/CLUSTER.md`
 is the machine, `$DATA_p330/runs/README.md` says what every run directory
-holds. This file is only ever *now*.
+holds, and `runs-record/` in this repository is a copy of every run's
+`manifest.json` and `log.jsonl` (refresh with `scripts/archive_runs.py` when jobs
+end; the six stage-1 runs were only prefixes at the first sync). This file is
+only ever *now*.
 
 **Rewrite this file rather than appending to it.** It is a snapshot, not a log.
 
