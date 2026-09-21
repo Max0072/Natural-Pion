@@ -5679,3 +5679,43 @@ only on disk). **The six stage-1 runs of job 332045 were in flight**, so their
 archived logs are prefixes; re-run the script when the job ends.
 
 Nothing open in the decision log now except the `ALGORITHM.md` rewrite.
+
+## 2026-09-23, early -- stage 1 result: H1 holds
+
+Job 332045 finished cleanly (3 x COMPLETED, 43 min each). Checked before reading
+the numbers: manifests of the six new runs differ from the seed-0 ones in `seed`
+and `out_dir` only; same node (`rtx6002`), same torch, and `harness/` and
+`ngd_pion/` are byte-identical between the seed-0 commit and the new runs' commit.
+
+Final val at step 2999, B = 512, 3000 steps, same seed for both arms:
+
+    seed   ngd-pion-s   pion     gap
+    0      3.7954       3.8412   +0.0458
+    1      3.8015       3.8377   +0.0362
+    2      3.8040       3.8369   +0.0329
+    3      3.8052       3.8417   +0.0365
+
+Mean gap +0.0379, sd 0.0056, SE 0.0028, mean/SE **13.6**. The criterion fixed in
+`docs/PLAN.md` before the numbers (all four positive, mean/SE > 2.35): **met.**
+H1 holds.
+
+**Two readings that matter.**
+
+1. Seed 0 is the largest gap, and it is the seed the optima were chosen on. A
+   grid winner is selected, so its number is optimistic. The three seeds the
+   tuning never saw give **+0.0352, sd 0.0020**, and that is the number to quote.
+2. The seed-to-seed sd of val at this length is small: 0.0044 (`ngd-pion-s`) and
+   0.0024 (`pion`). Earlier in this session the noise was taken to be about 0.03,
+   from the eight non-replicate Pion runs; it is an order of magnitude smaller.
+   The gap is roughly ten standard deviations.
+
+**What it does not license.** It is a statement at 393M tokens, 4.1% of the
+budget, where both arms are at their own tuned rates. The horizon evidence still
+points the other way: with AdamW pinned, +0.024 at 786M tokens and -0.014 at 9.6B.
+With val noise this small at 3000 steps, that -0.014 is probably not noise either,
+though the noise at full length has not been measured. The step is also 2.10x
+Pion's in wall-clock, so a step-count advantage is not yet a time advantage.
+
+The archive `runs-record/` was refreshed (the six runs are complete now).
+Next: the horizon ladder (15 000 steps, both arms tuned), which is the stage that
+decides whether the advantage survives length.

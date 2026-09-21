@@ -4,8 +4,9 @@ Read `docs/VALIDATION.md` first: it says what the numbers below are and are not.
 Notation (`val`, `rot`, `adamw`, `B`, gap, seed) is defined at the top of that
 file and used the same way here.
 
-**Status, 2026-09-22 night:** stage 1 is running (job 332045, see the journal);
-nothing else has been submitted. Every other stage marked `[compute]` needs an
+**Status, 2026-09-22 night:** stage 1 is done (job 332045): **H1 holds**, mean gap
++0.038 (seeds 1-3 alone +0.035), all four seeds positive, mean/SE 13.6. Nothing
+else has been submitted. Every other stage marked `[compute]` needs an
 explicit go-ahead before it runs, because the cluster is shared.
 
 ## The claim, stated so it can fail

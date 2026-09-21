@@ -26,9 +26,9 @@ below is seed 0, one run per cell, unless it says otherwise.
 
 ## As of 2026-09-22
 
-Job 332045 is running (stage 1: seeds 1-3 for both arms, B = 512, 3000 steps,
-all six concurrent on `rtx6002`, output in `$DATA_p330/runs/seedshead/`). Last
-commit before today: 2026-08-31.
+Nothing is running. Stage 1 (job 332045, seeds 1-3 for both arms) finished
+cleanly in 43 minutes; its result is below. Output in
+`$DATA_p330/runs/seedshead/`, archived in `runs-record/`.
 
 ### The headline, corrected
 
@@ -55,9 +55,23 @@ optimum of (rot, adamw), both bracketed in adamw:
     pion         rot 1e-3   adamw 8e-3    3.8412       gap +0.046
 
 The `adamw2d` sweep is the first with AdamW tuned for either arm; every earlier
-run pinned it. It does **not** yet have an error bar: one seed per arm, and no
-seed-to-seed spread has been measured at 3000 steps or at full length (only 0.002
-of same-seed hardware non-determinism, and sd 0.024 at 150 steps).
+run pinned it. **It now has an error bar (stage 1, job 332045).** Four seeds,
+same seed for both arms, final val at step 2999:
+
+    seed   ngd-pion-s   pion     gap
+    0      3.7954       3.8412   +0.0458
+    1      3.8015       3.8377   +0.0362
+    2      3.8040       3.8369   +0.0329
+    3      3.8052       3.8417   +0.0365
+
+All four gaps positive; mean +0.0379, standard deviation 0.0056, standard error
+0.0028, mean/SE 13.6 against the threshold 2.35 fixed in advance (`docs/PLAN.md`
+H1): **H1 holds.** Seed 0 is the largest gap, as it should be: the optima were
+chosen on seed 0, so its number is selected. Seeds 1-3 alone, which the tuning
+never saw: **+0.0352, sd 0.0020**. The seed-to-seed sd of val itself is 0.002-0.004
+at this length (`ngd-pion-s` 0.0044, `pion` 0.0024), so the gap is about ten of
+them. The setup was checked, not assumed: the manifests differ from seed 0 in
+`seed` and `out_dir` only, same node, same torch, harness code identical.
 
 Two further readings, each one seed:
 
@@ -82,9 +96,9 @@ claimed. **The baseline is published Pion and nothing else** (user, 2026-09-22):
 
 ### What to do next, in order (full reasoning in `docs/PLAN.md`)
 
-1. **Seeds.** Job 332045, submitted 2026-09-22, three more seeds per arm at the
-   two optima above: an error bar on the +0.046. Read the six vals, diff the
-   manifests against seed 0, apply the rule in `docs/PLAN.md` H1.
+1. ~~Seeds.~~ Done: +0.035 to +0.046, all four positive, H1 holds. What it does
+   and does not show: a real advantage at 393M tokens (4.1% of the budget), where
+   both arms have the same AdamW rate. It says nothing yet about the horizon.
 2. ~~`pion_ablated`, tuned.~~ Withdrawn: the baseline is published Pion.
 3. **Horizon ladder** at 15000 steps, then the full-length pair with AdamW tuned
    for both, if the trend is not negative.

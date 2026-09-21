@@ -26,7 +26,7 @@ Notation used throughout, once, so nothing below is shorthand:
 |---|---|
 | Does the code do what the spec says? | **Yes, as far as CPU tests can say.** 262 passed, 1 skipped, 33.6 s |
 | Is the `a2dhead` head-to-head a clean comparison? | **Clean in setup, not in noise.** Same seed, data, hardware, code; the arms are two different *presets*, see V2 |
-| Does NGD-Pion beat Pion at B = 512? | **Seed 0, 3000 steps: yes, gap +0.046. Not established**: one seed per arm and no seed-noise estimate exists at this length (V4) |
+| Does NGD-Pion beat Pion at B = 512? | **At 3000 steps, yes, with an error bar** (added after the audit, job 332045): four seeds, gaps +0.033 to +0.046, mean +0.038, mean/SE 13.6. **Not established at longer horizons** (V1, V4) |
 | Was the full-length result a tie "inside Pion's run-to-run spread"? | **No. That reading was wrong** (V1). The like-for-like Pion run is 0.014 *ahead* of NGD-Pion, n = 1 each |
 | Are the docs current? | **No.** Five stale statements found and listed in V6 |
 
@@ -166,8 +166,11 @@ What has been measured:
 | four seeds, one configuration, **150 steps** | sd 0.024 | `runs/seeds/` |
 | `alpha 2` against `alpha 3`, four seeds each | not resolved | `runs/a2/` |
 
-Nothing at 3000 steps and nothing at full length. So **+0.046 has no error
-bar**. An earlier message of this session quoted "sd about 0.03 between eight
+Nothing at 3000 steps and nothing at full length **at the time of the audit**.
+Stage 1 (job 332045) has since measured the 3000-step spread: sd of val 0.002-0.004
+across four seeds, so the +0.046 has an error bar and holds (mean gap +0.038 over
+four seeds, +0.035 over the three the tuning did not see). Still nothing at full
+length. The rest of this section is what the audit found before that. An earlier message of this session quoted "sd about 0.03 between eight
 Pion runs" as the scale of that noise; that number came from the eight
 non-replicates of V1 and is void.
 
