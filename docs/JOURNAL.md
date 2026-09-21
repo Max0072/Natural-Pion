@@ -5680,7 +5680,7 @@ archived logs are prefixes; re-run the script when the job ends.
 
 Nothing open in the decision log now except the `ALGORITHM.md` rewrite.
 
-## 2026-09-23, early -- stage 1 result: H1 holds
+## 2026-09-22, 02:14 -- stage 1 result: H1 holds
 
 Job 332045 finished cleanly (3 x COMPLETED, 43 min each). Checked before reading
 the numbers: manifests of the six new runs differ from the seed-0 ones in `seed`

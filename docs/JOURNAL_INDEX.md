@@ -73,4 +73,4 @@ Line numbers are for `sed -n 'Np,+40p' docs/JOURNAL.md`.
 | 2026-09-22 | night -- the baseline is published Pion; `pion_ablated` and stage 2 withdrawn | 5573 |
 | 2026-09-22 | night -- decision records (`docs/decisions/`) | 5626 |
 | 2026-09-22 | night -- ADR 0011 and 0012 accepted: `pion_ablated` removed, run records archived | 5655 |
-| 2026-09-23 | early -- stage 1 result: H1 holds | 5683 |
+| 2026-09-22 | 02:14 -- stage 1 result: H1 holds | 5683 |
