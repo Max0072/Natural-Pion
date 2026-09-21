@@ -5816,3 +5816,53 @@ cite: Cayley SGD/Adam (ICLR 2020) for the retraction, Riemannian natural gradien
 (2607.19331) as a concurrent spectrum-preserving method. Limits stated there: the
 search is not an index (three citing papers found for Pion), papers were read
 through summaries, and "not found" is not "does not exist".
+
+## 2026-09-22, 02:37 -- ablation B submitted (job 332073); and alpha looks like a warmup
+
+The user chose B (remove the trust region and re-tune) and said C (replace it by
+something derived) is to be thought about meanwhile.
+
+**Submitted.** `scripts/sbatch/notrust_head.sbatch`, array `0-5`, pinned to
+`rtx6002`, seed 0, `ngd-pion-s` with `--ngd-trust none`, adamw held at the tuned
+8e-3, `rot` in 1.25e-4, 2.5e-4, 5e-4, 1e-3, 2e-3, 4e-3, 3000 steps, output in
+`$DATA_p330/runs/notrust2d/`. Every other flag is that of the with-alpha seed-0
+runs. The grid goes low because without alpha the step is longer by 1/alpha, and
+because the old no-trust sweep (runs/notrust, adamw pinned at 1e-3, another
+protocol) had its best cell on the lower edge and never found its optimum. The
+reading rule R is in the sbatch header and in PLAN H5, fixed before any number.
+
+**Queue.** All eight GPUs of rtx6002 are taken (seven by the ladder, one by another
+user). The scheduler says 11:38 for the array, which is its worst case from the
+ladder's 8 h limits; the ladder's five `ngd-pion-s` runs should end near 06:30 and
+free the cards. An unpinned test-only run offered rtx6006 at 04:15, not taken:
+it is not in the CLUSTER.md wedge tally either way, and the documented rule is to
+queue on rtx6002. No deadline, so the wait costs nothing but time.
+
+**What alpha does over a run** (seed 1 of job 332045, tuned rate, 7392 layer-step
+readings): by 100-step window, median alpha is 0.001 for steps 0-100, 0.09-0.18 for
+100-500, 0.2-0.3 for 500-1000, 0.40 for 1000-1500, 0.63 for 1500-2000, 0.93 for
+2000-2500, 1.000 for 2500-3000; the share of layer-steps below 0.5 falls from 80%
+to 0%. Within a 25-step refactorisation cycle, age 1 (the step after a rebuild) is
+exactly 1.000 as the algebra says and the median then falls with age, but with an
+even/odd alternation (age 4: 0.77, 5: 0.84, 6: 0.63, 7: 0.78) that is measured and
+**not explained**; do not build on it.
+
+**The gap to Pion over the same runs** (mean of the four seeds, 3000-step cosine):
++0.179 at step 500, +0.076 at 1000, +0.029 at 1500, +0.026 at 2000, +0.038 at 2500
+and 3000. Most of the advantage is made in the first 1000 steps, when alpha is
+small, and the remainder is a roughly constant offset.
+
+**Hypothesis, stated as one and not as a finding.** Both arms run with
+`warmup_steps = 0` (Pion's own script has none). alpha acts as an implicit,
+statistics-driven warmup for NGD-Pion, which published Pion lacks. If so, (i) part
+or all of the short-run advantage is an early-training effect, (ii) it would fade
+with length, which is what the pinned-AdamW points show (+0.024 at 786M tokens,
+-0.014 at 9.6B), and (iii) a fair Pion baseline has a third knob to tune, its
+warmup. Cheap tests, not run: Pion with a tuned warmup; NGD-Pion with alpha off and
+an explicit warmup. B tells the first half of it: if removing alpha costs loss
+mostly early, this is the mechanism. The 96%-noise reading and the batch-size story
+are not touched by this.
+
+**For C**, the property to preserve is not "trust region" but "small step while the
+statistics are cold". A derived replacement therefore starts from that requirement,
+not from the Lyapunov-style argument the section 6 name suggests.

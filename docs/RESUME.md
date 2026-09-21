@@ -34,6 +34,14 @@ tuned by a cross around their 3000-step optima, output in
 seeds 1-3 for both arms) finished cleanly in 43 minutes; its result is below.
 Output in `$DATA_p330/runs/seedshead/`, archived in `runs-record/`.
 
+**Job 332073 is queued** (ablation B, `ngd-pion-s` with the trust region off; six
+runs, `rot` 1.25e-4 to 4e-3, pinned to `rtx6002`; it starts when the ladder's
+`ngd-pion-s` runs free their cards, about 06:30, and the scheduler's worst-case
+estimate is 11:38). Rule for reading it: `docs/PLAN.md` H5. Also new: `alpha` looks
+like an implicit warmup (median 0.001 in the first 100 steps, 1.000 in the last
+500), which is a hypothesis about the whole advantage and untested (`docs/PLAN.md`
+H5, journal 2026-09-22).
+
 ### The headline, corrected
 
 The record of 2026-08-29 called the full-length result a tie, "second of nine,

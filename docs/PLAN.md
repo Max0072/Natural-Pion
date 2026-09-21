@@ -104,6 +104,26 @@ statement -- "NGD-Pion reaches a given val in fewer steps, and more so at larger
 batch" -- and must be written as the speed-up in step-equivalents, not as a loss
 difference (loss is compressive; see the 2026-08-28 entry).
 
+**H5 -- how much of the advantage lives in `alpha`.** (Added 2026-09-22, after the
+trust-region audit; journal same date.) `alpha = quad/curv` is not a trust region
+and is the largest per-layer step multiplier in the method (median 0.64 at the
+tuned rate). *Test, ablation B:* `--ngd-trust none`, own `rot` grid, then adamw
+bracket, then seeds 1-3 paired with the with-alpha and Pion runs. *Rule, fixed in
+the header of `scripts/sbatch/notrust_head.sbatch`:* with `R = (3.8412 - V)/0.0458`,
+the share of the seed-0 gap to Pion that survives without alpha: `R >= 0.8` alpha
+is not needed; `0.2 <= R < 0.8` part of the advantage lives in it; `R < 0.2` the
+advantage over Pion is the step-length damping. This ablates a part of the method
+under test, not a Pion baseline (ADR 0008 stands).
+*Untested hypothesis it makes askable, not a finding:* `alpha` behaves like an
+implicit learning-rate warmup (median 0.001 in the first 100 steps, about 0.15 to
+step 500, 0.4 at 1000-1500, 0.93 at 2000-2500, 1.000 in the last 500, seed 1), and
+the runs have `warmup_steps = 0` for both arms as in Pion's own script. The gap to
+Pion (mean of four seeds) is +0.179 at step 500, +0.076 at 1000, +0.029 at 1500,
++0.026 at 2000, +0.038 at 3000: mostly made early. If a warmup on Pion, or an
+explicit warmup in place of `alpha` on NGD-Pion, reproduces the gap, then the
+advantage is an early-training effect and the horizon decay has an explanation.
+Both are cheap (3000 steps) and neither has been run.
+
 ## Stages, in order
 
 | stage | what | cost | gate |
@@ -114,6 +134,7 @@ difference (loss is compressive; see the 2026-08-28 entry).
 | **3** `[compute]` | **H4 ladder:** both arms, 15000 steps (1.97B tokens, 20% of the budget), a five-cell cross around each 3000-step optimum. **Submitted 2026-09-22 as job 332064** | about 4 h per `ngd-pion-s` run, about 2.1 h per `pion`; ten runs, about 30 GPU-hours, about 6 h wall on `rtx6002` | stage 1, done |
 | **4** `[compute]` | **H4 full length:** the two arms, 73 242 steps, tuned `adamw` carried from stage 3, one neighbouring `adamw` each | `ngd-pion-s` about 19.7 h (0.967 s/step on rtx, close to the 24 h partition cap; resubmitting resumes from the checkpoint), `pion` about 9.4 h | stage 3 shows the trend is not negative |
 | **5** optional `[compute]` | H2 extension (B = 128) | a grid | after stage 1 |
+| **6** `[compute]` | **H5, ablation B:** `ngd-pion-s` with `--ngd-trust none`, `rot` in 1.25e-4..4e-3 at adamw 8e-3, seed 0, 3000 steps. **Wave 1 submitted 2026-09-22 as job 332073** (six runs, pinned to `rtx6002`, waiting behind the ladder); wave 2 brackets adamw and refines `rot`; wave 3 is seeds 1-3 at the optimum | six runs of about 45 min | stage 1, done |
 
 Stage 1 comes before every other compute stage because it costs about 2.5 h,
 it is the only stage that can put an error bar on today's headline number, and
