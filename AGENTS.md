@@ -28,7 +28,10 @@ not between two branches of it.
    claim, criteria fixed before the numbers -- and
    **[`docs/VALIDATION.md`](docs/VALIDATION.md)** -- the audit of 2026-09-22:
    what each number is and is not, including the correction to the "tie".
-   Decisions live in **[`docs/decisions/`](docs/decisions/README.md)**, one
+   Every run's configuration and loss curve is archived in
+   **[`runs-record/`](runs-record/README.md)**; refresh it with
+   `scripts/archive_runs.py` when jobs finish. Decisions live in
+   **[`docs/decisions/`](docs/decisions/README.md)**, one
    record per decision with its reason and evidence; add one when a decision is
    taken or reversed, and supersede rather than edit.
 1. **[`ALGORITHM.md`](ALGORITHM.md)** — the specification. Every design decision

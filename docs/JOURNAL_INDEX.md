@@ -1,6 +1,6 @@
 # Journal index
 
-Generated from `docs/JOURNAL.md` by `scripts/journal_index.py` -- 66 entries, 5653 lines. Do not edit by hand; re-run the script.
+Generated from `docs/JOURNAL.md` by `scripts/journal_index.py` -- 67 entries, 5681 lines. Do not edit by hand; re-run the script.
 
 Line numbers are for `sed -n 'Np,+40p' docs/JOURNAL.md`.
 
@@ -72,3 +72,4 @@ Line numbers are for `sed -n 'Np,+40p' docs/JOURNAL.md`.
 | 2026-09-22 | night -- stage 1 submitted: seeds for the +0.046 (job 332045) | 5534 |
 | 2026-09-22 | night -- the baseline is published Pion; `pion_ablated` and stage 2 withdrawn | 5573 |
 | 2026-09-22 | night -- decision records (`docs/decisions/`) | 5626 |
+| 2026-09-22 | night -- ADR 0011 and 0012 accepted: `pion_ablated` removed, run records archived | 5655 |

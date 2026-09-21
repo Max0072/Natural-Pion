@@ -5651,3 +5651,31 @@ decision gets a record when it is next relied on.
 
 **A slip corrected along the way:** the entries above said seven sbatch scripts
 still reference `pion_ablated`; it is six.
+
+## 2026-09-22, night -- ADR 0011 and 0012 accepted: `pion_ablated` removed, run records archived
+
+The user answered both open questions: delete `pion_ablated` from the code (0011),
+and put the run records in git (0012). Two commits, one per action.
+
+**0011, commit `7332ac8`.** The `pion` branch of `build_optimizers` now takes every
+setting from `RunConfig`; the `pion_ablated` name is gone from the config comment
+and the error message; the two tests that wired and ran the arm are removed and
+two added (Pion wired as published; the old name raises `unknown optimizer`).
+Kept on purpose: the `Pion` class and its `none`/Cayley switches, needed by the
+test that pins the truncated exponential diverging without RMS scaling and by
+Shampoo's `power = 0` limit (renamed `test_power_zero_is_the_raw_generator_step`).
+The only non-comment line touched in `harness/config.py` is the optimizer-name
+list in a trailing comment, so no run hash changes. `sweep.sbatch`, which lists the
+arm and an unregistered name `ngd`, is marked stale. Tests: 261 passed, 1 skipped,
+28 s (was 262: minus three, plus two). A job in flight is unaffected, its
+processes had already imported the code.
+
+**0012, this commit.** `scripts/archive_runs.py` copies `manifest.json` and
+`log.jsonl` of every run under `$DATA_p330/runs/` to `runs-record/`, idempotently.
+First sync: 646 files, 13.4 MB, 323 runs, none missing; a spot check against the
+source is byte-identical. Not archived: 205 GB of checkpoints (regenerate by
+re-running) and 530 MB of `diagnostics.jsonl` (do not regenerate, and are still
+only on disk). **The six stage-1 runs of job 332045 were in flight**, so their
+archived logs are prefixes; re-run the script when the job ends.
+
+Nothing open in the decision log now except the `ALGORITHM.md` rewrite.
