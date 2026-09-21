@@ -5530,3 +5530,42 @@ other hardware, full length) and sd 0.024 at 150 steps.
 ### Not submitted, waiting on the user
 
 All of `docs/PLAN.md` stages 1-5. The deadline date decides how far it goes.
+
+## 2026-09-22, night -- stage 1 submitted: seeds for the +0.046 (job 332045)
+
+The user answered the three open questions of the audit: there is no deadline
+now, stage 1 may run, and everything goes to git on `main`. Docs pushed as
+`eb9fe4a` before anything was submitted.
+
+**Job 332045**, `scripts/sbatch/seeds_head.sbatch`, array `0-2`, pinned to
+`rtx6002`, two GPUs per task. Task `k` is seed `k + 1`; inside a task the two
+arms run side by side, one card each:
+
+    ngd-pion-s   rot 6e-3   adamw 8e-3
+    pion         rot 1e-3   adamw 8e-3
+
+B = 512, 3000 steps, `--ngd-t-fac 25`, bf16, `log_every 23`, `eval_every 500`.
+Every flag is that of `adamw2d_head.sbatch`; the manifests must differ from the
+seed-0 ones in `seed` alone, and that gets checked when the runs finish. Output
+in `$DATA_p330/runs/seedshead/`.
+
+**One deviation from the plan, at the user's instruction.** The plan ran the
+three seeds one after another, on the rule that concurrent runs on one node must
+share a seed. The user said that was not necessary, and the array throttle was
+raised from 1 to 3 in place (`scontrol update ArrayTaskThrottle=3`), so all six
+runs are concurrent, three different seeds on one node. Watched for: a step
+time above the solo figures would mean the rule was right. First reading, 45 s
+apart, 23-115 steps in: `ngd-pion-s` about 0.98 s/step (solo 0.967), `pion`
+about 0.65 s/step. No contention visible yet.
+
+**Cold start.** `rtx6002` was powered down (`idle~`); the tasks sat in
+`CONFIGURING` for about seven minutes while it booted, with the 2 h limit already
+counting. Nothing was wrong. Signature checked once it was up, as
+`docs/CLUSTER.md` says to: step counters advancing, GPU utilisation 100% on both
+cards, memory 49-50 GB, two distinct card UUIDs.
+
+Decision rule, fixed before the numbers (`docs/PLAN.md` H1): the four paired
+gaps (seed 0 plus these three) all positive and mean gap / standard error > 2.35.
+
+Expected finish about 01:45 cluster time. Next: read the six final vals, diff the
+manifests against seed 0, apply the rule, rewrite RESUME.
