@@ -142,8 +142,8 @@ to warm up.
 | **0** | documentation and audit: this file, `VALIDATION.md`, `RESUME.md`, journal, stale-number fixes | none, **done 2026-09-22** | -- |
 | **1** `[compute]` | **H1: seeds.** Seeds 1, 2, 3 for `ngd-pion-s` (rot 6e-3, adamw 8e-3) and `pion` (rot 1e-3, adamw 8e-3), B = 512, 3000 steps. Six runs | about 42 min per `ngd-pion-s` run and about half that for `pion`, measured from the `a2dhead` timestamps with seven jobs sharing a node. Two runs per seed at a time, three seeds one after another: **about 2.5 h wall** | user go-ahead |
 | **2** | ~~H3: `pion_ablated`~~ **withdrawn 2026-09-22** by the user's decision: the baseline is published Pion | -- | -- |
-| **3** `[compute]` | **H4 ladder.** Wave 1 (job 332064) **done**: gap15 = -0.0048, but ngd's best cell (3.5302, rot 3e-3, adamw 8e-3) sits on the edge of its cross on both axes, so the number is not quoted. pion's optimum (3.5254, rot 1e-3, adamw 8e-3) is interior. **Wave 2 submitted as job 332970**, a 3x3 grid around the corner both axes pointed at | wave 1: 30 GPU-h. Wave 2: six runs, ~3.5 h each, ~3.5-4 h wall (rtx6002 idle, all six run at once) |
-| **4** `[compute]` | **H4 full length:** the two arms, 73 242 steps, tuned `adamw` carried from stage 3, one neighbouring `adamw` each | `ngd-pion-s` about 19.7 h (0.967 s/step on rtx, close to the 24 h partition cap; resubmitting resumes from the checkpoint), `pion` about 9.4 h | stage 3 shows the trend is not negative |
+| **3** `[compute]` | **H4 ladder: DONE** (jobs 332064, 333609, both waves). Best `ngd-pion-s` cell unchanged by the extension: 3.5302 (rot 3e-3, adamw 8e-3), now interior on `rot`. `gap15 = 3.5254 - 3.5302 = -0.0048`. By the rule fixed in advance (< +0.010 means gone): **gone** | wave 1: 30 GPU-h. Wave 2: six runs, ~4 h wall total, including a storage-related delay (`docs/CLUSTER.md`) |
+| **4** | **Not run, and not justified by stage 3's result.** The full 73 242-step pair was gated on the ladder not showing the gap gone; it did |
 | **5** optional `[compute]` | H2 extension (B = 128) | a grid | after stage 1 |
 | **6** | **H5, ablation B: done** (job 332073). Best without alpha, rot 2.5e-4 adamw 8e-3, val 4.1969 -- interior, but 0.356 *worse than Pion itself* (R = -7.8, far below the `R < 0.2` band anticipated). Checked against the same rot with alpha: 0.47 apart at rot=2e-3, so alpha is not a rescaled learning rate. Waves 2-3 not needed, the result is not near any threshold | six runs, done |
 
@@ -176,20 +176,36 @@ it decides whether stages 3-4 are worth 30 GPU-hours.
 * Write the job ids and configurations into `docs/JOURNAL.md` as jobs are
   submitted, and rewrite `docs/RESUME.md` rather than appending to it.
 
-## What each outcome means for the paper
+## What each outcome means for the paper -- resolved 2026-09-23
 
-| outcome | what can be written |
-|---|---|
-| H1 holds, H4 holds | the main claim, with an error bar: NGD-Pion beats published Pion at the classical setting, both tuned. The strong version |
-| H1 holds, H4 negative | "NGD-Pion is more sample-efficient at the classical batch and the advantage grows with batch, but is absorbed at long horizons": a regime paper, stated as a step-equivalent speed-up |
-| H1 dies | no measurable advantage at the classical batch; what remains is the noise-regime analysis (H2) and the lr-robustness result already on disk (the `rho` controller converges from a hundredfold range of starting rates) |
+**H1 holds (stage 1). H4 is negative (stage 3, both waves).** The paper is the
+regime version: **"NGD-Pion is more sample-efficient at the classical batch and
+short horizon, and the advantage grows with batch, but is absorbed by 15000
+steps"** -- a step-equivalent speed-up claim, not a loss-difference win at
+length. **The full 73 242-step pair (stage 4) is not justified** by the rule
+fixed before the ladder ran, and should not be spent chasing "NGD-Pion beats
+Pion outright."
 
-None of these attributes a gain to one component of the method. NGD-Pion is a
-bundle and is measured as one against Pion.
+**The caveat the user raised, and it belongs in the paper too, not just here.**
+This negative verdict is about *the method as it currently stands* -- which
+includes `alpha = quad/curv`, the per-layer step-length multiplier discussed at
+length in this file's own H5 and in the journal (2026-09-22). `alpha` is not
+something Natural Pion's original conception asked for; it is a patch that
+turned out to be load-bearing (ablation B: removing it makes the method 0.356
+*worse than Pion itself*), whose own justification is still not understood
+(the `t_fac = 1` anomaly -- a *fresher*, more accurate basis makes the loss
+*worse*, unexplained) and whose replacement (candidate C: `trust="exact"`, the
+per-layer real trust region) has been calibrated and run once at 3000 steps
+without yet beating either baseline (`docs/JOURNAL.md`, 2026-09-22/23). **So
+"the horizon advantage disappears" is a finding about this specific,
+not-fully-understood implementation, not a settled fact about Fisher-
+preconditioned natural gradient on this geometry in general.** If C ever
+produces something that changes the picture, H4 is not automatically closed --
+it would need re-testing under whatever replaces `alpha`.
 
-The user has said the paper should rest on a positive empirical result. The
-table above is the reason to run stage 1 first: it is the cheapest way to learn
-which row we are in before spending the expensive stages.
+None of this attributes a gain to one component of the method (ADR 0008):
+NGD-Pion is measured as a bundle against Pion. The caveat above is about the
+method's own internals, not about isolating a component for the comparison.
 
 ## Time
 

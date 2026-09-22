@@ -6154,3 +6154,51 @@ redundant copying, confirmed earlier via the lock) and are now all between
 69% and 100% GPU utilisation. The fix works as designed: one slow copy, paid
 once per node, then normal throughput regardless of the underlying NFS
 degradation.
+
+## 2026-09-23, 01:20 -- H4 answered: the advantage does not survive to 15000 steps
+
+Ladder wave 2 (job 333609) finished. Full grid, best `ngd-pion-s` cell
+unchanged from wave 1: 3.5302 (rot 3e-3, adamw 8e-3), now interior on `rot`
+(1.5e-3 row and 6e-3 row both worse) though still the adamw-axis edge for that
+row -- mitigated by the `rot = 6e-3` row's own full adamw sweep (2e-3 to 1.6e-2)
+showing a genuine U-shape with its minimum in the middle (3.5425 at 4e-3),
+suggesting the same is likely true at rot = 3e-3 rather than open-ended
+improvement. `pion`'s optimum (3.5254, rot 1e-3, adamw 8e-3) was already
+interior from wave 1.
+
+    gap15 = 3.5254 - 3.5302 = -0.0048
+
+Identical to wave 1's number -- the whole six-run, ~4-hour extension (delayed
+further by tonight's storage trouble) did not move the headline figure at all,
+which is itself the useful confirmation that 3.5302 is close to the true
+optimum. By the rule fixed before wave 1 ran (`docs/PLAN.md` H4): **gone.**
+The full 73 242-step pair is not justified and is not planned.
+
+**Consequence for the paper.** H1 holds (stage 1, four seeds, +0.035 to
++0.046) and H4 is negative. The decision table in `docs/PLAN.md` written before
+any of this ran said exactly what to do here: the regime version -- NGD-Pion
+is more sample-efficient at the classical batch and short horizon, the
+advantage grows with batch, but it is absorbed by length -- reported as a
+step-equivalent speed-up, not a loss-difference win at 15000+ steps.
+`docs/PLAN.md` and `docs/RESUME.md` rewritten to reflect this; `docs/RESUME.md`
+in particular got a fuller rewrite of its "As of" section rather than another
+patch, since the state changed enough to warrant it.
+
+**The user's caveat, recorded because it belongs in the paper's framing too:**
+this negative result is about *the current implementation*, which carries
+`alpha = quad/curv` -- not part of Natural Pion's original conception, a patch
+that turned out load-bearing (ablation B) and whose own mechanism is not
+understood (the `t_fac = 1` anomaly). "The advantage disappears at length" is
+a fact about this specific, still-partly-mysterious implementation, not a
+proven fact about Fisher-preconditioned natural gradient on this geometry in
+general. If candidate C (`trust="exact"`, in progress, not yet beating either
+baseline at 3000 steps -- see the two entries above) ever changes the method
+meaningfully, H4 is not to be assumed settled under the new version without
+re-testing.
+
+**Not run tonight, and open:** extending the `trust="exact"` grid below its
+current lower edge (`eta = 0.08`, nearly tied with `eta = 0.12`'s 3.8524 at
+3000 steps); the cross-layer correction question raised in the theory
+discussion (Shampoo's 2-7x cross-layer spread lost by 0.174, but conflated
+with discarding `A`/`S` entirely, so not a clean test of cross-layer
+correction alone).

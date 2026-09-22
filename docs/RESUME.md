@@ -24,24 +24,57 @@ below is seed 0, one run per cell, unless it says otherwise.
 
 ---
 
-## As of 2026-09-22
+## As of 2026-09-23, 01:15
 
-**Job 332064 is running** (stage 3, the horizon ladder; submitted 2026-09-22
-02:19, expected to finish about 06:30-07:00): ten runs at 15 000 steps, both arms
-tuned by a cross around their 3000-step optima, output in
-`$DATA_p330/runs/ladder15k/`. The rule for reading it is fixed in the header of
-`scripts/sbatch/ladder15k.sbatch` and in `docs/PLAN.md` H4. Stage 1 (job 332045,
-seeds 1-3 for both arms) finished cleanly in 43 minutes; its result is below.
-Output in `$DATA_p330/runs/seedshead/`, archived in `runs-record/`.
+**The headline question is answered: at B = 512, the advantage does not
+survive to 15000 steps.** Both waves of the horizon ladder (jobs 332064,
+333609) are done. Best `ngd-pion-s` cell, over the full grid: 3.5302 (rot 3e-3,
+adamw 8e-3), unchanged by wave 2's extension and now interior on `rot`. Best
+`pion`: 3.5254 (rot 1e-3, adamw 8e-3), interior since wave 1.
 
-**Job 332970 is running** (ladder wave 2: a 3x3 grid for `ngd-pion-s` at 15000
-steps around the corner wave 1 pointed at; expected done ~18:50-19:00). Wave 1
-result: **the gap to Pion is gone at 15000 steps** (gap15 = -0.0048), but ngd's
-best cell sat on the edge of its grid on both axes, so wave 2 decides the real
-number. Ablation B is **done**: without `alpha`, NGD-Pion is 0.356 *worse than
-Pion itself* at its own best rate (not merely level with it) -- `alpha` is
+    gap15 = val(pion) - val(ngd-pion-s) = 3.5254 - 3.5302 = -0.0048
+
+By the rule fixed before either wave ran (`docs/PLAN.md` H4: `>= +0.020`
+persists, `+0.010` to `+0.020` decaying, `< +0.010` gone): **gone.** The full
+73 242-step pair is **not justified** and should not be run as a bid to show
+NGD-Pion beating Pion outright. The paper is the regime version: NGD-Pion is
+more sample-efficient at the classical batch and short horizon, and the
+advantage grows with batch, but it is absorbed by 15000 steps -- stated as a
+step-equivalent speed-up, not a length-horizon win.
+
+**The caveat the user raised, 2026-09-23, and it belongs in the paper too:**
+this verdict is about the method *as it currently stands*, which includes
+`alpha = quad/curv` -- not something Natural Pion's original conception asked
+for, a patch that turned out load-bearing (ablation B, below) whose own
+justification is not understood (the `t_fac = 1` anomaly: a *fresher*, more
+accurate basis makes the loss *worse*, unexplained). "The horizon advantage
+disappears" is a finding about this specific, not-fully-understood
+implementation, not a settled fact about Fisher-preconditioned natural
+gradient on this geometry in general. If candidate C (below) ever changes the
+method meaningfully, H4 would need re-testing under it, not be assumed closed.
+
+**Ablation B is done**: without `alpha`, NGD-Pion is 0.356 *worse than Pion
+itself* at its own best rate (not merely level with it) -- `alpha` is
 load-bearing, not a nicety, and it varies by time and by layer at once, which
-argues against "it is just an implicit warmup". Details: `docs/PLAN.md` H4, H5.
+argues against "it is just an implicit warmup". Details: `docs/PLAN.md` H5.
+
+**Candidate C (a theoretically-grounded replacement for `alpha`) is in
+progress, not concluded.** `trust="exact"` -- the per-layer real trust region
+already in the code (`curv_exact` from a backward hook, log-smoothed via
+`ngd_exact_beta`) -- was calibrated (`eta ~ 0.16` by matching the rotation
+angle to the `quad_curv` reference) and run once at 3000 steps: best
+`eta = 0.12`, val 3.8524, still 0.057 behind `ngd-pion-s` (`quad_curv`,
+3.7954) and 0.011 behind `pion` (3.8412), with the best cell on the grid's
+lower edge (`eta = 0.08` nearly tied), so the grid has not yet found the true
+optimum. Not run: extending the grid lower. See journal, 2026-09-22/23.
+
+Also raised and not yet acted on: whether a coarse **cross-layer** correction
+on top of the existing (proven, exact) within-layer scale-invariance would
+help -- Shampoo-on-so(n) already tried something adjacent (cross-layer spread
+2-7x against the Fisher variant's 4658x-36496x) and lost by 0.174, but that
+conflated the calibration fix with discarding `A`/`S`'s curvature information
+entirely, so it is not a clean test of cross-layer correction alone. See
+journal, 2026-09-22 (the `WᵀSW`/`WAWᵀ` discussion) for the derivation.
 
 ### The headline, corrected
 
@@ -109,14 +142,16 @@ claimed. **The baseline is published Pion and nothing else** (user, 2026-09-22):
 
 ### What to do next, in order (full reasoning in `docs/PLAN.md`)
 
-1. ~~Seeds.~~ Done: +0.035 to +0.046, all four positive, H1 holds. What it does
-   and does not show: a real advantage at 393M tokens (4.1% of the budget), where
-   both arms have the same AdamW rate. It says nothing yet about the horizon.
+1. ~~Seeds.~~ Done: H1 holds, +0.035 to +0.046.
 2. ~~`pion_ablated`, tuned.~~ Withdrawn: the baseline is published Pion.
-3. **Horizon ladder** at 15000 steps: **submitted, job 332064.** Then the
-   full-length pair with AdamW tuned for both, if the ladder does not show the
-   gap gone (rule in `docs/PLAN.md` H4).
-4. Decide with the user how the paper is framed once 1 and 2 have landed.
+3. ~~Horizon ladder at 15000 steps.~~ Done: H4 is negative, gap gone
+   (gap15 = -0.0048). ~~Full-length pair~~ not justified, not planned.
+4. **Write up the regime result** (H1 holds + H4 negative + the batch-size
+   growth already on disk): the paper this data supports. Not yet started.
+5. **Candidate C, if the user wants to keep pursuing it**: extend the
+   `trust="exact"` grid below `eta = 0.08` (job's best cell is on that edge);
+   if it ever beats `quad_curv`'s optimum, H4 needs re-running under it before
+   it changes the paper's framing (see the caveat above).
 
 ### Standing results, with the number
 
