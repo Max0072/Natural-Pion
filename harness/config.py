@@ -297,8 +297,11 @@ class RunConfig:
     # construction to the error that makes the step too long.
     #
     # Costs two extra chunked forwards per measurement, on a second reader over
-    # the training corpus offset by its seed. Diagnostic only for now -- the
-    # controller still steers on the same-batch value.
+    # the training corpus offset by its seed. **No longer diagnostic-only**
+    # (2026-09-22): when this is on, `rho_held` is what `adapt_damping` steers
+    # on instead of the same-batch `rho` -- see `harness/train.py` where it is
+    # read. Turning `rho_holdout` on therefore changes the trajectory of any
+    # run with `ngd_trust_lr` also on, not only what gets logged.
     rho_holdout: bool = False
     # Adapt `eta` on the reduction ratio -- the classical trust-region radius
     # update, applied to the thing that actually scales the step. The floor
@@ -310,7 +313,12 @@ class RunConfig:
     # The band the rule steers `rho` into. K-FAC's `[0.25, 0.75]` is wrong here
     # and measurably so: at the swept optimum `rho` runs 0.47 to 1.35, so the
     # good rate sits *above* the upper threshold and the rule grows the step
-    # away from it. Target `rho ~ 1` instead.
+    # away from it -- job 297936 did exactly that from every starting rate.
+    # Target `rho ~ 1` instead. **These two defaults were never updated to
+    # match this comment** (found 2026-09-22); job 298962's corrected band was
+    # `[0.8, 1.2]`, not the `[0.25, 0.75]` still written below. Pass
+    # `--ngd-trust-lr-lo`/`-hi` explicitly rather than trusting the default
+    # until this is fixed.
     ngd_trust_lr_lo: float = 0.25
     ngd_trust_lr_hi: float = 0.75
     # Implementation choices. These are meant not to change the trajectory, or

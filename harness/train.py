@@ -616,12 +616,23 @@ def train(
             if held_before is not None:
                 rho_held = (held_before - held_after) / predicted if predicted else float("nan")
                 held_window.append(rho_held)
-            # The trust region finally gets to read the number it exists
-            # for. Only the damped variant listens; the rest ignore it.
-            # Deliberately still the same-batch value: the holdout is being
-            # measured here, not yet acted on, and one change at a time.
+            # The trust region finally gets to read the number it exists for.
+            # Only a listener with `adapt_damping` acts on it -- `ngd-pion-s`
+            # with `trust_lr` on, or `ngd-pion-damped`.
+            #
+            # **Steers on `rho_held` when it is being measured, `rho`
+            # otherwise.** Same-batch `rho` asks whether the quadratic model
+            # fit the batch whose gradient produced the step -- a step several
+            # times too long still fits it, because it is descending that
+            # batch's own quadratic, and the step is 96.4% sampling noise, so
+            # that batch's quadratic and the expected one are not the same
+            # object (journal, 2026-08-27/29). `rho_held`, measured on an
+            # independent batch, does not have that blind spot. This is the
+            # one change `rho_holdout` was left "diagnostic only" for; it was
+            # not made earlier so that turning the holdout on would not,
+            # by itself, silently also change what the controller does.
             if hasattr(rot, "adapt_damping"):
-                rot.adapt_damping(rho)
+                rot.adapt_damping(rho_held if rho_held is not None else rho)
             # Every `rho` measured since the last logged row, not only the one
             # that happens to land on it.
             #

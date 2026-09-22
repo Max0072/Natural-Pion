@@ -37,3 +37,4 @@ restate.
 | [0011](0011-delete-pion-ablated-code.md) | Delete `pion_ablated` from the code | Accepted | 2026-09-22 |
 | [0012](0012-archive-run-records-in-git.md) | Archive the small run records in git | Accepted | 2026-09-22 |
 | [0013](0013-baseline-pion-gets-no-extra-knobs.md) | The Pion baseline runs the published recipe, no extra knobs (no warmup) | Accepted | 2026-09-22 |
+| [0014](0014-steer-trust-lr-on-rho-held.md) | `adapt_damping` steers on `rho_held`, not same-batch `rho`, when measured | Accepted | 2026-09-22 |
