@@ -5972,3 +5972,56 @@ idle, so a 3x3 grid was submitted at once: rot in {1.5e-3, 3e-3, 6e-3} x adamw i
 pion is not extended -- its wave-1 optimum is already interior. Confirmed
 computing: all six tasks logged step 0 within four minutes of submission. Expected
 finish about 3.5-4 h from now, ~18:50-19:00.
+
+## 2026-09-22, 19:42 -- an I/O wedge cost four hours; found, fixed, resubmitted
+
+**What happened.** All ten currently-running tasks on `rtx6002` (the ladder
+wave-2 array, job 332970, plus two `rho_held_trust` same-batch arms, job
+333064) went dead. Not at step 0 -- the wave-2 cells had been running since
+15:19 and had reached only step 69 by the time they stopped, at **170-210
+seconds per step** against the usual ~0.9 s. `nvidia-smi` on the actual GPUs
+showed 0% utilisation, `load average` 8.00 on 64 cores, memory allocated --
+the same signature `docs/CLUSTER.md` already recorded for other nodes, seen
+on `rtx6002` for the first time. `free -g`: 968 GB free, but `buff/cache`
+only 14 GB against a corpus of about 20 GB -- the corpus was not staying
+resident, so every read was going to shared storage. All six wave-2 cells
+showed **identical** wall-clock timestamps at every step regardless of `rot`,
+which rules out a per-configuration numerical cause (a genuinely pathological
+matrix would not slow six different learning rates by the identical amount)
+and points at something shared across the node instead.
+
+**Two things happened together, and only one is clearly my doing.** The
+wave-2 cells were already crawling well before I touched anything else (23
+steps in 80 minutes, from nearly the start). Adding `rho_held_trust`'s two
+same-batch tasks around 18:46-18:49, bringing the node to eight concurrent
+readers, is the more likely trigger for the final full stop at 19:03 --
+`aphrodite-parallel-runs-share-a-seed` already names eight-way concurrency
+sharing storage as the documented failure mode, and I packed a second
+experiment onto a node already carrying six without checking its health
+first. That is the mistake to own; the earlier crawl (which predates it by
+hours) does not have a confirmed cause.
+
+**Fixed.** `scancel`led both jobs. Submitted a single wave-2 cell alone
+(array index 1) as a health check before committing more compute -- it
+recovered to a stable ~3.3-4 s/step (slower than the usual solo figure, but
+genuinely computing, not wedged). **Confirmed the run-directory lock works as
+designed**: the resubmission's stdout logged "taking over a lock 248 min
+stale, left by rtx6002 pid 157283 slurm 332972" -- the dead writer's lock was
+detected and reclaimed automatically, no manual cleanup needed. Raised the
+sbatch time limit from 6 h to 20 h (`ladder15k_wave2.sbatch`, since ~3.5 s/step
+would need about 14.6 h) and resubmitted the other five cells. All five came
+back at the **normal** ~0.85 s/step; the sixth (the one that had been running
+continuously since the health check) settled around 3.3 s/step and held
+steady rather than degrading further. So six-way concurrency on `rtx6002`
+is not itself the problem -- whatever caused the original crawl appears to
+have cleared.
+
+**`rho_held_trust`'s two same-batch arms were cancelled and not yet
+resubmitted** -- they will go back once the ladder is not sharing the node
+with them, rather than repeating today's mistake of stacking two experiments
+on one node without checking.
+
+**Cost:** about 4 hours of wall clock and, for the six wave-2 cells and two
+`rho_held` cells, their checkpoints (none had saved -- checkpoints are
+written on a ~4-minute cadence that a 200x slowdown never reached) -- so this
+was effectively a full restart, not a resume.
