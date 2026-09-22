@@ -30,7 +30,11 @@ __all__ = ["stage_locally"]
 
 # Below this size, staging is pure overhead (c4_val.bin is 16 MB) -- only pay
 # the one-time copy cost for a file worth reading from scattered thousands of
-# times afterwards. c4_train.bin is ~15 GB; the copy measured 32 s solo.
+# times afterwards. c4_train.bin is ~15 GB; the one-time copy took 32 s from
+# the login node and up to ~45 min from a loaded compute node (docs/CLUSTER.md)
+# -- worth it either way against a training loop that reads the file thousands
+# of times, but budget minutes, not seconds, when this runs for the first time
+# on a given node.
 _MIN_SIZE_TO_STAGE = 500_000_000  # 500 MB
 
 

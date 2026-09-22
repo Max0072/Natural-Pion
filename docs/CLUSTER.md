@@ -677,12 +677,25 @@ served by 172.31.0.14 at all. `harness/local_cache.py` now stages
 (`RunConfig.local_cache_dir`, default `/tmp/c4`, files under 500 MB are read
 directly since staging them is pure overhead); `scripts/stage_corpus.sh` is
 the same idea as a standalone script for anything that does not go through the
-harness. The one-time copy of the 15 GB corpus measured 32 s and is safe under
-concurrent callers on one node (`flock`-serialised; a caller that finds an
-exact byte-size match returns in under a second). Also true, and worth saying
-plainly: `/nvme/scratch` is **not** a safe alternative -- `172.31.0.12:/s2/scratch`,
-the same `hard`+`fsc` pattern, a different NFS server with the identical
-dependency on a caching daemon this project cannot verify is healthy either.
+harness. The one-time copy of the 15 GB corpus is safe under concurrent
+callers on one node regardless of its speed (`flock`-serialised; a caller that
+finds an exact byte-size match returns in under a second) -- **but its speed
+varies a lot and should not be quoted as one number.** Measured from the login
+node, 32 s (about 470 MB/s). Measured the same evening from a compute node
+under load, 7.35 MB/s sustained -- about 45 minutes for the full corpus. A
+controlled follow-up (`dd` on cold offsets, outside any container, so not an
+artifact of this project's own code) found why: **every compute node is
+markedly slower than the login node for this NFS path, right now** --
+rtx6002 22 MB/s, rtx6001 118 MB/s, rtx6003 174 MB/s, against the login node's
+785 MB/s-1.0 GB/s at the same time. Not "the server is generally overloaded"
+(a guess that did not survive checking) -- something more specific to the
+compute-node path, worse on rtx6002 than the other two tested. Budget the
+one-time copy at minutes, not seconds, when submitting from a compute node.
+
+Also true, and worth saying plainly: `/nvme/scratch` is **not** a safe
+alternative -- `172.31.0.12:/s2/scratch`, the same `hard`+`fsc` pattern, a
+different NFS server with the identical dependency on a caching daemon this
+project cannot verify is healthy either.
 
 **What this does not cover.** Run directories (`$DATA_p330/runs`) still live
 on NFS -- much smaller traffic (13 MB of manifest+log per run, a checkpoint
