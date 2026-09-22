@@ -5878,3 +5878,34 @@ the origin of the early gap, and I had no run of published Pion showing a loss e
 The proposal is withdrawn from the plan. The warmup question is asked on the NGD-Pion
 side only (an explicit warmup with `alpha` off, after B). Recorded as ADR 0013; PLAN
 H5 corrected. The published Pion stays untouched, tuned on `rot` and `adamw` only.
+
+## 2026-09-22, 03:48 -- ladder, interim look (job 332064, 1 h 29 min in)
+
+Not a result: the rule needs final values. Read only to see how the cross is
+behaving. `ngd-pion-s` cells at step 6394 of 15000 (0.84 s/step, expect the end
+about 05:50), `pion` cells at 10971 (0.49 s/step, end about 04:20). B (job 332073)
+still queued, starts when the `ngd-pion-s` cards free, about 05:50. Val at step 5000,
+15 000-step cosine, so mid-run and at a high rate:
+
+    ngd-pion-s  rot 3e-3 adamw 8e-3   3.784    <- best
+                rot 6e-3 adamw 4e-3   3.823
+                rot 6e-3 adamw 8e-3   3.853    (the 3000-step optimum)
+                rot 6e-3 adamw 1.6e-2 3.903
+                rot 1.2e-2 adamw 8e-3 3.962
+    pion        rot 5e-4 adamw 8e-3   3.829
+                rot 1e-3 adamw 8e-3   3.829     (1e-3 ahead of 5e-4 from 6000 on: 3.653 vs 3.685 at 9000)
+
+**The optimum has moved with length, as feared, and the cross may not contain it.**
+For `ngd-pion-s` the best cell is rot 3e-3, the lower edge of its rot arm, and
+with rot 6e-3 the lower adamw (4e-3) beats the tuned 8e-3 by 0.03 at step 5000, the
+lower edge of its adamw arm. A cross tests rot at one adamw and adamw at one rot;
+the corner (rot 3e-3 with adamw 4e-3) that both trends point to is not among the
+cells. By the rule written in the sbatch header, a best cell on the edge means the
+grid is extended and the gap is not quoted. Expect a second wave for
+`ngd-pion-s` centred lower, and possibly for `pion` once its adamw arm and rot 2e-3
+have run (those three tasks wait for cards, starting about 04:20).
+
+Same-step gap at 5000 between the best cell of each arm so far: 3.829 - 3.784 =
++0.045, mid-run and with the grid incomplete; it says nothing yet about the final
+value, since the gap at 3000 steps also moved during the annealing (+0.026 at step
+2000, +0.038 at the end).

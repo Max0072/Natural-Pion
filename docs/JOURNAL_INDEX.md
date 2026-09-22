@@ -1,6 +1,6 @@
 # Journal index
 
-Generated from `docs/JOURNAL.md` by `scripts/journal_index.py` -- 72 entries, 5880 lines. Do not edit by hand; re-run the script.
+Generated from `docs/JOURNAL.md` by `scripts/journal_index.py` -- 73 entries, 5911 lines. Do not edit by hand; re-run the script.
 
 Line numbers are for `sed -n 'Np,+40p' docs/JOURNAL.md`.
 
@@ -78,3 +78,4 @@ Line numbers are for `sed -n 'Np,+40p' docs/JOURNAL.md`.
 | 2026-09-22 | 02:28 -- the "trust region" is not one, and it is the biggest step multiplier in the method; and a literature check | 5763 |
 | 2026-09-22 | 02:37 -- ablation B submitted (job 332073); and alpha looks like a warmup | 5820 |
 | 2026-09-22 | 02:46 -- no warmup for the Pion baseline (ADR 0013) | 5870 |
+| 2026-09-22 | 03:48 -- ladder, interim look (job 332064, 1 h 29 min in) | 5882 |
