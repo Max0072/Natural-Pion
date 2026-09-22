@@ -5909,3 +5909,66 @@ Same-step gap at 5000 between the best cell of each arm so far: 3.829 - 3.784 =
 +0.045, mid-run and with the grid incomplete; it says nothing yet about the final
 value, since the gap at 3000 steps also moved during the annealing (+0.026 at step
 2000, +0.038 at the end).
+
+## 2026-09-22, 15:24 -- ladder finished, ablation B finished, wave 2 submitted
+
+Both job 332064 (ladder wave 1) and 332073 (ablation B) completed cleanly
+(sacct: all COMPLETED, exit 0:0). Archive refreshed (32 files, 4.0 MB).
+
+### Ladder wave 1: the gap is gone at 15000 steps, and ngd's grid missed its optimum
+
+Final val, B = 512, 15000 steps (1.97B tokens), seed 0:
+
+    ngd-pion-s  rot 3e-3   adamw 8e-3    3.5302   <- best, LOWER EDGE of the rot arm
+                rot 6e-3   adamw 4e-3    3.5425   <- LOWER EDGE of the adamw arm
+                rot 6e-3   adamw 8e-3    3.5448   (the 3000-step optimum)
+                rot 6e-3   adamw 1.6e-2  3.5661
+                rot 1.2e-2 adamw 8e-3    3.5979
+    pion        rot 1e-3   adamw 8e-3    3.5254   <- best, interior (beats both
+                                                       neighbours on both axes)
+                rot 1e-3   adamw 4e-3    3.5316
+                rot 1e-3   adamw 1.6e-2  3.5360
+                rot 2e-3   adamw 8e-3    3.5369
+                rot 5e-4   adamw 8e-3    3.5818
+
+`gap15 = 3.5254 - 3.5302 = -0.0048`. By the rule fixed in advance, this is
+`< +0.010`: inside noise or gone. **But the best ngd cell sits on the edge of its
+cross on both axes at once** (the interim reading at step 5000 had already flagged
+this), so by the same rule the grid is extended before the number is quoted. pion's
+grid brackets its optimum cleanly and is not extended.
+
+### Ablation B: alpha is not a step-length nicety, it is load-bearing
+
+`ngd-pion-s`, `--ngd-trust none`, B = 512, 3000 steps, adamw 8e-3, seed 0:
+
+    rot 1.25e-4   4.2356
+    rot 2.5e-4    4.1969   <- best, interior
+    rot 5e-4      4.2053
+    rot 1e-3      4.2857
+    rot 2e-3      4.3012
+    rot 4e-3      4.3367
+
+Best V = 4.1969, interior (not on an edge). Against seed-0 Pion (3.8412) that is
+**0.356 worse**, not merely level: `R = (3.8412 - 4.1969)/0.0458 = -7.8`, far below
+the `R < 0.2` band the rule anticipated. Checked, not assumed: the config carries
+straight through to the optimizer (`harness/train.py:150`, no substitution at
+construction, unlike the old `pion_ablated` bug), and every val trajectory is
+smooth and monotone -- not a divergence dressed up as a bad number. Also checked
+against the same rot **with** alpha (adamw2d): at rot = 2e-3, with alpha 3.8348,
+without alpha 4.3012, a 0.47 gap at the identical nominal rate. So alpha is not
+equivalent to a smaller global rot -- a single scalar cannot reproduce it, which
+fits its being both time-varying (median 0.001 in the first 100 steps, 1.000 in
+the last 500) and layer-varying (wv 0.20, ffn.gate 0.90) at once. The warmup
+hypothesis is weakened, not confirmed: an explicit *scalar* warmup could not
+reproduce a *per-layer* effect this large. Ablation B's waves 2-3 (adamw bracket,
+seeds) are not needed -- the result is not close to any threshold.
+
+### Wave 2 submitted (job 332970)
+
+Both of wave 1's leading ngd cells pointed down and left off the cross (lower rot,
+lower adamw) at once, which a single-axis cross cannot see. `rtx6002` was fully
+idle, so a 3x3 grid was submitted at once: rot in {1.5e-3, 3e-3, 6e-3} x adamw in
+{2e-3, 4e-3, 8e-3}, six new cells (three of the nine are wave-1 results already).
+pion is not extended -- its wave-1 optimum is already interior. Confirmed
+computing: all six tasks logged step 0 within four minutes of submission. Expected
+finish about 3.5-4 h from now, ~18:50-19:00.

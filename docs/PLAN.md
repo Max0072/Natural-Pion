@@ -73,6 +73,14 @@ Pion's AdamW edge is closed (its optimum at 2048 is still moving outward).
 *Never claim:* that a larger batch is a reason to use the method. At the same
 tokens B = 2048 is 0.26-0.32 worse than B = 512 for both arms.
 
+**H5 result, and what it changes.** `alpha` is not an emphasis heuristic that
+merely damps the step; removing it makes NGD-Pion clearly worse than Pion, at the
+best rate found. It varies by both time (near 0 for ~100 steps, 1 by step 2500)
+and by layer (0.20 on `wv`, 0.90 on `ffn.gate`) at once, which a single scalar
+learning rate cannot reproduce -- so "alpha is an implicit warmup" is weakened,
+not confirmed, and a derived replacement (option C, still to think about) has to
+preserve both axes, not just the time one.
+
 **H3 -- withdrawn.** It was "the preconditioner `F^-1` is what produces the gap",
 to be tested against `pion_ablated`. Withdrawn on 2026-09-22 at the user's
 decision: the ablated arm is not a baseline (see above), and the comparison that
@@ -134,10 +142,10 @@ to warm up.
 | **0** | documentation and audit: this file, `VALIDATION.md`, `RESUME.md`, journal, stale-number fixes | none, **done 2026-09-22** | -- |
 | **1** `[compute]` | **H1: seeds.** Seeds 1, 2, 3 for `ngd-pion-s` (rot 6e-3, adamw 8e-3) and `pion` (rot 1e-3, adamw 8e-3), B = 512, 3000 steps. Six runs | about 42 min per `ngd-pion-s` run and about half that for `pion`, measured from the `a2dhead` timestamps with seven jobs sharing a node. Two runs per seed at a time, three seeds one after another: **about 2.5 h wall** | user go-ahead |
 | **2** | ~~H3: `pion_ablated`~~ **withdrawn 2026-09-22** by the user's decision: the baseline is published Pion | -- | -- |
-| **3** `[compute]` | **H4 ladder:** both arms, 15000 steps (1.97B tokens, 20% of the budget), a five-cell cross around each 3000-step optimum. **Submitted 2026-09-22 as job 332064** | about 4 h per `ngd-pion-s` run, about 2.1 h per `pion`; ten runs, about 30 GPU-hours, about 6 h wall on `rtx6002` | stage 1, done |
+| **3** `[compute]` | **H4 ladder.** Wave 1 (job 332064) **done**: gap15 = -0.0048, but ngd's best cell (3.5302, rot 3e-3, adamw 8e-3) sits on the edge of its cross on both axes, so the number is not quoted. pion's optimum (3.5254, rot 1e-3, adamw 8e-3) is interior. **Wave 2 submitted as job 332970**, a 3x3 grid around the corner both axes pointed at | wave 1: 30 GPU-h. Wave 2: six runs, ~3.5 h each, ~3.5-4 h wall (rtx6002 idle, all six run at once) |
 | **4** `[compute]` | **H4 full length:** the two arms, 73 242 steps, tuned `adamw` carried from stage 3, one neighbouring `adamw` each | `ngd-pion-s` about 19.7 h (0.967 s/step on rtx, close to the 24 h partition cap; resubmitting resumes from the checkpoint), `pion` about 9.4 h | stage 3 shows the trend is not negative |
 | **5** optional `[compute]` | H2 extension (B = 128) | a grid | after stage 1 |
-| **6** `[compute]` | **H5, ablation B:** `ngd-pion-s` with `--ngd-trust none`, `rot` in 1.25e-4..4e-3 at adamw 8e-3, seed 0, 3000 steps. **Wave 1 submitted 2026-09-22 as job 332073** (six runs, pinned to `rtx6002`, waiting behind the ladder); wave 2 brackets adamw and refines `rot`; wave 3 is seeds 1-3 at the optimum | six runs of about 45 min | stage 1, done |
+| **6** | **H5, ablation B: done** (job 332073). Best without alpha, rot 2.5e-4 adamw 8e-3, val 4.1969 -- interior, but 0.356 *worse than Pion itself* (R = -7.8, far below the `R < 0.2` band anticipated). Checked against the same rot with alpha: 0.47 apart at rot=2e-3, so alpha is not a rescaled learning rate. Waves 2-3 not needed, the result is not near any threshold | six runs, done |
 
 Stage 1 comes before every other compute stage because it costs about 2.5 h,
 it is the only stage that can put an error bar on today's headline number, and

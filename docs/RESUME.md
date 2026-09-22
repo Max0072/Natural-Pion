@@ -34,13 +34,14 @@ tuned by a cross around their 3000-step optima, output in
 seeds 1-3 for both arms) finished cleanly in 43 minutes; its result is below.
 Output in `$DATA_p330/runs/seedshead/`, archived in `runs-record/`.
 
-**Job 332073 is queued** (ablation B, `ngd-pion-s` with the trust region off; six
-runs, `rot` 1.25e-4 to 4e-3, pinned to `rtx6002`; it starts when the ladder's
-`ngd-pion-s` runs free their cards, about 06:30, and the scheduler's worst-case
-estimate is 11:38). Rule for reading it: `docs/PLAN.md` H5. Also new: `alpha` looks
-like an implicit warmup (median 0.001 in the first 100 steps, 1.000 in the last
-500), which is a hypothesis about the whole advantage and untested (`docs/PLAN.md`
-H5, journal 2026-09-22).
+**Job 332970 is running** (ladder wave 2: a 3x3 grid for `ngd-pion-s` at 15000
+steps around the corner wave 1 pointed at; expected done ~18:50-19:00). Wave 1
+result: **the gap to Pion is gone at 15000 steps** (gap15 = -0.0048), but ngd's
+best cell sat on the edge of its grid on both axes, so wave 2 decides the real
+number. Ablation B is **done**: without `alpha`, NGD-Pion is 0.356 *worse than
+Pion itself* at its own best rate (not merely level with it) -- `alpha` is
+load-bearing, not a nicety, and it varies by time and by layer at once, which
+argues against "it is just an implicit warmup". Details: `docs/PLAN.md` H4, H5.
 
 ### The headline, corrected
 
