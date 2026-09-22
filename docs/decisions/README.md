@@ -38,3 +38,4 @@ restate.
 | [0012](0012-archive-run-records-in-git.md) | Archive the small run records in git | Accepted | 2026-09-22 |
 | [0013](0013-baseline-pion-gets-no-extra-knobs.md) | The Pion baseline runs the published recipe, no extra knobs (no warmup) | Accepted | 2026-09-22 |
 | [0014](0014-steer-trust-lr-on-rho-held.md) | `adapt_damping` steers on `rho_held`, not same-batch `rho`, when measured | Accepted | 2026-09-22 |
+| [0015](0015-stage-corpus-off-nfs-by-default.md) | The harness stages the corpus to local disk by default (NFS wedge fix) | Accepted | 2026-09-22 |

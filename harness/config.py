@@ -427,6 +427,13 @@ class RunConfig:
     # plumbing, deliberately excluded from the hash
     data_path: str = "data/c4_train.bin"
     val_path: str = "data/c4_val.bin"
+    # Copy data_path/val_path to local disk before memory-mapping them, if they
+    # are at least 500 MB (see harness/local_cache.py: $DATA_p330 is `hard`-
+    # mounted NFS whose local-cache daemon has been dead since 2026-09-08, and
+    # a training loop's scattered per-step reads are what triggers the
+    # multi-hour hangs this works around). "" disables it and reads data_path/
+    # val_path directly, as before this existed.
+    local_cache_dir: str = "/tmp/c4"
     eval_every: int = 500
     eval_batches: int = 20
     log_every: int = 50
@@ -450,7 +457,7 @@ class RunConfig:
     micro_batch: int = 512
     out_dir: str = "runs"
 
-    _EXCLUDED = ("data_path", "val_path", "eval_every", "eval_batches",
+    _EXCLUDED = ("data_path", "val_path", "local_cache_dir", "eval_every", "eval_batches",
                  "log_every", "micro_batch", "out_dir")
 
     @property

@@ -29,12 +29,24 @@ lines in the older headers are history. See `docs/CLUSTER.md`.
 | `exact.sbatch`, `warmup.sbatch` | `alpha_exact` on the real model, and the warmup hypothesis |
 | `anchor.sbatch` and the rest | the anchor calibration and older sweeps |
 
-## Two rules the cluster taught, both the hard way
+## Three rules the cluster taught, all the hard way
 
 * **Pin the node** (`-w`). Left alone the scheduler packed eight tasks onto the
   one loaded node; step 0 took 185 s against 80 elsewhere and the batch was on
-  course to hit its own wall.
+  course to hit its own wall. **But no specific node is trusted any more**
+  (`docs/CLUSTER.md`, "rtx6002 wedges too") -- pinning avoids the scheduler's
+  own packing, it is not a claim that the pinned node is safe. Check a node's
+  health before and periodically during any array that matters.
 * **Concurrent runs must share a seed.** Identical corpus windows warm each
   other's page cache; different ones halve each other's IOPS. Measured: five
   co-located arms reach 115229 tokens/s while their own first window reads
   23666.
+* **Nothing needs to be done about NFS any more, but know why.** `$DATA_p330`
+  is `hard`-mounted NFS whose local-cache daemon has been dead since
+  2026-09-08 (`docs/CLUSTER.md`), which is most of why the wedges above
+  happened at all -- a slow server hangs the client rather than erroring.
+  `harness/local_cache.py` now stages the corpus to local `/tmp` automatically
+  before any run reads it (`RunConfig.local_cache_dir`, on by default), so a
+  new sbatch script does not need `scripts/stage_corpus.sh` or any special
+  handling -- just pass the ordinary `$DATA_p330` path, as every script here
+  already does.

@@ -627,3 +627,66 @@ node is used, and re-check every hour or so on a long-running array, not only
 right after submission -- both of tonight's wedges were caught only because
 the wall-clock-per-step in the log was read again later, not from SLURM's own
 `RUNNING` state.
+
+### The root cause, found: a dead cache daemon behind $DATA_p330's NFS mount
+
+`$DATA_p330` (`/onyx/data/p330`) is `172.31.0.14:/a1/data/p330`, **NFS4.2 over
+RDMA from a single server**, `hard`-mounted (`mount | grep p330`):
+
+    rw,vers=4.2,rsize=1048576,wsize=1048576,acregmin=60,acdirmin=60,
+    hard,proto=rdma,nconnect=8,timeo=600,retrans=2,fsc,local_lock=none
+
+`hard` is the mechanism: a client whose server is slow or overloaded **waits,
+it does not error** -- exactly "0% GPU, process alive, nothing happening"
+rather than a crash or a clear I/O error. `nfsstat -c`'s cumulative retrans
+count (37 of 2.85 billion calls, over the mount's ~18.8-day age) shows the
+RDMA transport itself is not dropping packets; the stall is elsewhere.
+
+**`fsc` requests FS-Cache, a local-disk cache layer for NFS reads, backed by
+the `cachefilesd` daemon. `systemctl status cachefilesd` on this node:**
+
+    Active: failed (Result: core-dump) since Tue 2026-09-08 13:04:08 EEST
+    Main PID: 9724 (code=dumped, signal=SEGV)
+
+**Dead for two weeks, crashed with SIGSEGV, never restarted.** This is a
+root-owned system service; an unprivileged user cannot restart it. It is very
+likely why `buff/cache` stayed at 14-18 GB against a ~20 GB corpus with ~970 GB
+of RAM free: the mount asks for a caching layer whose daemon is not there, and
+depending on kernel version an `fsc` mount with a dead `cachefilesd` can stall
+netfs operations rather than cleanly falling back to no caching. Not fully
+proven -- proving it would need kernel-level tracing this session does not
+have -- but it is the single piece of evidence that both matches the timing
+(a service that has been broken since before this project's most recent
+active week) and needs no further theory to explain a cold cache with abundant
+free memory.
+
+**Report this to cluster admins.** It is very likely a one-command fix for
+someone with root (`systemctl restart cachefilesd`, plus finding why it
+crashed so it does not recur) and was invisible to this project until someone
+checked `systemctl status` specifically. Nothing here fixes it -- this project
+has no path to restarting a system service.
+
+**The workaround, deployed regardless of whether or when that gets fixed:**
+copy the corpus off NFS before training touches it, since the failure mode is
+specifically triggered by the *scattered, small, concurrent* reads a training
+loop makes (thousands of random-offset windows per step), not by the kind of
+large sequential read a plain copy is. `/tmp` (`zlocal/tmp`, ZFS, confirmed at
+430 GB with 424 GB free) is genuinely local -- not NFS, not `autofs`, not
+served by 172.31.0.14 at all. `harness/local_cache.py` now stages
+`data_path`/`val_path` there automatically before `TokenCorpus` opens them
+(`RunConfig.local_cache_dir`, default `/tmp/c4`, files under 500 MB are read
+directly since staging them is pure overhead); `scripts/stage_corpus.sh` is
+the same idea as a standalone script for anything that does not go through the
+harness. The one-time copy of the 15 GB corpus measured 32 s and is safe under
+concurrent callers on one node (`flock`-serialised; a caller that finds an
+exact byte-size match returns in under a second). Also true, and worth saying
+plainly: `/nvme/scratch` is **not** a safe alternative -- `172.31.0.12:/s2/scratch`,
+the same `hard`+`fsc` pattern, a different NFS server with the identical
+dependency on a caching daemon this project cannot verify is healthy either.
+
+**What this does not cover.** Run directories (`$DATA_p330/runs`) still live
+on NFS -- much smaller traffic (13 MB of manifest+log per run, a checkpoint
+only at save time) and not the access pattern that triggered tonight's wedges,
+so left as is. If a wedge recurs with the corpus already local, that already
+rules out the mechanism above and points somewhere else -- worth recording as
+new evidence, not assuming the same cause.

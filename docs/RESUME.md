@@ -186,14 +186,20 @@ until the advantage has an error bar.
   decision tables; `AGENTS.md` carries the reversals, the specification does not.
 * Five `pion` B = 512 cells in `runs/adamw2d` are empty logs stopped at step 0
   (node hangs). They are not results.
-* **No node is reliable.** `rtx6001`, `rtx6003` and `rtx6004` have wedged or
-  packed jobs onto shared GPUs, and `rtx6002` -- previously the one arrays were
-  pinned to -- wedged twice in one evening on 2026-09-22 at ordinary
-  concurrency (`docs/CLUSTER.md`). The pattern now looks like a shared-storage
-  condition that comes and goes, not a property of one node. Before any array
-  that matters: run one task alone, confirm it is still advancing a few
-  minutes in (not just started), then submit the rest, and re-check
-  periodically rather than trusting SLURM's `RUNNING` state.
+* **No node is reliable, and the wedge has a found, fixed-around cause.**
+  `$DATA_p330` is `hard`-mounted NFS whose `cachefilesd` (the cache daemon
+  behind its `fsc` option) has been dead -- `SIGSEGV`, core-dumped -- since
+  2026-09-08; a `hard` mount hangs the client rather than erroring when the
+  server is slow, and a training loop's scattered per-step reads are exactly
+  the pattern that triggers it. Root-owned service, not ours to restart --
+  **report it to cluster admins** (evidence in `docs/CLUSTER.md`). Worked
+  around regardless: `harness/local_cache.py` now stages the corpus to local
+  `/tmp` automatically before any run reads it (ADR 0015), which should
+  remove the corpus specifically as a wedge trigger. Run directories are still
+  on NFS and untested against this. Before any array that matters: still run
+  one task alone first, confirm it is advancing a few minutes in, then submit
+  the rest, and re-check periodically rather than trusting SLURM's `RUNNING`
+  state -- the fix narrows the exposure, it does not retire the check.
 
 ### Decided, do not re-litigate
 

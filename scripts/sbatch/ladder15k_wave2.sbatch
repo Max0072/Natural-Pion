@@ -49,6 +49,20 @@
 # taken over automatically (`harness/train.py`'s per-directory lock), so the
 # resubmission needed no manual cleanup of the run directories.
 #
+# WHY THE WEDGE HAPPENED, found after that (see docs/CLUSTER.md): $DATA_p330 is
+# `hard`-mounted NFS from one server, and that server's `cachefilesd` (the
+# daemon behind the mount's `fsc` local-cache option) has been dead --
+# `SIGSEGV`, core-dumped -- since 2026-09-08, a root-owned service this project
+# cannot restart. `hard` means a slow server hangs the client rather than
+# erroring, which is exactly the "0% GPU, process alive" signature. Reported
+# to cluster admins; not fixed by us. **Until and regardless of that**, the
+# harness itself now stages the corpus to local disk before training
+# (`harness/local_cache.py`, `RunConfig.local_cache_dir`, on by default) -- no
+# change needed here beyond passing the ordinary $DATA_p330 path below.
+# `scripts/stage_corpus.sh` is the same fix as a standalone script for use
+# outside the harness; this script does not need it now that the harness does
+# it internally.
+#
 #   sbatch -p rtx scripts/sbatch/ladder15k_wave2.sbatch
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"

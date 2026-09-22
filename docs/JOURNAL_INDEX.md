@@ -1,6 +1,6 @@
 # Journal index
 
-Generated from `docs/JOURNAL.md` by `scripts/journal_index.py` -- 75 entries, 6027 lines. Do not edit by hand; re-run the script.
+Generated from `docs/JOURNAL.md` by `scripts/journal_index.py` -- 76 entries, 6091 lines. Do not edit by hand; re-run the script.
 
 Line numbers are for `sed -n 'Np,+40p' docs/JOURNAL.md`.
 
@@ -81,3 +81,4 @@ Line numbers are for `sed -n 'Np,+40p' docs/JOURNAL.md`.
 | 2026-09-22 | 03:48 -- ladder, interim look (job 332064, 1 h 29 min in) | 5882 |
 | 2026-09-22 | 15:24 -- ladder finished, ablation B finished, wave 2 submitted | 5913 |
 | 2026-09-22 | 19:42 -- an I/O wedge cost four hours; found, fixed, resubmitted | 5976 |
+| 2026-09-22 | 21:13 -- the wedge, found: a dead cachefilesd behind $DATA_p330's NFS mount | 6029 |

@@ -39,6 +39,7 @@ from ngd_pion.linalg import EIGH_FALLBACKS
 from .config import RunConfig
 from .data import TokenCorpus
 from .instrument import BackwardProbe, layer_diagnostics, summarise
+from .local_cache import stage_locally
 from .model import Transformer
 
 __all__ = ["build_optimizers", "lr_at", "train"]
@@ -461,14 +462,21 @@ def train(
     backward = attach_backward(model.parameter_split()[0], rot) if isinstance(rot, NGDPionS) else None
     names = {id(m.weight): n for n, m in model.named_modules() if isinstance(m, nn.Linear)}
 
-    train_data = TokenCorpus(cfg.data_path, cfg.model.seq_len, seed=cfg.seed)
-    val_data = TokenCorpus(cfg.val_path, cfg.model.seq_len, seed=cfg.seed + 1)
+    # Local disk, not $DATA_p330, if the file is large enough to be worth the
+    # copy -- see harness/local_cache.py for why. Idempotent, so staging the
+    # same data_path twice (train_data and held_data below) costs one stat
+    # call on the second call, not a second copy.
+    local_data_path = stage_locally(cfg.data_path, cfg.local_cache_dir)
+    local_val_path = stage_locally(cfg.val_path, cfg.local_cache_dir)
+
+    train_data = TokenCorpus(local_data_path, cfg.model.seq_len, seed=cfg.seed)
+    val_data = TokenCorpus(local_val_path, cfg.model.seq_len, seed=cfg.seed + 1)
     # A second reader over the *training* corpus, offset by its seed so it
     # draws different windows. "Held out" here means independent of the batch
     # that produced this step, which is what the noise question needs; it does
     # not mean unseen, and overlap with past training data is irrelevant.
     held_data = (
-        TokenCorpus(cfg.data_path, cfg.model.seq_len, seed=cfg.seed + 101)
+        TokenCorpus(local_data_path, cfg.model.seq_len, seed=cfg.seed + 101)
         if cfg.rho_holdout else None
     )
     val_batches = val_data.fixed_batches(cfg.micro_batch, cfg.eval_batches, seed=1234, device=device)

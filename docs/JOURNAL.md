@@ -6025,3 +6025,67 @@ on one node without checking.
 `rho_held` cells, their checkpoints (none had saved -- checkpoints are
 written on a ~4-minute cadence that a 200x slowdown never reached) -- so this
 was effectively a full restart, not a resume.
+
+## 2026-09-22, 21:13 -- the wedge, found: a dead cachefilesd behind $DATA_p330's NFS mount
+
+The user: understand why this happens and make it never happen again.
+
+**Found.** `mount | grep p330`: `$DATA_p330` is NFS4.2 over RDMA from a
+single server (`172.31.0.14`), `hard`-mounted with `fsc` (FS-Cache). A
+`hard` mount does not error when the server is slow -- it waits, which is
+exactly "0% GPU, process alive, nothing happening". `nfsstat -c` shows
+negligible retransmissions (37 of 2.85 billion calls), so the RDMA transport
+itself is not the problem. `systemctl status cachefilesd` -- the daemon
+backing `fsc`'s local-disk cache layer -- on the node this was run from:
+
+    Active: failed (Result: core-dump) since Tue 2026-09-08 13:04:08 EEST
+    Main PID: 9724 (code=dumped, signal=SEGV)
+
+**Dead for two weeks, SIGSEGV, never restarted.** Root-owned system service;
+this project cannot restart it. Very likely why `buff/cache` stayed at
+14-18 GB against a ~20 GB corpus with ~970 GB of RAM free all evening: the
+mount asks for a cache layer whose daemon is not there. Not fully proven (that
+would need kernel-level tracing), but it needs no further theory and matches
+the timing. **This needs a cluster admin**; recorded in `docs/CLUSTER.md`
+with the full evidence so it can be reported.
+
+**Fixed around, regardless of whether/when that gets addressed.** `/tmp`
+(`zlocal/tmp`, ZFS, 430 GB, 424 GB free) is genuinely local -- confirmed via
+`findmnt`, nothing to do with the NFS server at all. Two things built:
+
+* `scripts/stage_corpus.sh` -- a standalone, `flock`-serialised, idempotent
+  shell script (copy once per node, reuse after; a byte-size match short-
+  circuits in well under a second).
+* `harness/local_cache.py::stage_locally`, wired into
+  `harness/train.py::train` so **every** run stages `data_path`/`val_path`
+  to local disk automatically before `TokenCorpus` opens them --
+  `RunConfig.local_cache_dir`, default `/tmp/c4`, on by default, files under
+  500 MB read directly since staging them is pure overhead. This is the part
+  that makes it durable: a rule that depends on every future sbatch script
+  remembering a line is a rule that gets forgotten eventually, the way
+  `ngd_power` and `pion_ablated`'s manifest bug happened in this project
+  before. `local_cache_dir` added to `RunConfig._EXCLUDED`, so it does not
+  move the config hash -- the manifest still records the canonical
+  $DATA_p330 path.
+
+Recorded as ADR 0015. `tests/test_local_cache.py`, 7 new tests: below-
+threshold files skip staging, `local_cache_dir=""` disables it, a large file
+is copied once and reused, a wrong-size local copy is replaced rather than
+trusted, a missing source is left for the real `open()` to report, an
+unwritable cache dir falls back to the original path rather than raising, and
+four concurrent callers racing to stage the same file produce one copy, not
+four. Full suite: 268 passed, 1 skipped (was 261). End-to-end: an actual CPU
+smoke run of `train()` against the real `$DATA_p330/c4/c4_train.bin` path
+staged to `/tmp/c4` and trained 3 steps successfully.
+
+`scripts/sbatch/ladder15k_wave2.sbatch` simplified back to the plain
+$DATA_p330 path -- the harness stages it internally now, no sbatch-level
+change needed. `docs/CLUSTER.md`, `docs/RESUME.md` and
+`scripts/sbatch/README.md` updated with the finding and the new default
+practice.
+
+**Not covered, and said so everywhere this is written up:** run directories
+($DATA_p330/runs) are still on NFS -- smaller, less latency-sensitive traffic,
+and not the pattern that triggered tonight's wedges, so left alone. If a wedge
+recurs with the corpus already local, that is new information pointing
+somewhere else, not a failure of this fix.
