@@ -6142,3 +6142,15 @@ compute nodes share a different or more contended network/RDMA segment than
 the login node; or the actual GPU workloads (which run on compute nodes, not
 login) are what generates the contention, which the login node's own light
 duty keeps it away from. Left open rather than guessed at further.
+
+### 21:38 -- fix validated end to end: corpus staged, all six tasks computing normally
+
+Job 333609 (wave 2, resubmitted with the fix): the corpus copy on rtx6002
+finished at 21:38, about 25 minutes after submission (matching the ~9.5 MB/s
+average observed on this node tonight). Immediately after, GPU utilisation
+98%, and the first logged step: 23 steps in 23.6 s, ~1.0 s/step -- the normal
+rate, no residual slowdown. All six array tasks share the one local copy (no
+redundant copying, confirmed earlier via the lock) and are now all between
+69% and 100% GPU utilisation. The fix works as designed: one slow copy, paid
+once per node, then normal throughput regardless of the underlying NFS
+degradation.
