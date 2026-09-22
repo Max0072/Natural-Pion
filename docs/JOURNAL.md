@@ -6111,3 +6111,34 @@ to expect this specific number (32 s) to vary a great deal by the hour rather
 than to treat it as a fixed cost. Once the local copy exists, training reads
 never touch NFS again regardless, so the fix's core property -- no more
 wedges from the corpus specifically -- should hold even on a night this slow.
+
+### Correction, 21:22 -- not "the server is overloaded", something more specific
+
+The user pushed back: "hardly anyone uses this server" -- right to be
+skeptical of "shared storage is generally overloaded", which was under-
+verified. Checked properly instead of restating it:
+
+`squeue -a` shows 141 jobs cluster-wide from many users (lattice QCD, MD
+production runs, others) -- the *cluster* is busy. But a clean, controlled
+comparison of the same read (`dd`, cold offsets, outside any container,
+confirmed not reading anything cached by anyone else) says more precisely
+where:
+
+    login node    785 MB/s, then 1.0 GB/s (two offsets)
+    rtx6003       174 MB/s
+    rtx6001       118 MB/s
+    rtx6002        22 MB/s
+
+**Every compute node tested is 5-35x slower than the login node, right now,
+for the identical read.** Not evenly -- rtx6002 (tonight's wedge node) is the
+worst of the three by a wide margin. The first version of this finding ("the
+copy itself is slow tonight, 7 MB/s") was real but its explanation ("shared
+storage is overloaded") was a guess dressed as a conclusion; this is closer to
+"compute nodes' path to this NFS server is markedly worse than the login
+node's, right now, and rtx6002 worst of what was tested" -- consistent with,
+and a sharper version of, "no node in this cluster should be assumed
+reliable" already in docs/CLUSTER.md. Plausible explanations not yet tested:
+compute nodes share a different or more contended network/RDMA segment than
+the login node; or the actual GPU workloads (which run on compute nodes, not
+login) are what generates the contention, which the login node's own light
+duty keeps it away from. Left open rather than guessed at further.
