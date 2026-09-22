@@ -186,9 +186,14 @@ until the advantage has an error bar.
   decision tables; `AGENTS.md` carries the reversals, the specification does not.
 * Five `pion` B = 512 cells in `runs/adamw2d` are empty logs stopped at step 0
   (node hangs). They are not results.
-* Nodes: `rtx6002` is the one that has been reliable; `rtx6001`, `rtx6003` and
-  `rtx6004` have wedged or packed jobs onto shared GPUs. Re-test before relying
-  on any of this.
+* **No node is reliable.** `rtx6001`, `rtx6003` and `rtx6004` have wedged or
+  packed jobs onto shared GPUs, and `rtx6002` -- previously the one arrays were
+  pinned to -- wedged twice in one evening on 2026-09-22 at ordinary
+  concurrency (`docs/CLUSTER.md`). The pattern now looks like a shared-storage
+  condition that comes and goes, not a property of one node. Before any array
+  that matters: run one task alone, confirm it is still advancing a few
+  minutes in (not just started), then submit the rest, and re-check
+  periodically rather than trusting SLURM's `RUNNING` state.
 
 ### Decided, do not re-litigate
 
@@ -199,8 +204,11 @@ until the advantage has an error bar.
 * **Never compare two configurations at a shared `rot`, and never compare a grid
   edge against another arm's optimum.**
 * **Concurrent runs on one node must share a seed.**
-* **Pin the node for arrays**; partition access and GPU caps here change within
-  hours.
+* ~~Pin the node for arrays (rtx6002).~~ **Reversed 2026-09-22**: rtx6002
+  wedged twice in one evening at ordinary load, so pinning to one "reliable"
+  node is no longer a defence. Check the node on the day instead
+  (`docs/CLUSTER.md`); partition access and GPU caps here change within hours
+  regardless.
 * **The anchor was accepted by override on 2026-08-26**: level reproduced to
   0.7-0.9%, arm gap 1.9x theirs. It licenses comparisons inside this harness and
   nothing else; the paper states it as a limitation.

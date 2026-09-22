@@ -158,10 +158,13 @@ it decides whether stages 3-4 are worth 30 GPU-hours.
   waived this for stage 1 ("run them all in parallel") and all six runs share
   one node at once; the step time against the solo figure is the check that the
   rule was not needed.
-* **Pin the node** (`-w rtx6002`, the one that has been reliable) and **check
-  that the step counter advances** a few minutes after start: RUNNING in SLURM
-  does not mean computing, and a pinned job can sit `(Resources)` behind
-  another user.
+* **Pin a node** (`-w`), but no specific node is trusted any more -- rtx6002
+  wedged twice in one evening on 2026-09-22 at ordinary load, after days of
+  being the reliable one. **Check that the step counter advances**, more than
+  once: right after start (RUNNING in SLURM does not mean computing, and a
+  pinned job can sit `(Resources)` behind another user), and again periodically
+  through a long array, since a wedge here has twice developed well after a
+  healthy start rather than at step 0.
 * **Each arm gets its own learning rates.** Never compare two arms at a shared
   `rot`, and never compare a grid edge against another arm's optimum.
 * **Set `--adamw-lr` explicitly.** `0` silently means "same as `--lr`".

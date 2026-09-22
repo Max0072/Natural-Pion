@@ -556,7 +556,7 @@ interval: at 97 there is no way to tell a wedged run from a slow one for the
 first 97 steps, which cost most of an hour here. Keep it small on a grid whose
 speed is not yet known.
 
-## Only rtx6002 runs job arrays today (2026-08-30)
+## Job arrays wedge on some nodes, some days (2026-08-30, revised 2026-09-22)
 
 The wedge first seen on rtx6003 (job 300486) repeated on rtx6001 with only four
 tasks (job 301831): every arm wrote its step-0 row and stopped, and attaching
@@ -576,11 +576,11 @@ The day's tally, which is what to act on rather than any theory of the cause:
     rtx6003   wedged 8 tasks               single-GPU jobs and a 20-hour run were fine
     rtx6004   wedged                       recorded earlier
 
-**Pin arrays to rtx6002 and queue behind our own work rather than spreading
-across nodes.** Single-GPU jobs appear safe anywhere. Check for the signature
-within a minute of the first row rather than assuming a slow start: `srun
---overlap --jobid=<real JobId from scontrol show job <array>_<task>>` and read
-`utilization.gpu`.
+*(2026-09-22: this section's "pin to rtx6002" advice is superseded below --
+rtx6002 is not reliably immune either. Kept for the record of what was tried.)*
+Check for the wedge signature within a minute of the first row rather than
+assuming a slow start: `srun --overlap --jobid=<real JobId from scontrol show
+job <array>_<task>>` and read `utilization.gpu`.
 
 ### Staggering the starts does not fix it (2026-08-31)
 
@@ -593,5 +593,37 @@ So the wedge is a property of the node, not of simultaneous starts, and not of
 job arrays as such. Three workarounds have now failed: a different node, a
 stagger, and (earlier) reducing concurrency from eight tasks to four.
 
-**Do not spend time routing around it. Queue everything on rtx6002 and accept
-the serialisation.** Roughly an hour was lost today rediscovering this.
+**Do not spend time routing around it with a stagger or a task-count change --
+neither works.** What follows is not "queue everything on rtx6002 and accept
+the serialisation": that was tried as the fix, and it stopped being one.
+Roughly an hour was lost today rediscovering the node-vs-count distinction.
+
+### rtx6002 wedges too, without eight-way concurrency (2026-09-22)
+
+**There is no reliable node.** The "pin to rtx6002" rule above held for six
+days and then failed twice in one evening, at concurrency levels (six tasks,
+then six again) that had run cleanly on this same node many times before. Two
+job arrays (`ladder15k` wave 2, six tasks) went to 0% GPU utilisation --
+`load average` 8.00 and 6.0-6.3 respectively, `buff/cache` stuck around
+14-18 GB against a ~20 GB corpus with ~970 GB of RAM sitting idle, so the
+corpus was not staying resident and every read went to shared storage. All six
+tasks in each wedge shared the exact same wall-clock timestamp at their last
+logged step regardless of their own learning rate, which rules out a
+per-configuration numerical cause. First recovery: cancel, resubmit a single
+task alone as a health check, confirm it computes, then resubmit the rest --
+it worked once (five tasks came back at the normal ~0.85 s/step), then the
+same six wedged again about an hour later.
+
+**Reading:** the earlier tally (`rtx6002` "every array completed") was true of
+the days it was measured on and is not a property of the node that holds
+going forward. Whatever is happening looks like a **shared-storage condition
+that comes and goes**, not tied to which node or how many of *our* tasks share
+it -- rtx6002 had exactly the load it always has and still wedged. **No node
+in this cluster should be assumed reliable without checking on the day.**
+Before a submission that matters, run one task alone first, watch it compute
+for a few minutes (not just start), and only then submit the rest. Keep the
+`srun --overlap ... nvidia-smi` check above in the routine regardless of which
+node is used, and re-check every hour or so on a long-running array, not only
+right after submission -- both of tonight's wedges were caught only because
+the wall-clock-per-step in the log was read again later, not from SLURM's own
+`RUNNING` state.
