@@ -24,7 +24,19 @@ below is seed 0, one run per cell, unless it says otherwise.
 
 ---
 
-## As of 2026-09-23, 01:15
+## As of 2026-09-23, 01:35
+
+**The paper's framing changed (ADR 0016): it is about the preconditioner, not
+about beating Pion.** Given H4 below, "NGD-Pion beats published Pion outright"
+is not a claim the data supports. The paper is now framed around the Fisher
+preconditioner itself -- the derivation (exact, includes a proven scale-
+invariance under `W -> cW`), what it needs to work at all (`alpha`, below),
+why its benefit is batch/noise-dependent, and a comparison against Shampoo on
+the same geometry -- with the scoped, seed-verified short-horizon/small-batch
+speedup as its positive result. The user confirmed this satisfies the original
+ask for a paper with a result. Everything below still stands as the factual
+record; read it through that frame rather than as an open question of "did we
+win."
 
 **The headline question is answered: at B = 512, the advantage does not
 survive to 15000 steps.** Both waves of the horizon ladder (jobs 332064,

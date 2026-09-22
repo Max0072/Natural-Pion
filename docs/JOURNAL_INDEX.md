@@ -1,6 +1,6 @@
 # Journal index
 
-Generated from `docs/JOURNAL.md` by `scripts/journal_index.py` -- 77 entries, 6204 lines. Do not edit by hand; re-run the script.
+Generated from `docs/JOURNAL.md` by `scripts/journal_index.py` -- 78 entries, 6232 lines. Do not edit by hand; re-run the script.
 
 Line numbers are for `sed -n 'Np,+40p' docs/JOURNAL.md`.
 
@@ -83,3 +83,4 @@ Line numbers are for `sed -n 'Np,+40p' docs/JOURNAL.md`.
 | 2026-09-22 | 19:42 -- an I/O wedge cost four hours; found, fixed, resubmitted | 5976 |
 | 2026-09-22 | 21:13 -- the wedge, found: a dead cachefilesd behind $DATA_p330's NFS mount | 6029 |
 | 2026-09-23 | 01:20 -- H4 answered: the advantage does not survive to 15000 steps | 6158 |
+| 2026-09-23 | 01:35 -- the paper reframed: about the preconditioner, not about beating Pion | 6206 |

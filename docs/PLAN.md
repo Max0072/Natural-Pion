@@ -178,13 +178,19 @@ it decides whether stages 3-4 are worth 30 GPU-hours.
 
 ## What each outcome means for the paper -- resolved 2026-09-23
 
-**H1 holds (stage 1). H4 is negative (stage 3, both waves).** The paper is the
-regime version: **"NGD-Pion is more sample-efficient at the classical batch and
-short horizon, and the advantage grows with batch, but is absorbed by 15000
-steps"** -- a step-equivalent speed-up claim, not a loss-difference win at
-length. **The full 73 242-step pair (stage 4) is not justified** by the rule
-fixed before the ladder ran, and should not be spent chasing "NGD-Pion beats
-Pion outright."
+**H1 holds (stage 1). H4 is negative (stage 3, both waves).** By ADR 0016
+(2026-09-23), the paper is no longer framed as "NGD-Pion beats Pion" at all --
+it is framed **around the preconditioner itself**: the derivation, what it
+needs to work (the `alpha` finding below), why its benefit is batch/noise-
+dependent (the 96.4%-noise account), and a comparison against Shampoo-on-so(n)
+as an alternative preconditioner on the same geometry. Inside that frame, the
+scoped positive result is: **"NGD-Pion is more sample-efficient at the
+classical batch and short horizon, and the advantage grows with batch, but is
+absorbed by 15000 steps"** -- a step-equivalent speed-up claim, not a loss-
+difference win at length. **The full 73 242-step pair (stage 4) is not
+justified** by the rule fixed before the ladder ran, and is not planned; this
+is not a gap in the paper under ADR 0016's framing, since the paper no longer
+depends on that comparison to make its case.
 
 **The caveat the user raised, and it belongs in the paper too, not just here.**
 This negative verdict is about *the method as it currently stands* -- which
@@ -206,6 +212,13 @@ it would need re-testing under whatever replaces `alpha`.
 None of this attributes a gain to one component of the method (ADR 0008):
 NGD-Pion is measured as a bundle against Pion. The caveat above is about the
 method's own internals, not about isolating a component for the comparison.
+
+**Under ADR 0016, the remaining open threads are characterization content, not
+rescue work.** Extending the `trust="exact"` grid, the pure-K-FAC/`t_fac = 1`
+test, and the cross-layer-correction question all enrich the same paper
+(what does this preconditioner need, does a cleaner version exist) regardless
+of which way they turn out -- none of them is needed to make the paper's case,
+so none carries pressure to produce a win.
 
 ## Time
 

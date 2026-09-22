@@ -6202,3 +6202,31 @@ current lower edge (`eta = 0.08`, nearly tied with `eta = 0.12`'s 3.8524 at
 discussion (Shampoo's 2-7x cross-layer spread lost by 0.174, but conflated
 with discarding `A`/`S` entirely, so not a clean test of cross-layer
 correction alone).
+
+## 2026-09-23, 01:35 -- the paper reframed: about the preconditioner, not about beating Pion
+
+Given H4's resolution (previous entry), I proposed reframing the paper's whole
+spine around the Fisher preconditioner as an object of study -- the exact
+bivector derivation, the `alpha`/trust-region finding told honestly, the
+noise/batch-dependence account, a comparison against Shampoo on the same
+geometry -- rather than around "does NGD-Pion beat Pion." The user: "да,
+устраивает, давай так и оформим."
+
+Recorded as ADR 0016. Updated the `aim-for-a-positive-result-paper` memory
+(2026-08-24, pinned) with a 2026-09-23 note: the bar the user actually wants is
+a real, seed-verified, honestly-scoped effect, not an unconditional win --
+confirmed by asking directly rather than assumed. `docs/PLAN.md`'s "what each
+outcome means" section and `docs/RESUME.md`'s header updated to read through
+this frame.
+
+**Consequence for the remaining open threads** (extending `trust="exact"`'s
+grid below `eta = 0.08`; the pure-K-FAC/`t_fac = 1` re-test discussed this
+evening; the cross-layer-correction question from the `WᵀSW`/`WAWᵀ`
+discussion): none of them is now "rescue the headline," all of them are
+characterization content for the same paper and can be pursued on their own
+merits and cost.
+
+**Not done tonight, flagged for whenever the paper is actually drafted:**
+`ALGORITHM.md` and the top-level `README.md` are still written as if the goal
+were a leaner-or-better-than-Pion optimizer; they will need a pass to match
+this framing, not attempted as part of tonight's decision.
