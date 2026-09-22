@@ -5,7 +5,7 @@
 #SBATCH -w rtx6003
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
-#SBATCH -t 00:30:00
+#SBATCH -t 02:30:00
 #SBATCH -o logs/%x-%A_%a.out
 #SBATCH -e logs/%x-%A_%a.err
 # Calibration for candidate C, option A: `trust="exact"`, the per-layer trust
@@ -34,6 +34,13 @@
 #
 # THE SPREAD. 8-25x of 6e-3 is 4.8e-2 to 1.5e-1; six points bracket it with
 # margin on both sides: 1e-2, 3e-2, 6e-2, 1e-1, 2e-1, 4e-1.
+#
+# RESUBMITTED 2026-09-22, 23:07, after the first attempt (job 333701) hit its
+# 30-minute limit mid-copy on rtx6003 -- the NFS server backing $DATA_p330 was
+# slow enough tonight (see docs/CLUSTER.md) that 20 GB did not finish staging
+# in half an hour. `harness/local_cache.py` now resumes a `.partial` copy
+# instead of restarting it (the first attempt's 14.5/20 GB was not wasted),
+# and the limit is raised to 2.5 h so a slow night does not repeat this.
 #
 # exact_beta = 0.9: log-space EMA (the fixed behavior), not the arithmetic one
 # that collapsed alpha to 0 at beta=0.99. No prior measurement of 0.9

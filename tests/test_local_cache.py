@@ -9,6 +9,7 @@ must get a usable path back even if the local cache turns out to be broken.
 from __future__ import annotations
 
 import os
+import shutil
 from unittest import mock
 
 import pytest
@@ -47,9 +48,38 @@ def test_large_file_is_copied_and_reused(tmp_path):
     assert not (cache / "big.bin.partial").exists()
 
     # Second call: idempotent, a byte-size match short-circuits the copy.
-    with mock.patch("shutil.copyfile", side_effect=AssertionError("should not copy again")):
+    with mock.patch("shutil.copyfileobj", side_effect=AssertionError("should not copy again")):
         out2 = stage_locally(str(src), str(cache))
     assert out2 == out1
+
+
+def test_a_partial_copy_is_resumed_not_restarted(tmp_path):
+    """The wedge fix's own weak point, found 2026-09-22: a job that hits its
+    time limit mid-copy used to discard the partial work and start over.
+    """
+    src = tmp_path / "big.bin"
+    content = os.urandom(_MIN_SIZE_TO_STAGE + 1)
+    src.write_bytes(content)
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    partial = cache / "big.bin.partial"
+    cut = _MIN_SIZE_TO_STAGE // 2
+    partial.write_bytes(content[:cut])
+
+    seen_at_call = []
+    real_copyfileobj = shutil.copyfileobj
+
+    def spy(fsrc, fdst):
+        seen_at_call.append(fsrc.tell())  # position *before* this reads anything
+        return real_copyfileobj(fsrc, fdst)
+
+    with mock.patch("shutil.copyfileobj", side_effect=spy):
+        out = stage_locally(str(src), str(cache))
+    assert os.path.getsize(out) == len(content)
+    assert open(out, "rb").read() == content
+    # The already-written half was not re-read from the start: the source
+    # handle was seeked past it before copyfileobj ever touched it.
+    assert seen_at_call == [cut]
 
 
 def test_stale_or_wrong_size_copy_is_replaced(tmp_path):

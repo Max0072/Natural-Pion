@@ -71,8 +71,24 @@ def stage_locally(path: str, cache_dir: str) -> str:
                 dst = dst_dir / src.name
                 if dst.exists() and dst.stat().st_size == size:
                     return str(dst)
+                # Resume a `.partial` left by a run that hit its time limit
+                # mid-copy rather than restart -- found necessary 2026-09-22,
+                # when the NFS server backing $DATA_p330 was slow enough that
+                # a 20 GB copy did not finish inside a job's own time limit.
+                # `shutil.copyfile` has no resume; append from the partial
+                # file's own size instead, which is exact only if nothing
+                # else is writing the same `.partial` concurrently -- true
+                # here because the surrounding flock is still held.
                 tmp = dst.with_suffix(dst.suffix + ".partial")
-                shutil.copyfile(src, tmp)
+                resume_at = tmp.stat().st_size if tmp.exists() else 0
+                if resume_at > size:
+                    resume_at = 0  # a stale partial from a different source
+                with open(src, "rb") as fsrc, open(tmp, "r+b" if resume_at else "wb") as fdst:
+                    fsrc.seek(resume_at)
+                    fdst.seek(resume_at)
+                    shutil.copyfileobj(fsrc, fdst)
+                if tmp.stat().st_size != size:
+                    return path  # short read (source shrank, disk full); do not trust it
                 tmp.rename(dst)
                 return str(dst)
             finally:
