@@ -5,7 +5,7 @@
 #SBATCH -w rtx6002
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
-#SBATCH -t 06:00:00
+#SBATCH -t 20:00:00
 #SBATCH -o logs/%x-%A_%a.out
 #SBATCH -e logs/%x-%A_%a.err
 # Wave 2 of the H4 horizon ladder (docs/PLAN.md). Wave 1 (job 332064) put both
@@ -33,7 +33,21 @@
 #
 # COST. rtx6002 is idle (checked before submitting): all six run at once, one GPU
 # each. ~3.5 h per run from wave 1's elapsed time (15000 steps, B=512), so about
-# 3.5-4 h wall for the array against the 6 h limit.
+# 3.5-4 h wall for the array against the original 6 h limit.
+#
+# RESUBMITTED 2026-09-22, 19:37, after all six original tasks wedged. They were
+# not slow from a bad step -- they were I/O-bound from nearly step 0 (23 steps
+# took 80 minutes) and got worse once two more concurrent readers (the
+# rho_held_trust job) landed on the same node around 18:46, fully stalling by
+# 19:03 (0% GPU, load 8.00, 14 GB of page cache against a ~20 GB corpus with
+# 968 GB of RAM sitting free -- the corpus was not staying resident). A
+# single-task resubmission (array index 1 alone) recovered to a healthy,
+# stable ~3.3-4 s/step -- slower than the usual ~0.9 s/step solo figure but a
+# real, computing rate, not a wedge. At 3.5 s/step a 15000-step run is ~14.6 h,
+# hence the limit raised to 20 h. Confirmed working as designed: the stale
+# 248-minute-old run-directory lock left by the dead process was detected and
+# taken over automatically (`harness/train.py`'s per-directory lock), so the
+# resubmission needed no manual cleanup of the run directories.
 #
 #   sbatch -p rtx scripts/sbatch/ladder15k_wave2.sbatch
 set -uo pipefail
