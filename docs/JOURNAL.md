@@ -6089,3 +6089,25 @@ practice.
 and not the pattern that triggered tonight's wedges, so left alone. If a wedge
 recurs with the corpus already local, that is new information pointing
 somewhere else, not a failure of this fix.
+
+### Addendum, 21:17 -- even the one-time sequential copy is slow right now
+
+Resubmitted the (fixed) wave 2 array (job 333609) to validate. The staging
+step itself works as designed -- confirmed only one of the six tasks holds
+the `.partial` file and is actually copying, the other five are waiting on the
+`flock` -- but the copy rate measured on the compute node is **7.35 MB/s**
+(two windows, 24 s apart, consistent), against ~470 MB/s for the identical
+15 GB file copied from the login node twenty minutes earlier. At this rate the
+one-time copy costs about 45 minutes rather than the ~32 s quoted everywhere
+else in today's write-up, which was measured from the login node, not from a
+compute node under tonight's conditions.
+
+This is itself useful evidence: it means tonight's storage problem is not
+narrowly about the *scattered-read* pattern the wedge theory rests on -- a
+plain sequential `cp` is degraded too, on the same shared server, right now.
+Consistent with the earlier reasoning (a shared server-side condition, not a
+property of which node or how many of our own tasks touch it), and a reason
+to expect this specific number (32 s) to vary a great deal by the hour rather
+than to treat it as a fixed cost. Once the local copy exists, training reads
+never touch NFS again regardless, so the fix's core property -- no more
+wedges from the corpus specifically -- should hold even on a night this slow.
