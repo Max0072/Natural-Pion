@@ -703,3 +703,29 @@ only at save time) and not the access pattern that triggered tonight's wedges,
 so left as is. If a wedge recurs with the corpus already local, that already
 rules out the mechanism above and points somewhere else -- worth recording as
 new evidence, not assuming the same cause.
+
+### Ruled out tonight: not the container, not a lack of parallelism (2026-09-22)
+
+Two more candidate explanations tested and rejected, so they are not
+rediscovered later:
+
+* **Not apptainer overhead.** A plain `dd` run *inside* the container on
+  `rtx6003` measured 5.1 MB/s, matching the harness's own staging copy running
+  at the same time almost exactly. The slowdown is present identically with no
+  container involved.
+* **Not a lack of client-side parallelism**, despite the mount advertising
+  `nconnect=8`. Eight concurrent `dd` reads at disjoint offsets summed to about
+  the same aggregate throughput as one stream (~7.5 MB/s total either way).
+  Whatever is limiting this is not something more TCP/RDMA connections from
+  this client route around.
+* **The official cluster documentation** (https://hpcf.cyi.ac.cy/documentation/)
+  has no storage/filesystem/NFS/I/O-best-practice content at all -- only SLURM,
+  environment modules and data-transfer-via-scp pages. Nothing to read there.
+
+**Read together with the earlier findings** (compute nodes 5-35x slower than
+the login node; throughput at rtx6003 measured 174 -> 52 -> 7.3 MB/s over about
+30 minutes with nothing on our side changing), the most parsimonious account
+left is server-side or shared-network-path contention that this project cannot
+fix or route around from the client. Worth reporting to
+`hpc.support@cyi.ac.cy` alongside the dead-`cachefilesd` finding above --
+different mechanism, same mount, both worth a cluster admin's attention.
