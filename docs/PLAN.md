@@ -220,6 +220,19 @@ test, and the cross-layer-correction question all enrich the same paper
 of which way they turn out -- none of them is needed to make the paper's case,
 so none carries pressure to produce a win.
 
+**Two preconditioner ablations, closed 2026-09-23, both negative results that
+strengthen rather than weaken the live default.** The Fisher exponent `p` in
+`F^-p` (job 333943): gridded 0.25/0.5/0.75 against the known `power=1`
+arm, monotonic with no crossover, `power=1` wins by a wide margin throughout --
+the hoped-for cross-layer-calibration fix at `power=0.5` (modelled on Shampoo)
+does not materialize. The rotational learning rate `rot` for the live default
+arm (job 333959): a fine grid (3e-3 to 1.5e-2 at `adamw=8e-3`) confirms
+`rot=6e-3` as the true interior optimum, val 3.7954 unchanged, neighbours
+worse by only 0.003-0.005. Neither ablation moves the headline number; both
+are recorded as content for the "what does this preconditioner need" section
+of the paper. Details: `docs/JOURNAL.md`, 2026-09-23 04:10/04:15/04:50;
+`docs/RESUME.md` "As of 04:50".
+
 ## Time
 
 `AGENTS.md` puts the venue deadline at roughly one month after 2026-08-23,

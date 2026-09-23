@@ -24,7 +24,7 @@ below is seed 0, one run per cell, unless it says otherwise.
 
 ---
 
-## As of 2026-09-23, 01:35
+## As of 2026-09-23, 04:50
 
 **The paper's framing changed (ADR 0016): it is about the preconditioner, not
 about beating Pion.** Given H4 below, "NGD-Pion beats published Pion outright"
@@ -37,6 +37,22 @@ speedup as its positive result. The user confirmed this satisfies the original
 ask for a paper with a result. Everything below still stands as the factual
 record; read it through that frame rather than as an open question of "did we
 win."
+
+**Two preconditioner ablations closed tonight, both confirming the live
+default rather than finding a better one.** (1) The Fisher exponent `p` in
+`F^-p` (`power` -- 1 is full natural gradient, 0.5 the Adam/Shampoo-style
+square root, 0.25 close to no preconditioning): gridded at 0.25/0.5/0.75 with
+per-power calibrated `eta` (job 333943, cancelled partway once the trend was
+unambiguous -- monotonic, no crossover, `power=1` best by a wide margin at
+every step count checked; `power=0.5`'s hypothesised cross-layer-calibration
+fix does not show up). (2) The rotational learning rate `rot` for the live
+default arm (`power=1`, `trust=quad_curv`), on a fine grid (job 333959, 3e-3
+to 1.5e-2 at the already-good `adamw=8e-3`, filling in `docs/VALIDATION.md`
+V3's 3x-spaced bracket): confirms `rot=6e-3` as the true, interior optimum
+(3.7954), neighbours worse by only 0.003-0.005 either side. **No number
+changes; 3.7954 (`rot=6e-3`, `adamw=8e-3`) remains the headline result to
+carry into the paper.** Full detail and both tables: journal, 2026-09-23,
+04:10/04:50.
 
 **The headline question is answered: at B = 512, the advantage does not
 survive to 15000 steps.** Both waves of the horizon ladder (jobs 332064,

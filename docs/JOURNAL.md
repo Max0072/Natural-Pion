@@ -6230,3 +6230,117 @@ merits and cost.
 `ALGORITHM.md` and the top-level `README.md` are still written as if the goal
 were a leaner-or-better-than-Pion optimizer; they will need a pass to match
 this framing, not attempted as part of tonight's decision.
+
+## 2026-09-23, 04:10 -- preconditioner ablation: power != 1 loses monotonically, closed out
+
+Per the user's request ("Теперь нужно попробовать запустить абляцию на
+прекондиционер и собрать лучший результат") -- an ablation on the exponent `p`
+in the Fisher preconditioner `F^-p` (`powered.py`): `p=1` is full natural
+gradient (the live default), `p=0.5` is the Adam/Shampoo-style square root,
+`p=0.25` is closer to no preconditioning at all. Calibration (job 333929,
+`powercal2.sbatch`) measured the rotation angle at a shared `eta=6e-3` per
+power, then used the exact linear angle-vs-eta scaling (neither the generator
+nor the `F^-p` denominator depends on `eta`) to pick a per-power `eta` that
+matches natural gradient's reference angle (~1.2) -- avoiding the two previous
+grids' mistake of guessing a shared range and landing on its edge. First pass
+of this calibration wrongly targeted the `quad_curv`-damped reference angle
+while the calibration batch itself ran `trust=none`; caught and fixed before
+the real grid (see the `powercal2.sbatch` and `power3000.sbatch` comments).
+
+Grid (`power3000.sbatch`, job 333943): 3 etas x {0.25, 0.5, 0.75}, `trust=none`
+(required whenever `power != 1`), `adamw=8e-3`, seed 0, 3000-step budget.
+`power=1` was not re-run -- ablation B (job 332073) already gridded it
+thoroughly (six points) and gives 4.1969 at its optimum (`eta=2.5e-4`).
+
+The user read the interim numbers, correctly, before the grid finished:
+"power = 1 это хорошо" -- and then asked to stop the remaining runs, since the
+direction was already unambiguous and `power=1` is what the project always
+intended to use. Cancelled (`scancel 333943`) with 8 of 9 cells partway through
+(last logged eval at step 1999-2461) and the 9th (`power=0.75, eta=5e-5`)
+still queued, never dispatched (`rtx6004` has 8 GPUs, 9 array tasks).
+
+**Result, val loss (nats/token) at each eval step reached before cancellation:**
+
+| power | eta      | val@499 | val@999 | val@1499 | val@1999 |
+|-------|----------|---------|---------|----------|----------|
+| 0.25  | 1.1e-6   | 5.5231  | 5.394   | 5.4616   | 5.5757   |
+| 0.25  | 2.7e-6   | 5.5087  | 5.3849  | 5.3534   | 5.3671   |
+| 0.25  | 6.75e-6  | 5.5398  | 5.3918  | 5.3218   | 5.2785   |
+| 0.5   | 1.4e-6   | 4.9762  | 4.7325  | 4.6957   | 4.717    |
+| 0.5   | 3.5e-6   | 5.1343  | 4.7613  | 4.6957   | 4.663    |
+| 0.5   | 8.75e-6  | 5.4297  | 4.8715  | 4.6878   | 4.6248   |
+| 0.75  | 8e-6     | 4.8977  | 4.6812  | 4.588    | 4.5231   |
+| 0.75  | 2e-5     | 4.8551  | 4.6414  | 4.5558   | 4.4976   |
+| 0.75  | 5e-5     | -- never dispatched -- |||
+
+For reference: `power=1`/`trust=none` optimum (ablation B) = 4.1969;
+`power=1`/`trust=quad_curv` (live default) = 3.7954; `pion` = 3.8412.
+
+**Reading.** Monotonic in `power` across all three points of every tested
+value, no crossover, no sign of a reversal at longer horizon (val is still
+*improving* run-over-run for 0.5 and 0.75 at 1999 steps, so more steps would
+only narrow the gap, not flip it): 0.25 worst, 0.5 next, 0.75 next, and the
+already-known 1.0 arm remains best by a wide margin at every step count
+compared. `power=0.5`'s hypothesised fix for cross-layer calibration
+(`powered.py`'s own docstring, modelled on Shampoo) does not show up as a
+competing effect large enough to close this gap, at least not in the tested
+range and step budget. `power=0` was not retried (crashed in calibration,
+`eigh` non-convergence at `eta=6e-3`; would need a much smaller, separately
+calibrated eta, deferred, not judged necessary given the monotone trend already
+in hand).
+
+**Conclusion: the exponent stays at `power=1`.** No further work planned on
+this axis. This closes the "candidate C" exponent question opened during the
+`alpha` deep-dive; full natural-gradient preconditioning (not a
+square-root/Shampoo-style softening of it) is the setting to carry into the
+paper under ADR 0016's framing.
+
+## 2026-09-23, 04:15 -- correction: the requested ablation was on lr, not on the exponent
+
+The user's message right after asking to stop the power-exponent grid: "я имел
+ввиду абляции по lr конечно же" -- the earlier request ("абляция на
+прекондиционер, собрать лучший результат") meant an ablation over the
+rotational learning rate `rot` for the live default arm (`power=1`,
+`trust=quad_curv`), not over the exponent `p`. The exponent grid above still
+stands as a real, useful measurement (it answers a real open question --
+whether `power=0.5` fixes cross-layer calibration the way Shampoo does -- and
+the answer is no), but it was not what was asked for, and is not "the
+ablation" the user meant to close out with a best result.
+
+The actual target: `docs/VALIDATION.md` V3's `rot` grid for `ngd-pion-s` is
+bracketed only at 3x spacing (2e-3, 6e-3, 2e-2; best 3.7954 at 6e-3) and the
+upper point was never re-checked at the good `adamw=8e-3` -- it was only run
+at `adamw=5e-4`. A finer grid around 6e-3 at the already-good `adamw=8e-3` is
+the actual next step; proposed to the user, not yet run.
+
+## 2026-09-23, 04:50 -- lr ablation closed: rot=6e-3 confirmed as the true optimum
+
+Job 333959 (`rotfine.sbatch`, 8 cells, one node) finished. Same protocol as
+`docs/VALIDATION.md` V3: `ngd-pion-s`, `power=1`, `trust=quad_curv` (the live
+default), `adamw=8e-3` fixed, B=512, 3000 steps, seed 0. This fills the gap V3
+left open -- its `rot` grid was bracketed only at 3x spacing (2e-3, 6e-3, 2e-2)
+and the upper point (2e-2) was never re-checked at the good `adamw=8e-3`.
+
+    rot     val@2999
+    3e-3    3.8077
+    4e-3    3.8025
+    5e-3    3.8007
+    6e-3    3.7954   <- best, matches V3's cell exactly (determinism check passes)
+    7e-3    3.7982
+    8e-3    3.8050
+    1e-2    3.8153
+    1.5e-2  3.8443
+
+The optimum is now bracketed on a fine grid rather than a 3x-spaced one: the
+neighbour on each side (5e-3 and 7e-3) is worse by only 0.005 and 0.003, and
+every point further out gets monotonically worse in both directions with no
+second local minimum. **rot=6e-3 stands as the best rate for this arm; the
+headline number (3.7954) does not move.**
+
+This closes the actual request behind "абляция на прекондиционер, собрать
+лучший результат" -- an lr ablation, not the exponent grid run earlier tonight
+by misreading it (see the 04:15 correction entry above). Both measurements are
+now on record; the exponent grid answers a real question (power=1 beats
+softer preconditioning) and this one confirms no better rate exists nearby.
+No further ablation planned on this arm; 3.7954 (rot=6e-3, adamw=8e-3) is the
+number to carry into the paper under ADR 0016's framing.
