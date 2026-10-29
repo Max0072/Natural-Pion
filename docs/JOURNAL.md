@@ -6424,3 +6424,44 @@ passes `--device cuda`; resubmitted as 391235 with `-x rtx6004`.
 **Queued:** 391235 (`tfac1`, task 1 alone first, rot 2.5e-4, t_fac 1);
 391322 (`alpha_sources.sbatch`: probe `scripts/probes/alpha_sources.py`,
 which of `W, A, D` carries the drop, hypothesis and prediction in the header).
+
+## 2026-10-29, evening -- alpha_sources (job 391322): alpha reads the weight's own rotation; the D hypothesis is refuted
+
+Probe ran 1000 steps of seed 1 at the tuned flags; `train_loss` identical to
+`runs/seedshead/...-s1-*` at steps 0 and 23 (10.475027084350586, 7.190837144851685),
+so it measured the real trajectory. 2352 layer-step rows. `r_x = curv with only
+x current / curv_0`, so `1/alpha ~ r` and `log r ~ log r_W + log r_A + log r_D`
+(the shares sum to 0.98-1.00: the sources barely interact).
+
+    steps      median alpha   share of log(1/alpha):  W     A     D
+    1-100        ~0.000                               0.21  0.41  0.37
+    100-300       0.068                               0.58  0.16  0.24
+    300-600       0.113                               0.71  0.11  0.17
+    600-1000      0.180                               0.77  0.10  0.13
+
+Steps 300-1000 by layer, median `r_W / r_A / r_D / r`: wq 6.6/1.03/1.16/8.1,
+wk 5.0/1.02/1.10/5.7, wv 5.6/1.09/3.3/23, wo 3.4/2.4/1.13/8.9, gate 1.6/1.05/1.07/1.9,
+up 1.9/1.05/1.07/2.2, down 10.3/1.08/1.08/12.8. By age (steps since refactor),
+`r_W` is 2.7 at age 1 and saturates near 4.5 by age 10.
+
+**Every one of 2128 rows past step 100 has `r_W, r_A, r_D, r >= 1`.** Not one below.
+
+**Hypothesis (header of alpha_sources.sbatch) refuted:** D dominates only in the
+cold start (steps < 100, together with A) and on wv. After step 100 the drop is
+the weight's own movement: 58% rising to 77%.
+
+**Reading.** `X = F_0^-1 G` concentrates where `F_0` is smallest -- floored,
+near-null directions (`floored_frac` up to 0.4). Any PSD change can only add
+curvature there, because nothing can fall below zero: hence one-sided, for all
+three sources. For W the change is a rotation (Pion moves W by `R_out W R_in`,
+singular values fixed), which `tests/test_alpha.py` case 4 shows can only raise
+`E curv`. The step itself turns the factors `W^T D W`, `W A W^T` along the very
+direction `X` amplifies, and one step at the tuned rate already multiplies the
+curvature along `X` by 2.7. So alpha is not mainly a correction for a stale
+eigendecomposition; it is the factor by which the metric along the step has
+changed because of the step, measured after the fact, and it shortens the next
+step by that factor.
+
+**Prediction for tfac1, written before its numbers.** A fresh basis every step
+removes staleness but not the age-1 effect (2.7x of the median 4.5x), so the
+rule's `S` should be small: best val nearer ablation B's 4.1969 than 3.7954.
