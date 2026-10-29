@@ -6388,3 +6388,39 @@ adamw 8e-3, `trust_lr` off, seed 0), `t_fac = 1` so `alpha == 1` identically, a
 fixed `rot` grid. Prediction if alpha's job is staleness: near 3.80 (with-alpha
 3.7954). If near 4.20 (ablation B, 4.1969), alpha does work beyond staleness
 and the cold-start/shrinkage reading is the one to develop.
+
+## 2026-10-29, afternoon -- alpha: the algebra pinned, a correction, two jobs queued
+
+**Algebra, `tests/test_alpha.py` (7 passed, CPU, 7 s).** On the method's own
+functions against a dense route: (1) fresh basis gives `alpha == 1`, and with
+the floor `curv <= quad` so the clamp returns 1; (2) `quad/curv` is the exact
+minimiser of `q(s) = -s<G,X> + s^2/2 <X,F_t X>`; (3) exactly, `1/alpha - 1 =
+sum g_i g_j Delta_ij/(lam_i lam_j) / sum g_i^2/lam_i` in `F_0`'s eigenbasis;
+(4) a turn of the basis at fixed spectrum (`R B R^T, R C R^T`) only raises
+`E curv` over isotropic `G` (von Neumann).
+
+**Correction to this morning: `alpha` is a line search in form only.** The step
+is `c = rot * alpha` (`unified.py:491`), `rot = 6e-3`: 0.6% of the quadratic
+model's optimum. The scale belongs to `rot` (K-FAC is 0.0128 of the exact
+curvature, known); what alpha contributes is its variation across layers and
+time.
+
+**Correction 2: "`t_fac = 1` makes alpha identically 1" is false.** `_step`
+applies, *then* refactors from that step's `W, A, D`; the next batch updates
+`A` (EMA 0.95) and `D` (EMA 0.5) before the next apply. So the youngest basis
+is one step old. Seen in seed 1's diagnostics: at phase `(step-1) % 25 == 0`
+the median alpha is 1.000 but 103 of 336 layer-steps are below 0.999 (wv 40,
+ffn.down 22, wo 19), down to 0.345. Recomputing a truly fresh basis from the
+checkpoint's stored `W, A, D` gives `quad/curv >= 1` on all 56 layers, fp32
+equal to fp64 to 4 digits -- so it is not numerics; it is the one-step drift.
+`tfac1.sbatch` is unaffected: it pins alpha with `--ngd-trust none`, and the
+variable is the cadence.
+
+**Trap found:** `harness/run.py` defaults `--device` to `cpu` when CUDA is not
+visible. Job 391234 landed on rtx6004 with a dead GPU ("No devices were found")
+and trained on the CPU at 666% without erroring. Cancelled; `tfac1.sbatch` now
+passes `--device cuda`; resubmitted as 391235 with `-x rtx6004`.
+
+**Queued:** 391235 (`tfac1`, task 1 alone first, rot 2.5e-4, t_fac 1);
+391322 (`alpha_sources.sbatch`: probe `scripts/probes/alpha_sources.py`,
+which of `W, A, D` carries the drop, hypothesis and prediction in the header).
