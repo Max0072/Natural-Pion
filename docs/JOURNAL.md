@@ -6344,3 +6344,47 @@ now on record; the exponent grid answers a real question (power=1 beats
 softer preconditioning) and this one confirms no better rate exists nearby.
 No further ablation planned on this arm; 3.7954 (rot=6e-3, adamw=8e-3) is the
 number to carry into the paper under ADR 0016's framing.
+
+## 2026-10-29 -- what alpha is, mathematically; and the cadence evidence is confounded
+
+The user, before publishing: understand what `alpha` is, why it makes sense
+mathematically and why it works here. Read from the code (`unified.py::_apply`,
+`direction.py`) and the records; nothing was run.
+
+**What it is.** `X = F_0^-1 G`, with `F_0` the Fisher built into the basis at the
+last refactorisation (`t_fac` steps ago, floored); `curv = <X, F_t X>` uses the
+current `A`, `D`, `W`. For the quadratic model `m(s) = -s<G,X> + s^2/2 <X,F_t X>`
+the minimiser along `X` is `s* = <G,X>/<X,F_t X> = quad/curv`. So `alpha` is the
+exact line search along a stale preconditioned direction, in the current
+K-FAC metric, clamped at 1. This is K-FAC's own step rescaling (Martens & Grosse
+2015, sec. 6.4, there with the exact Fisher via Fisher-vector products, here
+with the current factors); `trust="exact"` is the closer analogue.
+
+**Why it is mostly below 1.** In `F_0`'s eigenbasis (`lam_i`, coordinates
+`g_i`) with `F_t = F_0 + Delta`:
+
+    1/alpha - 1 = sum_ij g_i g_j Delta_ij / (lam_i lam_j)  /  sum_i g_i^2 / lam_i
+
+`Delta` is weighted by `1/lam^2`, the denominator by `1/lam`: `alpha` reads the
+relative error of the preconditioner in its smallest-eigenvalue directions,
+which are where `F^-1` lengthens the step most and where (96.4% noise) the
+estimate is worst. A rotation of the eigenbasis at fixed spectrum can only
+raise the Rayleigh quotient on the bottom subspace, so the error is one-sided
+and `alpha < 1` is the generic case. Early in training the EMAs are cold and
+`Delta` is large, hence median 0.001 at steps 0-100 (journal 2026-09-22 02:37).
+
+**The confound found today.** The cadence grid of 2026-08-29 (`runs/cadence`,
+the "`t_fac = 1` anomaly") ran with `ngd_trust_lr = True` -- the `rho`
+controller adapting `eta` up to 100x -- and `ngd_beta_backward = 0.9`; the old
+no-trust sweep (`runs/notrust`) ran with `trust_lr = False`, `beta_backward 0.5`.
+Within the cadence grid only `t_fac` varies, but `eta` was not fixed there, so
+"fresher basis, worse loss" is not a statement about the basis alone, and the
+cadence and notrust numbers cannot be set side by side. Neither old reading
+separates "alpha repairs staleness" from "alpha is a per-layer cold-start
+damper".
+
+**The clean control (proposed, not run).** Current protocol (B 512, 3000 steps,
+adamw 8e-3, `trust_lr` off, seed 0), `t_fac = 1` so `alpha == 1` identically, a
+fixed `rot` grid. Prediction if alpha's job is staleness: near 3.80 (with-alpha
+3.7954). If near 4.20 (ablation B, 4.1969), alpha does work beyond staleness
+and the cold-start/shrinkage reading is the one to develop.
