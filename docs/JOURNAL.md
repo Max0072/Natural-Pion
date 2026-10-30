@@ -6505,3 +6505,6 @@ cadence grid is no evidence here, since it ran with `trust_lr` on.
 
 Archived: all 7 runs to `runs-record/tfac1/`, and `runs-record/alphasrc/alpha_sources.jsonl`,
 the raw rows behind yesterday's table.
+
+**Submitted, user's go-ahead:** job 393393, `scripts/sbatch/tfac1_alpha.sbatch`, `t_fac = 1` with alpha on,
+same six rates, to `runs/tfac1alpha`. Rule Q and the expected top-edge risk are in its header.
