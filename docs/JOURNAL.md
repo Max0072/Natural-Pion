@@ -6508,3 +6508,37 @@ the raw rows behind yesterday's table.
 
 **Submitted, user's go-ahead:** job 393393, `scripts/sbatch/tfac1_alpha.sbatch`, `t_fac = 1` with alpha on,
 same six rates, to `runs/tfac1alpha`. Rule Q and the expected top-edge risk are in its header.
+
+## 2026-10-30 -- what could be distilled out of alpha: variance of log(alpha)
+
+The user: if the lead does not come from alpha as such, distil whatever does and look
+at it separately. Three candidates: smoothing (frozen basis ignores D's noise),
+sawtooth (rate falls with basis age), per-layer calibration. Before any GPU:
+`scripts/probes/alpha_variance.py` on existing diagnostics, CPU, with-alpha arm rot 6e-3,
+seeds 1-3. R2 of log(alpha) on one-hot factors, unique = lost when the factor is dropped:
+
+    steps>1000   layer   age    time   all three  left over
+    seed 1       0.273   0.036  0.390  0.694      0.306
+    seed 2       0.268   0.039  0.414  0.714      0.286
+    seed 3       0.257   0.040  0.401  0.690      0.310
+
+- **Time, not on the candidate list, is the largest.** Median alpha by step (seed 1):
+  0-500 0.10, 500 0.26, 1000 0.40, 1500 0.63, 2000 0.93, 2500+ 1.00.
+- **It is tied to the cosine schedule.** `rot * alpha` with medians, bin centres: 3e-4 (125),
+  8.5e-4 (375), 1.3e-3 (625-875), 1.4-1.6e-3 (1125-1625), 1.2e-3 (1875), 1.0e-3 (2125), then
+  the cosine tail. So alpha turns the cosine into roughly warmup, plateau, tail. Larger rate,
+  more drift, smaller alpha: the direction of cause is not settled by this. Product of
+  medians, so rough; the logged `angle` does not plateau (0.96 to 0.34 over the same range).
+- **Layer is real and stable.** Per-layer mean log alpha correlates 0.92-0.96 across seeds,
+  0.78-0.82 between steps 1000-2000 and 2000-3000; spread 3.9x. wv lowest (0.57), gate
+  highest (0.98).
+- **Sawtooth is weak:** age unique R2 0.04, median 1.00 at age 0 to about 0.75 by age 23.
+  Log cadence 23 against `t_fac` 25 ties age to time somewhat.
+- Smoothing is about the direction, so this cannot test it.
+
+**Limits.** R2 is the variation of alpha, not its effect on the loss. 18-26% of rows sit at the
+clamp, which squeezes log alpha. Left over is about 30%, step-to-step, which a frozen
+profile could not reproduce.
+
+**Consequence, a hypothesis only:** a fixed schedule (warmup plateau tail) and/or fixed
+per-layer multipliers, `t_fac = 1` or 25, no alpha, might reproduce the lead. Waits for Q from job 393393.
