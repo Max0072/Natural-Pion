@@ -6627,3 +6627,26 @@ On that arm median alpha is about 0.73 in steps 0-500 at rot 4e-3 and near 1 aft
 **Next test, proposed, not submitted:** the distilled mechanism directly. Alpha off, X divided by its own
 sigma so the angle is set by the schedule. Note published Pion normalises its step by construction
 (ADR 0013), so alpha may be handing NGD-Pion what Pion has by design. If so, this should reach about 3.79.
+
+## 2026-10-30, 18:00 -- runaway attention blocks; step_norm submitted
+
+Found while picking the grid for step_norm, from existing diagnostics, c*sigma = nominal angle.
+Cayley bounds the real rotation below pi, so 1e5 means R is close to -I on those directions, not
+1e5 radians. Median by block, wq / wk / wv, steps 1000-2000:
+
+    t_fac 1, alpha off, rot 2e-3  blocks 0-3 under 0.5; blocks 4-7 4e4-1e5 / 6e4-1e5 / 100-115
+    t_fac 1, alpha on,  rot 4e-3  blocks 0-4 under 1.1; 5 about 3.6; 6 3.7e3 / 2.8e4 / 148; 7 213 / 828 / 16
+    t_fac 25, alpha on, rot 6e-3  every block 0.24-1.08
+
+Other layers (wo, gate, up, down) do not run away so. Share of layer-steps above pi, wq, by rate: alpha off 1e-3
+1 of 8 blocks, 2e-3 4 of 8; alpha on 2e-3 1 of 8, 4e-3 2 of 8; t_fac 25 with alpha none after step 750.
+
+**This changes how the day's numbers read.** 3.8419 and 3.7843 both come from networks with whole
+attention blocks in this state, and the best val so far (3.7843) has it in 2 of 8. It also bears on the awkward row of
+alpha_response: that statistic is within layer and bin, so it cannot see a persistent between-block runaway.
+Cause not established. Hypothesis: X scales like G/F, so X grows without limit as a block's signal fades.
+Not measured.
+
+**Job submitted:** step_norm, `scripts/sbatch/step_norm.sbatch`, c = rot_t / sigma, alpha off, t_fac 1, angle grid
+0.05-1.6, rule N and prediction in its header. Retraction checked on CPU: orthogonal to 5e-15, max rotation
+equals 2 atan(angle/2) at 0.05, 0.8, 1.6. Here a runaway is impossible by construction.
