@@ -24,6 +24,18 @@ below is seed 0, one run per cell, unless it says otherwise.
 
 ---
 
+## As of 2026-10-30: what alpha is
+
+Before publication the question is what `alpha = quad/curv` is (journal 2026-10-29 and
+2026-10-30, `tests/test_alpha.py`). It is a clamped line search in form, along a stale
+direction; after step 100 its drop comes mostly from `W`'s rotation (58-77%). Control
+`tfac1` (basis rebuilt every step, alpha off): best val 3.8419 at rot 2e-3, against 4.1969
+stale without alpha and 3.7954 with it, so S = 0.884: staleness explains most of what alpha
+fixes. **But 3.8419 is level with Pion (3.8412)**, so the remaining 0.0465 is about all of
+NGD-Pion's 3000-step lead, and what it is remains open. Next proposed, not submitted:
+`t_fac = 1` with alpha on. This supersedes "`t_fac = 1` anomaly, unexplained" below. The
+GitHub clean-up has not started.
+
 ## As of 2026-09-23, 04:50
 
 **The paper's framing changed (ADR 0016): it is about the preconditioner, not

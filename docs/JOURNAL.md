@@ -6465,3 +6465,43 @@ step by that factor.
 **Prediction for tfac1, written before its numbers.** A fresh basis every step
 removes staleness but not the age-1 effect (2.7x of the median 4.5x), so the
 rule's `S` should be small: best val nearer ablation B's 4.1969 than 3.7954.
+
+## 2026-10-30 -- tfac1 (jobs 391235, 391331): S = 0.88, a fresh basis recovers most of alpha; my prediction was wrong
+
+All 7 tasks COMPLETED. `t_fac = 1`, alpha off (`--ngd-trust none`), B 512, 3000 steps,
+adamw 8e-3, seed 0. Final val by `rot`:
+
+    rot    1.25e-4  2.5e-4  5e-4    1e-3    2e-3    4e-3
+    val    4.2188   4.0792  3.9559  3.8745  3.8419  3.9152
+
+**Determinism check passed:** task 6 (`t_fac` 25, rot 2.5e-4) reproduces ablation B
+at all checked evals, ending at exactly 4.1969. The optimum is interior.
+
+**By the rule fixed in `tfac1.sbatch`:** V = 3.8419, S = (4.1969 - 3.8419) / 0.4015 =
+**0.884**, so S >= 0.8: "alpha is a stale-basis correction; a fresh F^-1 needs no alpha".
+
+**The prediction written yesterday evening (S small, V near 4.20) was wrong.** The
+measurement in alpha_sources stands; the inference from it does not. "The metric
+moved because of the step" and "the basis is stale" were set up as rivals, and they
+are the same thing: W's rotation is what makes the basis stale. The one-step 2.7x
+curvature rise along X was assumed to stay harmful at `t_fac = 1`; it does not, at
+least not to that degree.
+
+**Three things the S label does not say:**
+
+1. The residual is not small against Pion. V = 3.8419 against `pion` 3.8412 (seed 0;
+   seeds 1-3: 3.8377, 3.8369, 3.8417): fresh basis without alpha is level with Pion.
+   With alpha 3.7954 (seeds 1-3: 3.8015, 3.8040, 3.8052) it is ahead by about 0.04. So
+   S = 0.88 of the distance from the broken arm, but the 0.0465 left over is about
+   the whole of NGD-Pion's 3000-step lead over Pion. V is one seed.
+2. The rate moved 8x: best rot 2.5e-4 at `t_fac` 25, 2e-3 at `t_fac` 1. With alpha, rot 6e-3
+   at median alpha ~0.18 (steps 600-1000) is about 1e-3 effective, a rough comparison only.
+3. Cost: 1:27 per task at `t_fac` 1 against 0:42 at `t_fac` 25, about 2x wall time.
+
+**Not settled:** what the 0.0465 is. Candidates: the one-step-old basis that `t_fac = 1`
+still leaves, or alpha's variation across layers and time. Direct test, not run and not
+submitted: `t_fac = 1` with alpha on, same `rot` grid, trust_lr off. Note the 2026-08-29
+cadence grid is no evidence here, since it ran with `trust_lr` on.
+
+Archived: all 7 runs to `runs-record/tfac1/`, and `runs-record/alphasrc/alpha_sources.jsonl`,
+the raw rows behind yesterday's table.
