@@ -6675,3 +6675,10 @@ says nothing about this one. Not yet known: whether t_fac 25 also works with thi
 
 **Submitted, user's go-ahead:** job 393953, `scripts/sbatch/step_norm_seeds.sbatch`, angle 0.2, seeds 1-3, one at a time,
 about 4.5 h. Rule in its header: paired gaps against `pion` and against the with-alpha arm, all positive, mean / SE > 2.35.
+
+## 2026-10-30, 19:40 -- correction: "0.2 is the optimum" was premature; seeds job held
+
+Written at 19:35: the three running tasks did not look likely to pass 3.7559. At step 2499 angle 0.4 is already ahead of 0.2
+(3.7702 against 3.7770), and larger rates gain more on the cosine's tail. So the best angle is not known and N = 1.49
+may move up. Job 393953 (seeds at 0.2) was still pending: put on `scontrol hold` by me until 0.4 finishes.
+Then `scontrol release 393953` if 0.2 stays best; otherwise re-submit with the best angle.
