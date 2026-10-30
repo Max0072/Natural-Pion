@@ -6650,3 +6650,25 @@ Not measured.
 **Job submitted:** 393882, step_norm, `scripts/sbatch/step_norm.sbatch`, c = rot_t / sigma, alpha off, t_fac 1, angle grid
 0.05-1.6, rule N and prediction in its header. Retraction checked on CPU: orthogonal to 5e-15, max rotation
 equals 2 atan(angle/2) at 0.05, 0.8, 1.6. Here a runaway is impossible by construction.
+
+## 2026-10-30, 19:35 -- step_norm 3.7559: length control alone beats alpha and Pion (three tasks still running)
+
+**Edge closed, job 393880 (t_fac 1, alpha on):** rot 8e-3 3.862, 1.6e-2 3.9551. So 4e-3 (3.7843) is interior and
+**Q = 1.24 is final.** Runaway blocks persist at both rates.
+
+**Job 393882 (step_norm, t_fac 1, alpha off, `--lr` = nominal angle at the peak), seed 0:**
+
+    angle  0.05    0.1     0.2     0.4          0.8          1.6
+    val    3.9977  3.8272  3.7559  (running: at step 1999, 3.8800  3.9427  4.0042; 0.2 had 3.8585)
+
+Runaway gone: the logged c*sigma is the schedule in every block, as built. **Provisional N = (3.8419 - 3.7559) /
+(3.8419 - 3.7843) = 1.49**, pending the three tasks, none of which looks likely to pass 3.7559. N > 1: length control
+beats alpha, and `quad/curv` is not needed for the lead. This time the prediction (N >= 0.8) held.
+
+    val at 3000 steps, seed 0: Pion 3.8412; t_fac 25 alpha 3.7954; t_fac 1 alpha 3.7843; step_norm 3.7559
+
+Lead over Pion 0.085, against 0.046 for the method as it stood. **Limits:** one seed (noise about 0.005), one horizon,
+chosen on the same val as every grid here. H4 ("the advantage is gone by 15000") was answered on the old arm and
+says nothing about this one. Not yet known: whether t_fac 25 also works with this rule, which would halve the cost.
+
+**Open, not submitted:** seeds 1-3 at angle 0.2; then the 15000-step ladder against `pion` 3.5254.
