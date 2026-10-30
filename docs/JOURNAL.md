@@ -6647,6 +6647,6 @@ alpha_response: that statistic is within layer and bin, so it cannot see a persi
 Cause not established. Hypothesis: X scales like G/F, so X grows without limit as a block's signal fades.
 Not measured.
 
-**Job submitted:** step_norm, `scripts/sbatch/step_norm.sbatch`, c = rot_t / sigma, alpha off, t_fac 1, angle grid
+**Job submitted:** 393882, step_norm, `scripts/sbatch/step_norm.sbatch`, c = rot_t / sigma, alpha off, t_fac 1, angle grid
 0.05-1.6, rule N and prediction in its header. Retraction checked on CPU: orthogonal to 5e-15, max rotation
 equals 2 atan(angle/2) at 0.05, 0.8, 1.6. Here a runaway is impossible by construction.
