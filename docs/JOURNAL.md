@@ -6542,3 +6542,10 @@ profile could not reproduce.
 
 **Consequence, a hypothesis only:** a fixed schedule (warmup plateau tail) and/or fixed
 per-layer multipliers, `t_fac = 1` or 25, no alpha, might reproduce the lead. Waits for Q from job 393393.
+
+**Submitted, user's go-ahead:** job 393413, `scripts/sbatch/alpha_frozen.sbatch`, 4 tasks, about 2 GPU-hours.
+The with-alpha arm with live alpha replaced by a table from seeds 1-3 (`time`, `layer`, `both`), run on seed 0,
+plus an identity check. Rule R and predictions in its header. Chosen over `warmup_steps` because
+`lr_at` warms AdamW too, which would vary a second thing. `both` was added to the two agreed
+variants as the control: it says whether any frozen table can do it. Table excludes step 0
+(alpha = 1 by construction, 1 of 5 logged rows in the first bin). Independent of job 393393; Q still pending.
