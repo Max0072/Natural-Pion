@@ -24,17 +24,26 @@ below is seed 0, one run per cell, unless it says otherwise.
 
 ---
 
-## As of 2026-10-30: what alpha is
+## As of 2026-10-30, 17:10: what alpha is
 
 Before publication the question is what `alpha = quad/curv` is (journal 2026-10-29 and
 2026-10-30, `tests/test_alpha.py`). It is a clamped line search in form, along a stale
-direction; after step 100 its drop comes mostly from `W`'s rotation (58-77%). Control
-`tfac1` (basis rebuilt every step, alpha off): best val 3.8419 at rot 2e-3, against 4.1969
-stale without alpha and 3.7954 with it, so S = 0.884: staleness explains most of what alpha
-fixes. **But 3.8419 is level with Pion (3.8412)**, so the remaining 0.0465 is about all of
-NGD-Pion's 3000-step lead, and what it is remains open. Next proposed, not submitted:
-`t_fac = 1` with alpha on. This supersedes "`t_fac = 1` anomaly, unexplained" below. The
-GitHub clean-up has not started.
+direction; after step 100 its drop comes mostly from `W`'s rotation (58-77%).
+
+All at 3000 steps, B 512, seed 0:
+
+    t_fac 25, alpha off (ablation B)   4.1969
+    t_fac 1,  alpha off                3.8419   about Pion, 3.8412
+    t_fac 25, alpha on                 3.7954
+    t_fac 1,  alpha on                 3.7843   rot 4e-3, top edge of the grid
+
+Fresh basis and alpha are not rivals: the best arm has both, so a stale basis is not
+needed, and the old "`t_fac = 1` anomaly" is gone. Frozen tables of alpha replayed with live
+alpha off fail at rot 6e-3 (`both` 4.1527), so what matters looks like alpha's response to the
+individual step, not a schedule or layer multipliers. The hypothesis on why is unmeasured.
+
+Next, none submitted: rot 8e-3 and 1.6e-2 to close the edge; seeds; re-test H4 if this arm is
+adopted. The GitHub clean-up has not started.
 
 ## As of 2026-09-23, 04:50
 

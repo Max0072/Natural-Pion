@@ -6571,3 +6571,29 @@ Finished: rot 1.25e-4 4.3456, rot 2.5e-4 4.1549, both far from the optimum. Othe
 
 **Next when both jobs end:** `scripts/archive_runs.py`; Q = (3.8419 - Va) / 0.0465 and R for `both`, with
 a check that the best cell is not on the 4e-3 edge; journal and RESUME.
+
+## 2026-10-30, 17:10 -- both jobs done: t_fac 1 with alpha is the best arm so far; no frozen table works
+
+**393393 (`t_fac` 1, alpha on), final val:**
+
+    rot    1.25e-4  2.5e-4  5e-4    1e-3   2e-3    4e-3
+    val    4.3456   4.1549  3.9945  3.868  3.7941  3.7843
+
+**The best cell is on the grid's top edge, so by the header's rule Q is not quoted as final.** At 3.7843,
+Q = (3.8419 - 3.7843) / 0.0465 = 1.24. A higher rate can only lower the best val, so 1.24 is a floor and
+the verdict Q >= 0.8 does not depend on the extension: alpha itself gives the rest, on a basis one step
+old, and a stale basis is not needed. Against the with-alpha arm 3.7954 the gain is 0.011, about the seed
+span (0.0098), one seed. Against Pion 3.8412 the lead is 0.057.
+
+**393413 (frozen tables, t_fac 25, rot 6e-3):** `time` 4.2701 (R -9.4), `layer` 4.3246 (R -10.6), `both`
+4.1527 (R -6.8). `both` is below 0.8 by the header's rule: the live, step-to-step part of alpha matters.
+**My prediction for `both` was wrong too.** `both` beats the others by 0.12-0.17, far short of 3.7954. Limit:
+one rate, tables of means, stale basis. Not a claim about every table at every rate.
+
+**Reading.** The distillation asked for today does not come out as a schedule or as layer multipliers.
+What is left is alpha's response to the individual step. Unmeasured hypothesis: alpha is invariant to
+the scale of G and of F, so it depends on the direction, and it may be shortening just the steps that
+concentrate on near-null directions. A CPU check from existing diagnostics is possible.
+
+**Open, not submitted:** rot 8e-3 and 1.6e-2 (t_fac 1, alpha on) to close the edge; seeds; H4 was answered
+on the t_fac 25 arm, so the horizon verdict would need re-testing on this one. Cost: about 2x wall time.
