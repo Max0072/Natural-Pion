@@ -6672,3 +6672,6 @@ chosen on the same val as every grid here. H4 ("the advantage is gone by 15000")
 says nothing about this one. Not yet known: whether t_fac 25 also works with this rule, which would halve the cost.
 
 **Open, not submitted:** seeds 1-3 at angle 0.2; then the 15000-step ladder against `pion` 3.5254.
+
+**Submitted, user's go-ahead:** job 393953, `scripts/sbatch/step_norm_seeds.sbatch`, angle 0.2, seeds 1-3, one at a time,
+about 4.5 h. Rule in its header: paired gaps against `pion` and against the with-alpha arm, all positive, mean / SE > 2.35.
