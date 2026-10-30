@@ -6597,3 +6597,33 @@ concentrate on near-null directions. A CPU check from existing diagnostics is po
 
 **Open, not submitted:** rot 8e-3 and 1.6e-2 (t_fac 1, alpha on) to close the edge; seeds; H4 was answered
 on the t_fac 25 arm, so the horizon verdict would need re-testing on this one. Cost: about 2x wall time.
+
+## 2026-10-30, 17:30 -- alpha_response: alpha does react to the step's length; job 393880 closes the grid edge
+
+**Job 393880** (user's go-ahead): `tfac1_alpha.sbatch --array=6-7`, rot 8e-3 and 1.6e-2, same flags.
+
+**`scripts/probes/alpha_response.py`, CPU.** sigma = spectral norm of X, the step before alpha. Demeaned
+within layer x 250-step bin, steps >= 100, so only step-to-step variation remains. Prediction in
+the header: slope of log alpha on log sigma well below 0, and alpha narrows the spread of length.
+
+    arm                     clamped  slope   r      sd log sigma  sd log(alpha sigma)
+    t_fac 25 rot 6e-3 s1    0.18     -0.80   -0.78  0.307         0.208
+    t_fac 25 rot 6e-3 s2    0.16     -0.73   -0.75  0.319         0.222
+    t_fac 25 rot 6e-3 s3    0.19     -0.78   -0.77  0.302         0.208
+    t_fac 1  rot 4e-3 s0    0.40     -0.39   -0.55  0.197         0.167
+    t_fac 1  rot 2e-3 s0    0.61     -0.24   -0.39  0.184         0.174
+
+Prediction held on the t_fac 25 arm: alpha shortens long steps and cuts the spread by about a third.
+A first version compared the logged angle, which carries the cosine within a bin, and showed the
+opposite; that was the statistic's fault, fixed before reading.
+
+**What this does not show.** It is an association, and alpha = quad/curv is partly tied to X by
+construction. `floored_frac` barely correlates (about -0.03 to -0.08 on t_fac 25), but that is a layer-wide count,
+so "near-null directions" remains unmeasured. **And the weak row is awkward:** at t_fac 1, rot 2e-3 alpha
+barely narrows the spread (0.184 to 0.174) and 61% of rows are clamped, yet alpha still gains 0.048 over
+alpha off at that same rate (3.7941 against 3.8419). So equalising length is not all of it there.
+On that arm median alpha is about 0.73 in steps 0-500 at rot 4e-3 and near 1 after 1500: alpha may act mainly early.
+
+**Next test, proposed, not submitted:** the distilled mechanism directly. Alpha off, X divided by its own
+sigma so the angle is set by the schedule. Note published Pion normalises its step by construction
+(ADR 0013), so alpha may be handing NGD-Pion what Pion has by design. If so, this should reach about 3.79.

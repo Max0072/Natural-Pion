@@ -28,6 +28,9 @@
 # about 2.7x (alpha_sources), so the optimum should sit above tfac1's 2e-3, about
 # 5e-3, which is past this grid's 4e-3. The top edge is the likely outcome.
 #
+# Tasks 6-7 close the top edge (4e-3 was best, 3.7843):
+#   sbatch --array=6-7 -x rtx6004 scripts/sbatch/tfac1_alpha.sbatch
+#
 #   sbatch scripts/sbatch/tfac1_alpha.sbatch
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
@@ -35,8 +38,8 @@ SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"
 DATA="${DATA:-$DATA_p330/c4}"
 OUT="$DATA_p330/runs/tfac1alpha"
 
-ROT=( 1.25e-4 2.5e-4 5e-4 1e-3 2e-3 4e-3 )
-TFAC=( 1 1 1 1 1 1 )
+ROT=( 1.25e-4 2.5e-4 5e-4 1e-3 2e-3 4e-3 8e-3 1.6e-2 )
+TFAC=( 1 1 1 1 1 1 1 1 )
 L="${ROT[$SLURM_ARRAY_TASK_ID]}"
 T="${TFAC[$SLURM_ARRAY_TASK_ID]}"
 
