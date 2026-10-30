@@ -6549,3 +6549,25 @@ plus an identity check. Rule R and predictions in its header. Chosen over `warmu
 `lr_at` warms AdamW too, which would vary a second thing. `both` was added to the two agreed
 variants as the control: it says whether any frozen table can do it. Table excludes step 0
 (alpha = 1 by construction, 1 of 5 logged rows in the first bin). Independent of job 393393; Q still pending.
+
+## 2026-10-30, 14:20 -- interim record, jobs 393393 and 393413 still running
+
+Saved so that a lost session loses nothing. **Not final: Q and `both`'s R are not known yet.**
+
+**Done, 393413 (`alpha_frozen`, t_fac 25, rot 6e-3, alpha off, table from seeds 1-3, seed 0):**
+`ones` identity check passed, train_loss equal to `runs/tfac1/...549e192a1a` at steps 0, 23, 46.
+`time` 4.2701 (R -9.4), `layer` 4.3246 (R -10.6). Worse than ablation B (4.1969) and Pion (3.8412).
+**My prediction for `time` (R >= 0.8) was wrong**; the one for `layer` held, and means little, as
+its header says. One rate, no grid: the profile fails at the rates the arm used, not at every rate.
+Running: `both`, at step 999 4.6177 against live alpha 4.168.
+
+**393393 (`tfac1_alpha`, t_fac 1, alpha on), val at step 1999, against alpha off and the with-alpha arm 3.9138:**
+
+    rot        5e-4    1e-3    2e-3    4e-3
+    alpha on   4.0553  3.9298  3.8662  3.8837
+    alpha off  4.0149  3.9367  3.9119  3.9973
+
+Finished: rot 1.25e-4 4.3456, rot 2.5e-4 4.1549, both far from the optimum. Others about 2200-2440 of 3000.
+
+**Next when both jobs end:** `scripts/archive_runs.py`; Q = (3.8419 - Va) / 0.0465 and R for `both`, with
+a check that the best cell is not on the 4e-3 edge; journal and RESUME.
