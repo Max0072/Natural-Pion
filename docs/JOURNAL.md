@@ -6693,3 +6693,14 @@ alpha 0.056. One seed, one horizon. Curve is flat around the optimum (0.2-0.8 wi
 
 Job 393953 (seeds at 0.2) cancelled while held, it never ran; **job 393992** replaces it at angle 0.4, seeds 1-3, one at a time.
 Same rule (`step_norm_seeds.sbatch` header).
+
+## 2026-10-30, 20:50 -- user: run it long; is it only the normalisation or also the Fisher; does the schedule matter
+
+**Job 393995**, `step_norm_15k.sbatch`: angles 0.1, 0.2, 0.4, 15000 steps, about 7.5 h per task. Rule: H4's, against `pion` 3.5254.
+The earlier plan was seeds first; the user asked to run long now. Seeds job 393992 is still queued.
+
+**Job 393994**, `step_norm_abl.sbatch`, 14 tasks, 3000 steps, seed 0. (A) X = G with the same normalisation and code path, angles 0.1-1.6:
+Fisher's gain = Vg - 3.7399; >= 0.020 F^-1 matters, < 0.010 normalisation is everything. `--ngd-s-power 0` was rejected as the control
+because P is not orthogonal, so it does not give G. (B) constant, linear, warmcos on 3 peak angles each, rotational angle only;
+all within 0.010 of 3.7399 means the schedule does not matter. Rules and predictions in the header. Default paths checked unchanged:
+`scheduled` returns the parent's c under cosine. Together with seeds, about 47 GPU-hours.
