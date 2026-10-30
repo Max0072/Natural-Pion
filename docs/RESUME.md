@@ -24,7 +24,7 @@ below is seed 0, one run per cell, unless it says otherwise.
 
 ---
 
-## As of 2026-10-30, 19:35: what alpha is
+## As of 2026-10-30, 20:35: what alpha is
 
 Before publication the question is what `alpha = quad/curv` is (journal 2026-10-29 and
 2026-10-30, `tests/test_alpha.py`). It is a clamped line search in form, along a stale
@@ -36,7 +36,7 @@ All at 3000 steps, B 512, seed 0:
     t_fac 1,  alpha off                3.8419   about Pion, 3.8412
     t_fac 25, alpha on                 3.7954
     t_fac 1,  alpha on                 3.7843   rot 4e-3, interior
-    t_fac 1,  alpha off, step / sigma  3.7559   step_norm, angle 0.2; seed 0, three tasks unfinished
+    t_fac 1,  alpha off, step / sigma  3.7399   step_norm, angle 0.4, interior; seed 0
 
 Fresh basis and alpha are not rivals: the best arm has both, so a stale basis is not
 needed, and the old "`t_fac = 1` anomaly" is gone. Frozen tables of alpha replayed with live
@@ -46,7 +46,7 @@ individual step, not a schedule or layer multipliers. The hypothesis on why is u
 **Whole attention blocks run away in the fresh-basis arms (c*sigma up to 1e5). Dividing the step
 by its own spectral norm removes that and beats alpha and Pion (journal 2026-10-30, 18:00, 19:35).**
 
-Next, none submitted: seeds 1-3 at angle 0.2; the 15000-step ladder (H4 was answered on the old arm).
+Seeds 1-3 at angle 0.4 are submitted (journal). Next, not submitted: the 15000-step ladder (H4 was answered on the old arm).
 The GitHub clean-up has not started.
 
 ## As of 2026-09-23, 04:50

@@ -8,9 +8,9 @@
 #SBATCH -t 05:00:00
 #SBATCH -o logs/%x-%A_%a.out
 #SBATCH -e logs/%x-%A_%a.err
-# Is step_norm's 3.7559 (seed 0, angle 0.2) real? (journal 2026-10-30.)
+# Is step_norm's 3.7399 (seed 0, angle 0.4) real? (journal 2026-10-30.)
 #
-# THE ONE VARIABLE. Flags of step_norm.sbatch task 2; only `--seed` changes, 1, 2, 3.
+# THE ONE VARIABLE. Flags of step_norm.sbatch task 3; only `--seed` changes, 1, 2, 3.
 # `%1`: one seed at a time, concurrent runs on one node share a seed or starve for I/O
 # (memory, ADR 0010 was a one-off waiver).
 #
@@ -20,7 +20,7 @@
 # (one-sided 5%, 3 degrees of freedom). Same test against the with-alpha arm
 #   seed 0  3.7954   seed 1  3.8015   seed 2  3.8040   seed 3  3.8052
 # which is the claim that this beats the method as it stood.
-# Angle 0.2 was picked on seed 0, so seed 0's gap leans favourable; seeds 1-3 are not.
+# Angle 0.4 was picked on seed 0, so seed 0's gap leans favourable; seeds 1-3 are not.
 #
 #   sbatch -x rtx6004 scripts/sbatch/step_norm_seeds.sbatch
 set -uo pipefail
@@ -29,7 +29,7 @@ SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"
 DATA="${DATA:-$DATA_p330/c4}"
 OUT="$DATA_p330/runs/stepnormseeds"
 
-L=0.2
+L=0.4
 T=1
 SEED="$SLURM_ARRAY_TASK_ID"
 

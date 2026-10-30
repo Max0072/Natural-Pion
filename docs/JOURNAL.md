@@ -6682,3 +6682,14 @@ Written at 19:35: the three running tasks did not look likely to pass 3.7559. At
 (3.7702 against 3.7770), and larger rates gain more on the cosine's tail. So the best angle is not known and N = 1.49
 may move up. Job 393953 (seeds at 0.2) was still pending: put on `scontrol hold` by me until 0.4 finishes.
 Then `scontrol release 393953` if 0.2 stays best; otherwise re-submit with the best angle.
+
+## 2026-10-30, 20:35 -- step_norm grid final: best 3.7399 at angle 0.4; N = 1.77
+
+    angle  0.05    0.1     0.2     0.4     0.8     1.6
+    val    3.9977  3.8272  3.7559  3.7399  3.7606  3.7797
+
+Interior. N = (3.8419 - 3.7399) / (3.8419 - 3.7843) = 1.77. Lead over Pion 0.101; over t_fac 1 with alpha 0.044; over t_fac 25 with
+alpha 0.056. One seed, one horizon. Curve is flat around the optimum (0.2-0.8 within 0.021).
+
+Job 393953 (seeds at 0.2) cancelled while held, it never ran; **job 393992** replaces it at angle 0.4, seeds 1-3, one at a time.
+Same rule (`step_norm_seeds.sbatch` header).
