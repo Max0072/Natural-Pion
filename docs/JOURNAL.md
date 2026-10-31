@@ -6793,3 +6793,14 @@ t_fac 25 with momentum, 3000 steps, seed 0: 0.1 3.7343, **0.2 3.7226**; 0.4 and 
 5300 steps in the same time, val about 3.729 by log interpolation between its only two finals. 3.7226 is ahead by 0.006: below the header's line, prediction (about 3.75) wrong. The margin is smaller than the interpolation's uncertainty; no Pion run at about 5300 steps exists.
 
 Sent, user's word: `step_norm_clock.sbatch` on rtx6006: Pion 5300 steps; t_fac 25 with momentum, angle 0.1, 15000 steps. Rules in the header.
+
+## 2026-10-31, 17:55 -- clock check: Pion at 5300 is 3.7063, we are behind; my interpolation was wrong
+
+Pion, lr 1e-3, 5300 steps, rtx6006: **3.7063**, 2467 s, 0.466 s a step. Same node, t_fac 25 with momentum: 0.844 s a step in its own run, 0.841 on rtx6006, so the cost comparison holds.
+t_fac 25 with momentum, final: 0.1 3.7343, **0.2 3.7227**, 0.4 3.7311, 0.8 3.7633. Interior. Pion - ours = -0.016: rule says **behind** on the clock at this budget (2530 s against 2467 s). Prediction, parity, wrong.
+
+**Correction.** Interpolating Pion in log steps between 3000 and 15000 gave 3.729 at 5300; the real number is 3.7063, 0.023 better. The curve is not linear in log steps there. So the step speedups quoted on 2026-10-31 10:35 were too high.
+With the third point, piecewise: 3.7399 at about 4600 steps (1.5x, was 1.7x); 3.7032 at about 5400 (1.8x, was 2.0x); t_fac 25 with momentum 3.7227 at about 4950 (1.65x); 3.4862 at about 18800 by extrapolation (1.25x, one more point would move it).
+Cost ratio at t_fac 25 is 0.844 / 0.466 = 1.81, so break-even needs 1.81x in steps or a cheaper step: we are about 10% short at this budget. At t_fac 1 the ratio is 3.75 against 1.8x: about 2.1x slower.
+
+Partial: seed 1 with momentum 3.7045 (seed 0 3.7032). Fisher norm 3e-4 4.2170, 6e-4 4.0797, 1.2e-3 3.9418, 2.4e-3 3.8475, 4.8e-3 running.
