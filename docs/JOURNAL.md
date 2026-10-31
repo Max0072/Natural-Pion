@@ -6762,3 +6762,5 @@ Frobenius not run: not in the agreed plan. Job 394419 extends momentum, 394420 r
 `STEP_NORM_NORM=pre`: c = rot_t / sigma(G), X = F^-1 G unchanged, so F^-1's scale reaches the step. Calibration 394427, still pending, now also logs sigma(X)/sigma(G).
 Grid goes in with the fisher and rms ones, after it. No momentum, t_fac 1, cosine, seed 0, 3000 steps. P = best val - 3.7399.
 Rule: P >= 0.020 after is better; P < 0.010 the order does not matter; P <= -0.020 before is better. PREDICTION: P >= 0.020, since sigma(X) floats.
+
+Sent the before-F^-1 grid ahead of the calibration, user's word: `step_norm_pre.sbatch`, rot 1e-4 to 1, a decade apart, refine after.
