@@ -6704,3 +6704,28 @@ Fisher's gain = Vg - 3.7399; >= 0.020 F^-1 matters, < 0.010 normalisation is eve
 because P is not orthogonal, so it does not give G. (B) constant, linear, warmcos on 3 peak angles each, rotational angle only;
 all within 0.010 of 3.7399 means the schedule does not matter. Rules and predictions in the header. Default paths checked unchanged:
 `scheduled` returns the parent's c under cosine. Together with seeds, about 47 GPU-hours.
+
+## 2026-10-31, 03:10 -- seeds pass; F^-1 matters without momentum; schedule matters; 2x2 with momentum running; 15k task 1 died
+
+**Seeds, angle 0.4 (job 393992).** val 3.7399 / 3.7436 / 3.7419 / 3.7416, seeds 0-3. Paired gap to Pion 0.1013, 0.0941, 0.0950, 0.1001:
+mean 0.0976, mean/SE 54. To t_fac 25 with alpha 0.0555, 0.0579, 0.0621, 0.0636: mean 0.0598, mean/SE 32. Rule passes against both.
+
+**X = G, same normalisation, cosine, no momentum (jobs 393994, 394098).**
+
+    angle  0.0125  0.025   0.05    0.1     0.2     0.4     0.8     1.6
+    val    4.4738  4.3597  4.2538  4.2007  4.2688  4.6545  4.5503  5.1927
+
+Interior after extending. Fisher's gain 4.2007 - 3.7399 = 0.461, rule says F^-1 matters. **Correction:** the header of
+`step_norm_abl.sbatch` read Vg against Pion as what spectral normalisation alone is worth. It is not: these arms have no momentum and use
+Cayley, Pion has Lie momentum and the truncated retraction. Only F^-1 against G is one variable, and only without momentum. Job 394101 fills
+in the momentum half. It runs as `ngd-pion-m` because `harness/train.py` forces momentum to none under `ngd-pion-s`.
+
+**Schedule, F^-1, no momentum, seed 0 (job 393994).** Best of each against cosine 3.7399: constant 3.8313 (angle 0.1), linear 3.7311 (0.4),
+warmcos 3.7688 (0.4); all interior. Rule says the schedule matters, because constant is +0.091 and warmcos +0.029. Linear -0.009 is within
+0.010. Predictions: constant worse, right; linear within 0.010, right; warmcos within 0.010, wrong. The harness warmup is not involved, this is
+the rotational angle only.
+
+**Job 393995_1 (15000 steps, angle 0.2) FAILED**, exit 135 (128 + 7, SIGBUS), rtx6006, last log line step 7222 at 01:55, no traceback in the
+log. george's job on that node ended 01:55:19, and from 01:56 other users' jobs on rtx6006 fail at start with exit 0:53, so a node event is the
+likely cause, unmeasured. Checkpoint from 01:49 is on disk and the sbatch has no `--no-resume`. Not resubmitted yet: asked the user.
+Tasks 0 and 2 run on.

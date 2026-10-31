@@ -72,4 +72,6 @@ if __name__ == "__main__":
     elif PRECOND != "fisher":
         raise SystemExit(f"unknown preconditioner {PRECOND}")
     train.NGD_IMPLEMENTATIONS["ngd-pion-s"] = StepNorm
+    # `-m` is the name under which the harness honours --ngd-momentum; `-s` forces "none".
+    train.NGD_IMPLEMENTATIONS["ngd-pion-m"] = StepNorm
     run_main()

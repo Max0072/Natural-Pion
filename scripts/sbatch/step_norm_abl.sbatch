@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -A p330
 #SBATCH -J stepabl
-#SBATCH --array=0-13%6
+#SBATCH --array=0-16%6
 #SBATCH -p rtx
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
@@ -26,6 +26,7 @@
 # PREDICTION: constant clearly worse (no decay at the end), linear within 0.010, warmcos
 # within 0.010.
 # A best cell on an edge means extend before concluding, in A and in B.
+# Tasks 14-16 extend A: best X = G was on the 0.1 edge (4.2007). Same rule applies to the extended grid.
 #
 #   sbatch -x rtx6003,rtx6004 scripts/sbatch/step_norm_abl.sbatch
 set -uo pipefail
@@ -33,9 +34,9 @@ REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"
 DATA="${DATA:-$DATA_p330/c4}"
 
-PRE=( none none none none none  fisher fisher fisher fisher fisher fisher fisher fisher fisher )
-SCH=( cosine cosine cosine cosine cosine  constant constant constant linear linear linear warmcos warmcos warmcos )
-ROT=( 0.1 0.2 0.4 0.8 1.6  0.05 0.1 0.2  0.2 0.4 0.8  0.2 0.4 0.8 )
+PRE=( none none none none none  fisher fisher fisher fisher fisher fisher fisher fisher fisher  none none none )
+SCH=( cosine cosine cosine cosine cosine  constant constant constant linear linear linear warmcos warmcos warmcos  cosine cosine cosine )
+ROT=( 0.1 0.2 0.4 0.8 1.6  0.05 0.1 0.2  0.2 0.4 0.8  0.2 0.4 0.8  0.05 0.025 0.0125 )
 T=$SLURM_ARRAY_TASK_ID; P="${PRE[$T]}"; S="${SCH[$T]}"; L="${ROT[$T]}"
 OUT="$DATA_p330/runs/stepnormabl/$P-$S"
 mkdir -p "$OUT"
