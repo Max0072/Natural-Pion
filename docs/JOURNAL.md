@@ -6775,3 +6775,10 @@ The decade grid for it was too large: cancelled 394428_1-4 (real angle_min 16 an
 Fisher and RMS grids sent, `step_norm_norm.sbatch`.
 
 **Partial, 3000 steps, seed 0.** F^-1 with momentum at 0.05: 3.7260, so 0.1 (3.7032) is interior: 0.05 3.7260, 0.1 3.7032, 0.2 3.7213. t_fac 25, angle 0.1: 3.8533; others finishing.
+
+## 2026-10-31, 12:50 -- momentum grids interior: Fisher's gain 0.122; t_fac 25: fresh basis matters, D = 0.040
+
+With momentum, 3000 steps, seed 0. F^-1: 0.025 3.8156, 0.05 3.7260, **0.1 3.7032**, 0.2 3.7213, 0.4 3.7410, 0.8 3.7767, 1.6 3.7951. G: 0.0125 4.0126, 0.025 3.8720, **0.05 3.8247**, 0.1 3.9127, 0.2 4.1433, 0.4 4.4975, 0.8 4.6875. Both interior now.
+Fisher's gain with momentum 0.1215, rule says F^-1 matters beyond momentum; prediction right. Momentum's effect: G 0.376, F^-1 0.037.
+
+t_fac 25, no momentum: 0.1 3.8533, 0.2 3.8006, 0.4 3.7806, **0.8 3.7798**, 1.6 3.8124. Interior. D = 3.7798 - 3.7399 = 0.040: rule says the fresh basis is needed; prediction right. Still 0.061 ahead of Pion at about half the step cost.
