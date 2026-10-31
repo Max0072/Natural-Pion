@@ -91,6 +91,15 @@ class StepNorm(NGDPionUnified):
         self._W = p.detach().to(group["compute_dtype"])
         super()._apply(p, group)
 
+    def load_state_dict(self, state_dict):
+        # The parent reloads `cov` but not `cov_backward` to the GPU, so a resume dies at the first backward hook (job 394420).
+        super().load_state_dict(state_dict)
+        for group in self.param_groups:
+            for p in group["params"]:
+                cov = self.state.get(p, {}).get("cov_backward")
+                if cov is not None:
+                    cov.to(p.device)
+
     def _rms_base(self, X_in, X_out):
         W = self._W
         m, n = W.shape

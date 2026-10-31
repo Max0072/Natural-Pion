@@ -6764,3 +6764,14 @@ Grid goes in with the fisher and rms ones, after it. No momentum, t_fac 1, cosin
 Rule: P >= 0.020 after is better; P < 0.010 the order does not matter; P <= -0.020 before is better. PREDICTION: P >= 0.020, since sigma(X) floats.
 
 Sent the before-F^-1 grid ahead of the calibration, user's word: `step_norm_pre.sbatch`, rot 1e-4 to 1, a decade apart, refine after.
+
+## 2026-10-31, 12:15 -- resume bug, calibration, grids resized
+
+**Job 394420 (0.2 from checkpoint) failed in 16 s**: `cov_backward` stays on the CPU after a reload, `NGDPionUnified.load_state_dict` moves `cov` but not it. A real bug in the resume path of every NGD arm with S.
+Fixed in the probe, not in the base algorithm. Resubmitted from step 7000. GPU RNG is not in the checkpoint, so the resumed run is not bit-identical to an unbroken one.
+
+**Calibration 394427, steps 100-400, median (p10-p90):** sqrt(curv)/sigma 0.0035 (0.0007-0.012); RMS base/sigma 0.0028 (0.0014-0.0071); sigma(X)/sigma(G) 2.3e4 (5e3-7.6e5). F^-1 amplifies by four or more orders and unevenly, which is what the before-F^-1 arm carries into the step.
+The decade grid for it was too large: cancelled 394428_1-4 (real angle_min 16 and up), replaced with rot 1e-6, 3e-6, 1e-5, 3e-5; rot 1e-4 still runs.
+Fisher and RMS grids sent, `step_norm_norm.sbatch`.
+
+**Partial, 3000 steps, seed 0.** F^-1 with momentum at 0.05: 3.7260, so 0.1 (3.7032) is interior: 0.05 3.7260, 0.1 3.7032, 0.2 3.7213. t_fac 25, angle 0.1: 3.8533; others finishing.
