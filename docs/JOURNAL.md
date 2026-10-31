@@ -6791,3 +6791,5 @@ Before F^-1: 1e-6 4.3738, 3e-6 4.1715, 1e-5 4.0501, **3e-5 3.9951**, 1e-4 4.1918
 
 t_fac 25 with momentum, 3000 steps, seed 0: 0.1 3.7343, **0.2 3.7226**; 0.4 and 0.8 finishing. 0.84 s a step, 42 min. Pion's window throughput is 0.48 s a step (the 0.674 was the mean with its evals), so the 0.48 line applies:
 5300 steps in the same time, val about 3.729 by log interpolation between its only two finals. 3.7226 is ahead by 0.006: below the header's line, prediction (about 3.75) wrong. The margin is smaller than the interpolation's uncertainty; no Pion run at about 5300 steps exists.
+
+Sent, user's word: `step_norm_clock.sbatch` on rtx6006: Pion 5300 steps; t_fac 25 with momentum, angle 0.1, 15000 steps. Rules in the header.
