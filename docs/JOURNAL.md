@@ -6729,3 +6729,23 @@ the rotational angle only.
 log. george's job on that node ended 01:55:19, and from 01:56 other users' jobs on rtx6006 fail at start with exit 0:53, so a node event is the
 likely cause, unmeasured. Checkpoint from 01:49 is on disk and the sbatch has no `--no-resume`. Not resubmitted yet: asked the user.
 Tasks 0 and 2 run on.
+
+## 2026-10-31, 06:20 -- 2x2 with momentum: F^-1 still ahead, both on edges; 15000 steps: lead persists at +0.039
+
+**Momentum, job 394101.** Lie, beta1 0.9, same normalisation, cosine, t_fac 1, 3000 steps, seed 0.
+
+    F^-1   angle  0.1     0.2     0.4     0.8     1.6
+           val    3.7032  3.7213  3.7410  3.7767  3.7951
+    G      angle  0.05    0.1     0.2     0.4     0.8
+           val    3.8247  3.9127  4.1433  4.4975  4.6875
+
+Both best cells are on the small edge, so by the rule this is provisional. As it stands: Fisher's gain with momentum 3.8247 - 3.7032 = 0.122;
+momentum's effect on G 4.2007 - 3.8247 = 0.376, on F^-1 3.7399 - 3.7032 = 0.037. So most of the 0.461 gap without momentum was something
+momentum also supplies, and a part remains. All three predictions held so far. G with momentum against Pion 3.8412 is +0.017: that arm differs from
+Pion in normalisation and retraction, one seed, on an edge.
+
+**15000 steps, job 393995.** val 3.4862 at angle 0.1, 3.4867 at 0.4; 0.2 died at step 7222 (entry above). gap15 = 3.5254 - 3.4862 = +0.039: H4's rule
+says the lead persists; prediction right. It is 0.044 ahead of the old method, 3.5302. Lead over Pion fell from 0.101 at 3000. The optimal angle moved: 0.1 was far
+behind 0.4 at 3000 (3.8272 against 3.7399) and ties it here. Edge caveat: the two ends of the grid tie and the middle is missing. One seed.
+
+Not yet resubmitted, waiting for the user: 0.2 from its checkpoint; extended small angles for the momentum grid.

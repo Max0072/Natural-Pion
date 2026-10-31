@@ -24,6 +24,18 @@ below is seed 0, one run per cell, unless it says otherwise.
 
 ---
 
+## As of 2026-10-31, 06:20: step_norm, what is known
+
+`c = rot_t / sigma`, alpha off, t_fac 1 (`scripts/probes/step_norm.py`). Journal 2026-10-31.
+
+    3000 steps, seeds 0-3, angle 0.4   3.7417 mean; +0.0976 over Pion, +0.0598 over t_fac 25 with alpha; rule passes
+    3000 steps, seed 0                 no momentum: F^-1 3.7399, G 4.2007
+                                       Lie momentum: F^-1 3.7032, G 3.8247 (both on the small-angle edge: provisional)
+    schedule, F^-1, no momentum        cosine 3.7399, linear 3.7311, warmcos 3.7688, constant 3.8313
+    15000 steps, seed 0                3.4862 at 0.1, 3.4867 at 0.4; +0.039 over Pion 3.5254; 0.2 died (exit 135, rtx6006), checkpoint on disk
+
+Open: extend the momentum grid to smaller angles; finish 0.2 at 15000; seeds for momentum. Novelty unchecked. GitHub clean-up not started.
+
 ## As of 2026-10-30, 20:35: what alpha is
 
 Before publication the question is what `alpha = quad/curv` is (journal 2026-10-29 and
