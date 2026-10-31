@@ -34,7 +34,12 @@ below is seed 0, one run per cell, unless it says otherwise.
     schedule, F^-1, no momentum        cosine 3.7399, linear 3.7311, warmcos 3.7688, constant 3.8313
     15000 steps, seed 0                3.4862 at 0.1, 3.4867 at 0.4; +0.039 over Pion 3.5254; 0.2 died (exit 135, rtx6006), checkpoint on disk
 
-Open: extend the momentum grid to smaller angles; finish 0.2 at 15000; seeds for momentum. Novelty unchecked. GitHub clean-up not started.
+    speed per step (estimate)          1.7-2.0x at 3000, 1.2x at 15000; a step costs 1.75 s against Pion's 0.48-0.67 s, so we lose on wall clock
+
+Running on 2026-10-31: 394419 momentum small angles; 394420 angle 0.2 resumed at 15000; 394425 t_fac 25; 394426 fast decay at 15000;
+394427 calibration, then grids for the fisher and rms norms (`STEP_NORM_NORM`). Rules in the sbatch headers.
+
+Open after those: seeds for the best momentum cell. Novelty unchecked. GitHub clean-up not started.
 
 ## As of 2026-10-30, 20:35: what alpha is
 
