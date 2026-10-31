@@ -6784,3 +6784,10 @@ Fisher's gain with momentum 0.1215, rule says F^-1 matters beyond momentum; pred
 t_fac 25, no momentum: 0.1 3.8533, 0.2 3.8006, 0.4 3.7806, **0.8 3.7798**, 1.6 3.8124. Interior. D = 3.7798 - 3.7399 = 0.040: rule says the fresh basis is needed; prediction right. Still 0.061 ahead of Pion at about half the step cost.
 
 Sent, user's word: seeds 1-3 for F^-1 with momentum at 0.1 (`step_norm_momseeds.sbatch`); t_fac 25 with momentum at 0.1-0.8 (`step_norm_tfacmom.sbatch`). Rules in the headers.
+
+## 2026-10-31, 17:10 -- t_fac 25 with momentum clears the clock threshold, narrowly; before-F^-1 final
+
+Before F^-1: 1e-6 4.3738, 3e-6 4.1715, 1e-5 4.0501, **3e-5 3.9951**, 1e-4 4.1918. Interior. P = +0.255, rule says after is better; prediction right.
+
+t_fac 25 with momentum, 3000 steps, seed 0: 0.1 3.7343, **0.2 3.7226**; 0.4 and 0.8 finishing. 0.84 s a step, 42 min. Pion's window throughput is 0.48 s a step (the 0.674 was the mean with its evals), so the 0.48 line applies:
+5300 steps in the same time, val about 3.729 by log interpolation between its only two finals. 3.7226 is ahead by 0.006: below the header's line, prediction (about 3.75) wrong. The margin is smaller than the interpolation's uncertainty; no Pion run at about 5300 steps exists.
