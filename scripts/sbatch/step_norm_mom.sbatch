@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -A p330
 #SBATCH -J stepmom
-#SBATCH --array=0-9%4
+#SBATCH --array=0-13%4
 #SBATCH -p rtx
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
@@ -19,6 +19,7 @@
 #     between         one seed cannot say; run seeds
 # Momentum's effect = (best without) - (best with), per column, same thresholds.
 # A best cell on an edge means extend before concluding.
+# Tasks 10-13 extend: both best cells were on the small edge (F^-1 0.1 3.7032, G 0.05 3.8247). Same rule.
 # PREDICTION: G gains at least 0.10 from momentum, F^-1 gains less, gain with momentum >= 0.020.
 #
 #   sbatch -x rtx6003,rtx6004 scripts/sbatch/step_norm_mom.sbatch
@@ -27,8 +28,8 @@ REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"
 DATA="${DATA:-$DATA_p330/c4}"
 
-PRE=( fisher fisher fisher fisher fisher  none none none none none )
-ROT=( 0.1 0.2 0.4 0.8 1.6  0.05 0.1 0.2 0.4 0.8 )
+PRE=( fisher fisher fisher fisher fisher  none none none none none  fisher fisher none none )
+ROT=( 0.1 0.2 0.4 0.8 1.6  0.05 0.1 0.2 0.4 0.8  0.05 0.025 0.025 0.0125 )
 T=$SLURM_ARRAY_TASK_ID; P="${PRE[$T]}"; L="${ROT[$T]}"
 OUT="$DATA_p330/runs/stepnormmom/$P"
 mkdir -p "$OUT"

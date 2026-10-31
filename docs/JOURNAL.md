@@ -6749,3 +6749,10 @@ says the lead persists; prediction right. It is 0.044 ahead of the old method, 3
 behind 0.4 at 3000 (3.8272 against 3.7399) and ties it here. Edge caveat: the two ends of the grid tie and the middle is missing. One seed.
 
 Not yet resubmitted, waiting for the user: 0.2 from its checkpoint; extended small angles for the momentum grid.
+
+## 2026-10-31, 10:35 -- speed per step, and what runs next
+
+Pion horizon reaching our val, interpolating its two finals in log steps: 3.7399 at about 5000 (1.7x), 3.7032 at about 6100 (2.0x), 3.4862 at about 18300 by extrapolation (1.2x).
+A step costs 1.75 s against Pion's 0.48-0.67 s, so we currently lose on wall clock. At 15000 the 0.4 cosine trails the 0.1 cosine from step 1999 until the tail.
+User: run all. Job 394425 t_fac 25; job 394426 fast decay at 15000; job 394427 calibration for the fisher and rms norm grids, which go in after it. Rules in the sbatch headers.
+Frobenius not run: not in the agreed plan. Job 394419 extends momentum, 394420 resumes angle 0.2.

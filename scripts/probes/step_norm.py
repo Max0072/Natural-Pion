@@ -15,10 +15,16 @@ Two controls, both off by default, so the default is what job 393882 ran:
                                    STEP_NORM_STEPS. Rotational angle only; AdamW
                                    keeps its cosine. warmcos: linear up over the first 20%,
                                    then cosine, roughly the shape alpha gave.
+                                   hyper: peak / (1 + t / STEP_NORM_T0).
+    STEP_NORM_NORM = fisher | rms  What the angle fixes in place of sigma: c = rot_t / sqrt(X F X),
+                                   parent's curv; or c = rot_t * sqrt(m n) / ||W X_in + X_out W||_F,
+                                   Pion's RMS on the same X. The logged `angle` is then the real c * sigma.
+    STEP_NORM_CAL = path           Append sqrt(curv) / sigma and the RMS base / sigma per layer every 50 steps.
 """
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import sys
@@ -33,6 +39,8 @@ from ngd_pion.unified import NGDPionUnified
 
 PRECOND = os.environ.get("STEP_NORM_PRECOND", "fisher")
 SCHEDULE = os.environ.get("STEP_NORM_SCHEDULE", "cosine")
+NORM = os.environ.get("STEP_NORM_NORM", "spectral")
+CAL = os.environ.get("STEP_NORM_CAL")
 FLOOR = 1e-5
 
 
@@ -50,18 +58,44 @@ def scheduled(c: float, t: int) -> float:
         if u < 0.2:
             return peak * (t + 1) / (0.2 * steps)
         return FLOOR + 0.5 * (peak - FLOOR) * (1.0 + math.cos(math.pi * (u - 0.2) / 0.8))
+    if SCHEDULE == "hyper":
+        return peak / (1.0 + t / float(os.environ["STEP_NORM_T0"]))
     raise SystemExit(f"unknown schedule {SCHEDULE}")
 
 
 class StepNorm(NGDPionUnified):
+    def _apply(self, p, group):
+        self._W = p.detach().to(group["compute_dtype"])
+        super()._apply(p, group)
+
+    def _rms_base(self, X_in, X_out):
+        W = self._W
+        m, n = W.shape
+        return float(torch.linalg.matrix_norm(W @ X_in + X_out @ W, "fro")) / math.sqrt(m * n)
+
     def _measure_angle(self, state, group, X_in, X_out, c):
         _, sigma = super()._measure_angle(state, group, X_in, X_out, c)
+        s = max(float(sigma), 1e-30)
         self._angle = scheduled(c, state["step"])
-        return self._angle, sigma
+        if CAL and state["step"] % 50 == 0:
+            with open(CAL, "a") as f:
+                f.write(json.dumps({"step": state["step"], "shape": list(self._W.shape),
+                                    "fisher": math.sqrt(max(float(state["curv"]), 0.0)) / s,
+                                    "rms": self._rms_base(X_in, X_out) / s}) + "\n")
+        if NORM == "spectral":
+            self._c = self._angle / s
+            return self._angle, sigma
+        if NORM == "fisher":
+            self._c = self._angle / max(math.sqrt(max(float(state["curv"]), 0.0)), 1e-30)
+        elif NORM == "rms":
+            self._c = self._angle / max(self._rms_base(X_in, X_out), 1e-30)
+        else:
+            raise SystemExit(f"unknown norm {NORM}")
+        return self._c * s, sigma
 
     def _retract(self, X, c, group, sigma):
         s = max(float(sigma), 1e-30)
-        return super()._retract(X, self._angle / s, group, s)
+        return super()._retract(X, self._c, group, s)
 
 
 if __name__ == "__main__":
