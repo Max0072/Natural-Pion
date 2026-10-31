@@ -6782,3 +6782,5 @@ With momentum, 3000 steps, seed 0. F^-1: 0.025 3.8156, 0.05 3.7260, **0.1 3.7032
 Fisher's gain with momentum 0.1215, rule says F^-1 matters beyond momentum; prediction right. Momentum's effect: G 0.376, F^-1 0.037.
 
 t_fac 25, no momentum: 0.1 3.8533, 0.2 3.8006, 0.4 3.7806, **0.8 3.7798**, 1.6 3.8124. Interior. D = 3.7798 - 3.7399 = 0.040: rule says the fresh basis is needed; prediction right. Still 0.061 ahead of Pion at about half the step cost.
+
+Sent, user's word: seeds 1-3 for F^-1 with momentum at 0.1 (`step_norm_momseeds.sbatch`); t_fac 25 with momentum at 0.1-0.8 (`step_norm_tfacmom.sbatch`). Rules in the headers.
