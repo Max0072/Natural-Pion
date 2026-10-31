@@ -6756,3 +6756,9 @@ Pion horizon reaching our val, interpolating its two finals in log steps: 3.7399
 A step costs 1.75 s against Pion's 0.48-0.67 s, so we currently lose on wall clock. At 15000 the 0.4 cosine trails the 0.1 cosine from step 1999 until the tail.
 User: run all. Job 394425 t_fac 25; job 394426 fast decay at 15000; job 394427 calibration for the fisher and rms norm grids, which go in after it. Rules in the sbatch headers.
 Frobenius not run: not in the agreed plan. Job 394419 extends momentum, 394420 resumes angle 0.2.
+
+## 2026-10-31, 10:50 -- user: try the normalisation before F^-1
+
+`STEP_NORM_NORM=pre`: c = rot_t / sigma(G), X = F^-1 G unchanged, so F^-1's scale reaches the step. Calibration 394427, still pending, now also logs sigma(X)/sigma(G).
+Grid goes in with the fisher and rms ones, after it. No momentum, t_fac 1, cosine, seed 0, 3000 steps. P = best val - 3.7399.
+Rule: P >= 0.020 after is better; P < 0.010 the order does not matter; P <= -0.020 before is better. PREDICTION: P >= 0.020, since sigma(X) floats.

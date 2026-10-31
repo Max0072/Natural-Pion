@@ -19,7 +19,9 @@ Two controls, both off by default, so the default is what job 393882 ran:
     STEP_NORM_NORM = fisher | rms  What the angle fixes in place of sigma: c = rot_t / sqrt(X F X),
                                    parent's curv; or c = rot_t * sqrt(m n) / ||W X_in + X_out W||_F,
                                    Pion's RMS on the same X. The logged `angle` is then the real c * sigma.
-    STEP_NORM_CAL = path           Append sqrt(curv) / sigma and the RMS base / sigma per layer every 50 steps.
+                                   pre: c = rot_t / sigma(G), the normalisation before F^-1, not after.
+    STEP_NORM_CAL = path           Append sqrt(curv) / sigma, the RMS base / sigma and sigma(X) / sigma(G)
+                                   per layer every 50 steps.
 """
 
 from __future__ import annotations
@@ -34,7 +36,7 @@ import torch
 import harness.train as train
 import ngd_pion.unified as unified
 from harness.run import main as run_main
-from ngd_pion.unified import NGDPionUnified
+from ngd_pion.unified import NGDPionUnified, spectral_norm
 
 
 PRECOND = os.environ.get("STEP_NORM_PRECOND", "fisher")
@@ -63,8 +65,29 @@ def scheduled(c: float, t: int) -> float:
     raise SystemExit(f"unknown schedule {SCHEDULE}")
 
 
+G_SIGMAS: list[float] = []
+G_VECTORS: dict = {}
+
+
+def recording_natural_gradient(parent):
+    """Record sigma(G) per side on its way into F^-1; what is returned is unchanged."""
+    def wrapped(G_skew, basis):
+        key = (CURRENT_P, len(G_SIGMAS))
+        iters = 8 if key in G_VECTORS else 30
+        s, G_VECTORS[key] = spectral_norm(G_skew, iters, G_VECTORS.get(key))
+        G_SIGMAS.append(float(s))
+        return parent(G_skew, basis)
+    return wrapped
+
+
+CURRENT_P = None
+
+
 class StepNorm(NGDPionUnified):
     def _apply(self, p, group):
+        global CURRENT_P
+        CURRENT_P = id(p)
+        G_SIGMAS.clear()
         self._W = p.detach().to(group["compute_dtype"])
         super()._apply(p, group)
 
@@ -81,12 +104,15 @@ class StepNorm(NGDPionUnified):
             with open(CAL, "a") as f:
                 f.write(json.dumps({"step": state["step"], "shape": list(self._W.shape),
                                     "fisher": math.sqrt(max(float(state["curv"]), 0.0)) / s,
-                                    "rms": self._rms_base(X_in, X_out) / s}) + "\n")
+                                    "rms": self._rms_base(X_in, X_out) / s,
+                                    "pre": s / max(max(G_SIGMAS), 1e-30)}) + "\n")
         if NORM == "spectral":
             self._c = self._angle / s
             return self._angle, sigma
         if NORM == "fisher":
             self._c = self._angle / max(math.sqrt(max(float(state["curv"]), 0.0)), 1e-30)
+        elif NORM == "pre":
+            self._c = self._angle / max(max(G_SIGMAS), 1e-30)
         elif NORM == "rms":
             self._c = self._angle / max(self._rms_base(X_in, X_out), 1e-30)
         else:
@@ -105,6 +131,8 @@ if __name__ == "__main__":
         unified.natural_gradient = lambda G_skew, basis: G_skew
     elif PRECOND != "fisher":
         raise SystemExit(f"unknown preconditioner {PRECOND}")
+    if NORM == "pre" or CAL:
+        unified.natural_gradient = recording_natural_gradient(unified.natural_gradient)
     train.NGD_IMPLEMENTATIONS["ngd-pion-s"] = StepNorm
     # `-m` is the name under which the harness honours --ngd-momentum; `-s` forces "none".
     train.NGD_IMPLEMENTATIONS["ngd-pion-m"] = StepNorm
