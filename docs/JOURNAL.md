@@ -6847,3 +6847,10 @@ Job 395035, momentum, angle 0.2, 400 steps, GPU-synchronised timers, seconds per
     observe_backward 0.081 0.081
 
 At t_fac 25 the optimizer parts sum to 0.41, about the whole 0.384 excess over Pion. Sync inflates them somewhat. To break even at 3000 at 1.65x the step must reach 0.77 s; at 15000 at about 1.34x (extrapolated), 0.62 s.
+
+## 2026-11-01, 14:05 -- speed: every part of the step, by how safe the change is
+
+t_fac 25. Tier A, the trajectory cannot change: skip curv and quad outside logged steps (alpha off, nothing reads them); no diagnostics or BackwardProbe in production (Pion's runs have neither, ours write them every 23 steps, cost unmeasured).
+Tier B, same mathematics, round-off differs: batch Cayley and F^-1 by shape instead of 56 single calls; Newton-Schulz retraction (residual A^8, below fp32 eps up to angle 0.2, not at 0.4; spectrum drift must be measured); fewer power iterations.
+Tier C, changes the algorithm, needs val: D only in the last few steps before a refactor (beta_backward 0.5, so weight of anything over 6 steps old is under 2%, and with alpha off A and D are read only at a refactor); A on a sampled subset of steps or tokens; larger t_fac (saves little: refactor is 0.025 s).
+Not sped up by us: forward, backward, AdamW, evals: Pion pays them too.
