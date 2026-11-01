@@ -25,6 +25,9 @@ Two controls, both off by default, so the default is what job 393882 ran:
     STEP_NORM_POWER = p            Reshape the spectrum of X before the retraction: X = U S V^T goes to
                                    U (S / sigma)^p V^T. 1 is X / sigma, today's step; 0 turns every plane by
                                    the same angle, as a polar step does. Spectral norm only.
+    STEP_NORM_A_LAST, _D_LAST = k  Feed A or D only in the last k steps before each refactor. With alpha off they
+                                   are read only there, so this asks how much of the collection is used.
+    STEP_NORM_A_EVERY = n          Feed A every n-th step. Set --ngd-beta to beta^n to keep its time constant.
     STEP_NORM_CAL = path           Append sqrt(curv) / sigma, the RMS base / sigma and sigma(X) / sigma(G)
                                    per layer every 50 steps.
     STEP_NORM_PROFILE = path       Rewrite cumulative seconds per optimizer part, synchronised with the GPU,
@@ -52,6 +55,9 @@ SCHEDULE = os.environ.get("STEP_NORM_SCHEDULE", "cosine")
 NORM = os.environ.get("STEP_NORM_NORM", "spectral")
 CAL = os.environ.get("STEP_NORM_CAL")
 POWER = float(os.environ.get("STEP_NORM_POWER", "1"))
+A_LAST = int(os.environ.get("STEP_NORM_A_LAST", "0"))
+D_LAST = int(os.environ.get("STEP_NORM_D_LAST", "0"))
+A_EVERY = int(os.environ.get("STEP_NORM_A_EVERY", "1"))
 ATTN_MULT = float(os.environ.get("STEP_NORM_ATTN_MULT", "1"))
 FLOOR = 1e-5
 
@@ -117,6 +123,22 @@ class StepNorm(NGDPionUnified):
                 cov = self.state.get(p, {}).get("cov_backward")
                 if cov is not None:
                     cov.to(p.device)
+
+    def _outside_window(self, param, last):
+        state = self.state[param]
+        return "bases" in state and state["since_refactor"] < self._group_of(param)["t_fac"] - last
+
+    def observe(self, param, x):
+        if A_LAST and self._outside_window(param, A_LAST):
+            return
+        if A_EVERY > 1 and "bases" in self.state[param] and self.state[param]["step"] % A_EVERY:
+            return
+        super().observe(param, x)
+
+    def observe_backward(self, param, delta):
+        if D_LAST and self._outside_window(param, D_LAST):
+            return
+        super().observe_backward(param, delta)
 
     def _rms_base(self, X_in, X_out):
         W = self._W

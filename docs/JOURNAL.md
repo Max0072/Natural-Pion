@@ -6854,3 +6854,7 @@ t_fac 25. Tier A, the trajectory cannot change: skip curv and quad outside logge
 Tier B, same mathematics, round-off differs: batch Cayley and F^-1 by shape instead of 56 single calls; Newton-Schulz retraction (residual A^8, below fp32 eps up to angle 0.2, not at 0.4; spectrum drift must be measured); fewer power iterations.
 Tier C, changes the algorithm, needs val: D only in the last few steps before a refactor (beta_backward 0.5, so weight of anything over 6 steps old is under 2%, and with alpha off A and D are read only at a refactor); A on a sampled subset of steps or tokens; larger t_fac (saves little: refactor is 0.025 s).
 Not sped up by us: forward, backward, AdamW, evals: Pion pays them too.
+
+## 2026-11-01, 14:20 -- how A and D are collected
+
+D at beta 0.5 rests on 1-2 batches at each refactor; 0.5 was set by argument, no measurement found. A and D feed from one micro-batch per step. With alpha off they are read only at a refactor, so most of the collection at t_fac 25 is forgotten or unused. `step_norm_factors.sbatch`: 6 arms against 3.7227, rule and prediction in the header. Window logic tested on a toy: D fed at since_refactor 19-24 only, plus the first step.
