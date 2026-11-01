@@ -6858,3 +6858,10 @@ Not sped up by us: forward, backward, AdamW, evals: Pion pays them too.
 ## 2026-11-01, 14:20 -- how A and D are collected
 
 D at beta 0.5 rests on 1-2 batches at each refactor; 0.5 was set by argument, no measurement found. A and D feed from one micro-batch per step. With alpha off they are read only at a refactor, so most of the collection at t_fac 25 is forgotten or unused. `step_norm_factors.sbatch`: 6 arms against 3.7227, rule and prediction in the header. Window logic tested on a toy: D fed at since_refactor 19-24 only, plus the first step.
+
+## 2026-11-01, 14:45 -- orthogonality in fp32: even exact Cayley drifts; Newton-Schulz more so
+
+One-step ||Q^T Q - I||, 512x512 random skew. fp64: Cayley 2e-15 at every angle; NS with 2 iters 4e-8 at 0.2, 1e-5 at 0.4, 2e-3 at 0.8, always shrinking (min sv - 1 = -2 a^8, a = angle / 2, as derived); 3 iters 8e-15 at 0.2, 3e-11 at 0.4. fp32: Cayley 1-2e-6, NS 2-3e-6 with 3 iters: the round-off floor dominates, NS about twice Cayley's.
+Toy, 256x256, 3000 steps both sides, fp32, cosine: spectrum grows, mean Cayley +0.10%, NS 2 iters +0.5-0.6%, NS 3 iters +0.45-0.55%.
+Real checkpoints against the seed's initial weights, max |ds/s| per layer: t_fac 25 momentum 0.2, 3000 steps: median 0.20%, worst 0.34%, mean signed +0.18%. t_fac 1, 0.4: median 0.16%, worst 0.46%, +0.14%. Pion 5300, truncated: median 0.04%, worst 251% (one layer's tail, not examined), mean -0.9%.
+**Correction to ALGORITHM.md's picture:** "with Cayley exactly" holds in fp64. Our runs compute in fp32 and the spectrum moves about 0.2% with a systematic sign. Whether that costs anything is unmeasured.
