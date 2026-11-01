@@ -6818,3 +6818,9 @@ No failed tasks. 3000 steps, seed 0 unless noted.
 **Norms after F^-1.** Fisher: 3e-4 4.2170, 6e-4 4.0797, 1.2e-3 3.9418, 2.4e-3 3.8475, 4.8e-3 3.8281, best on the edge: N >= +0.088 so far, not extended. RMS: 3e-4 3.9576, 6e-4 3.8180, 1.2e-3 3.7728, **2.4e-3 3.7540**, 4.8e-3 3.7630. Interior. N = +0.014: between the thresholds, one seed cannot say; prediction |N| < 0.010 narrowly wrong. RMS on F^-1 G is 0.087 ahead of Pion, so most of the gain survives with Pion's own norm: F^-1 is the source, length control the condition. Fisher's norm losing while its angle floats fits "variance is bad" and does not prove it.
 
 Sent, user's word: `step_norm_prof.sbatch`, cost breakdown at t_fac 25 and t_fac 1; `step_norm_mom15k.sbatch`, t_fac 1 with momentum at 15000. Rule in the header.
+
+## 2026-11-01, 13:10 -- plan; last normalisation checks sent
+
+Cross-layer spread of real c*sigma, p90/p10 after step 1000, against val: spectral 1, 3.7399; RMS 1.7, 3.7540; alpha 131, 3.7843; Fisher 5e4, 3.8281; none 4e6, 3.8419; before F^-1 3e11, 3.9951. Monotone over six points, one seed, not causal. Runaway is in attention: wq, wk median 2-3e4 without a norm, FFN 0.02.
+Attention is rotated, not on AdamW. Our wq rotates whole in the logs, Pion's per head: a difference to check.
+Plan agreed with the user: 1 step cost, then a fast variant; 2 last norm checks (`step_norm_attn.sbatch`, `step_norm_rmsseeds.sbatch`, sent); 3 long horizons, the largest risk; 4 literature and GitHub.

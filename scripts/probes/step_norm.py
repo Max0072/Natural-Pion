@@ -20,6 +20,8 @@ Two controls, both off by default, so the default is what job 393882 ran:
                                    parent's curv; or c = rot_t * sqrt(m n) / ||W X_in + X_out W||_F,
                                    Pion's RMS on the same X. The logged `angle` is then the real c * sigma.
                                    pre: c = rot_t / sigma(G), the normalisation before F^-1, not after.
+    STEP_NORM_ATTN_MULT = m        Multiply the angle of the attention matrices (the square ones, wq wk wv wo)
+                                   by m, leaving the FFN's (rectangular) at rot_t. Spectral norm only.
     STEP_NORM_CAL = path           Append sqrt(curv) / sigma, the RMS base / sigma and sigma(X) / sigma(G)
                                    per layer every 50 steps.
     STEP_NORM_PROFILE = path       Rewrite cumulative seconds per optimizer part, synchronised with the GPU,
@@ -46,6 +48,7 @@ PRECOND = os.environ.get("STEP_NORM_PRECOND", "fisher")
 SCHEDULE = os.environ.get("STEP_NORM_SCHEDULE", "cosine")
 NORM = os.environ.get("STEP_NORM_NORM", "spectral")
 CAL = os.environ.get("STEP_NORM_CAL")
+ATTN_MULT = float(os.environ.get("STEP_NORM_ATTN_MULT", "1"))
 FLOOR = 1e-5
 
 
@@ -119,6 +122,8 @@ class StepNorm(NGDPionUnified):
                                     "rms": self._rms_base(X_in, X_out) / s,
                                     "pre": s / max(max(G_SIGMAS), 1e-30)}) + "\n")
         if NORM == "spectral":
+            if ATTN_MULT != 1.0 and self._W.shape[0] == self._W.shape[1]:
+                self._angle *= ATTN_MULT
             self._c = self._angle / s
             return self._angle, sigma
         if NORM == "fisher":
