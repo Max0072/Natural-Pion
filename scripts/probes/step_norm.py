@@ -22,6 +22,9 @@ Two controls, both off by default, so the default is what job 393882 ran:
                                    pre: c = rot_t / sigma(G), the normalisation before F^-1, not after.
     STEP_NORM_ATTN_MULT = m        Multiply the angle of the attention matrices (the square ones, wq wk wv wo)
                                    by m, leaving the FFN's (rectangular) at rot_t. Spectral norm only.
+    STEP_NORM_POWER = p            Reshape the spectrum of X before the retraction: X = U S V^T goes to
+                                   U (S / sigma)^p V^T. 1 is X / sigma, today's step; 0 turns every plane by
+                                   the same angle, as a polar step does. Spectral norm only.
     STEP_NORM_CAL = path           Append sqrt(curv) / sigma, the RMS base / sigma and sigma(X) / sigma(G)
                                    per layer every 50 steps.
     STEP_NORM_PROFILE = path       Rewrite cumulative seconds per optimizer part, synchronised with the GPU,
@@ -48,6 +51,7 @@ PRECOND = os.environ.get("STEP_NORM_PRECOND", "fisher")
 SCHEDULE = os.environ.get("STEP_NORM_SCHEDULE", "cosine")
 NORM = os.environ.get("STEP_NORM_NORM", "spectral")
 CAL = os.environ.get("STEP_NORM_CAL")
+POWER = float(os.environ.get("STEP_NORM_POWER", "1"))
 ATTN_MULT = float(os.environ.get("STEP_NORM_ATTN_MULT", "1"))
 FLOOR = 1e-5
 
@@ -69,6 +73,14 @@ def scheduled(c: float, t: int) -> float:
     if SCHEDULE == "hyper":
         return peak / (1.0 + t / float(os.environ["STEP_NORM_T0"]))
     raise SystemExit(f"unknown schedule {SCHEDULE}")
+
+
+def reshaped(X: torch.Tensor, sigma: float, power: float) -> torch.Tensor:
+    """U (S / sigma)^power V^T, kept skew. A plane at round-off (below 1e-6 sigma) stays still, it has no direction."""
+    U, S, Vh = torch.linalg.svd(X, full_matrices=False)
+    r = S / max(sigma, 1e-30)
+    Y = (U * torch.where(r > 1e-6, r.pow(power), torch.zeros_like(r))) @ Vh
+    return 0.5 * (Y - Y.transpose(-1, -2))
 
 
 G_SIGMAS: list[float] = []
@@ -138,6 +150,8 @@ class StepNorm(NGDPionUnified):
 
     def _retract(self, X, c, group, sigma):
         s = max(float(sigma), 1e-30)
+        if POWER != 1.0:
+            return super()._retract(reshaped(X, s, POWER), self._angle, group, 1.0)
         return super()._retract(X, self._c, group, s)
 
 

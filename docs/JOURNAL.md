@@ -6828,3 +6828,7 @@ Plan agreed with the user: 1 step cost, then a fast variant; 2 last norm checks 
 ## 2026-11-01, 13:40 -- literature check, first pass (read via a subagent, partly; recheck before citing)
 
 Full combination not found: K-FAC direction in the Lie algebra of two-sided rotations, c = rot_t / sigma_max(X) after F^-1. Parts exist. Pion (arXiv:2605.12492) has no Fisher. Riemannian natural gradient (2207.07287) has Kronecker inverses on Grassmann rows, no two-sided rotations, no step norm. FISMO (2601.21750) and Go-MUON (2608.09763): K-FAC plus polar, additive; Go-MUON rescales Frobenius after map-back. Grafting (2002.11803) is the precedent for discarding the scale. No before/after F^-1 comparison found; since F^-1 is linear for fixed factors, the two orders differ only in the per-matrix scalar. Do not claim "first K-FAC plus spectral". Recheck arXiv before submission. Not read: Ba et al. 2017 full text, ACKTR body, Vyas et al., Bernstein & Newhouse.
+
+## 2026-11-01, 13:45 -- flattening the step's spectrum
+
+User: try it, though different speeds in different directions probably win. `STEP_NORM_POWER`, `step_norm_power.sbatch`: p = 0, 0.5, angles 0.003-0.1, F^-1 with momentum. Rule and prediction in the header. Costs an SVD per side, layer and step.
