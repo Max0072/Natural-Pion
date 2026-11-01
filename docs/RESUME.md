@@ -24,7 +24,7 @@ below is seed 0, one run per cell, unless it says otherwise.
 
 ---
 
-## As of 2026-11-01, 13:00: step_norm, what is known
+## As of 2026-11-01, 19:00: step_norm, what is known
 
 `c = rot_t / sigma(X)` after F^-1, alpha off (`scripts/probes/step_norm.py`). Journal 2026-10-31 and 2026-11-01. val, B 512, Pion 3.8412 at 3000, 3.7063 at 5300, 3.5254 at 15000.
 
@@ -36,8 +36,12 @@ below is seed 0, one run per cell, unless it says otherwise.
     schedule at 3000: cosine 3.7399, linear 3.7311, warmcos 3.7688, constant 3.8313. Fast decay at 15000 3.5087: fails
     15000, seed 0: t_fac 1 no momentum 3.4710; t_fac 25 momentum 3.4748 at its only angle, 0.1
 
-Clock: behind Pion. At 42 min Pion 3.7063, t_fac 25 with momentum 3.7227. At 3.5 h Pion is unmeasured. No cost breakdown of the step yet.
-Open: cost breakdown; t_fac 1 with momentum at 15000; seeds at 15000. Novelty unchecked. GitHub clean-up not started.
+    attention angle x0.25/0.5/2/4, t_fac 1: 3.7876/3.7467/3.7600/3.7789, equal 3.7399: equal stays
+    RMS seeds 0-2 3.7540/3.7527/3.7527, spectral 3.7399/3.7436/3.7419; seed 3 pending
+    t_fac 25, momentum 0.2, base 3.7227 at 0.843 s: A and D only in the last 6 steps before a refactor 3.7227 at 0.744 s; beta_D 0.9/0.95 no change
+
+Clock: about level with Pion at 3000 on seed 0. adlast6 3.7227 in 2233 s; Pion's estimated time to it 2302 s (log interpolation 3000-5300 of steps, not a run; val noise 0.006 is about +-2.6%). Not yet a win: needs a direct Pion run and seeds.
+Open: flat spectrum p=0 angle 0.01 (ahead-of-limit: reaches about step 2430 at the 5 h limit, needs a resume; script has --no-resume); p=0.5 held (395062_4-7, needs a decision); t_fac 1 momentum 15000 running; fast class (no curv/quad, no diagnostics) with bit-identity check. Novelty unchecked. GitHub clean-up not started.
 
 ## As of 2026-10-30, 20:35: what alpha is
 

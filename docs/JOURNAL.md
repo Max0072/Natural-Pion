@@ -6865,3 +6865,23 @@ One-step ||Q^T Q - I||, 512x512 random skew. fp64: Cayley 2e-15 at every angle; 
 Toy, 256x256, 3000 steps both sides, fp32, cosine: spectrum grows, mean Cayley +0.10%, NS 2 iters +0.5-0.6%, NS 3 iters +0.45-0.55%.
 Real checkpoints against the seed's initial weights, max |ds/s| per layer: t_fac 25 momentum 0.2, 3000 steps: median 0.20%, worst 0.34%, mean signed +0.18%. t_fac 1, 0.4: median 0.16%, worst 0.46%, +0.14%. Pion 5300, truncated: median 0.04%, worst 251% (one layer's tail, not examined), mean -0.9%.
 **Correction to ALGORITHM.md's picture:** "with Cayley exactly" holds in fp64. Our runs compute in fp32 and the spectrum moves about 0.2% with a systematic sign. Whether that costs anything is unmeasured.
+
+## 2026-11-01, 19:00 -- A and D: collecting them only before a refactor costs nothing
+
+t_fac 25, momentum, angle 0.2, 3000, seed 0. Base 3.7227, 2530 s (0.843 s/step). d = val - base; rule |d| < 0.010 no change.
+
+    D last 6            3.7272  +0.0045  0.788
+    A last 6            3.7205  -0.0022  0.806
+    A and D last 6      3.7227   0.0000  0.744
+    A every 2           3.7223  -0.0004  0.817
+    beta_D 0.9          3.7206  -0.0021  0.851
+    beta_D 0.95         3.7201  -0.0026  0.844
+
+All no change. beta_D 0.5 was an argument, not a measurement; the factor's memory does not matter here. The target was 0.77 s. Clock: 2233 s; Pion's time to 3.7227 is an estimate, 4941 steps by log interpolation between 3000 (mean 3.8394) and 5300 (3.7063), times 0.466 = 2302 s. About 3% ahead, inside the noise (0.006 of val is about +-2.6%), one seed: level, not won. Tier A not yet applied.
+
+Attention angle multiple, t_fac 1, 0.4, base 3.7399: x0.25 3.7876, x0.5 3.7467, x2 3.7600, x4 3.7789. Equal stays; prediction right.
+
+RMS seeds 1, 2 at 2.4e-3: 3.7527, 3.7527; spectral same seeds 3.7436, 3.7419; gaps with seed 0: 0.0141, 0.0091, 0.0108. Seed 3 pending.
+
+Flat spectrum p=0: SVD every step costs about 7 s/step, not 1.75; the 5 h limit stops at about step 2400 (not checked before submitting; my miss). val at 999/1499 by angle: 0.003 4.2924/-, 0.01 4.0695/3.9307, 0.03 4.2398/4.0637, 0.1 4.9649/4.5863; base p=1, 0.1: 4.0559/3.9236. Cancelled 0.003, 0.03, 0.1 at about step 1400-1900, they cannot finish and are not the best. 0.01 keeps running. p=0.5 tasks held, not cancelled. Partial curves are not a result.
+
