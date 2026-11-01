@@ -31,6 +31,10 @@ Two controls, both off by default, so the default is what job 393882 ran:
     STEP_NORM_FAST = 1             Skip what nothing reads with alpha off: quad, curv, pred_drop and the per-layer
                                    diagnostics with their probe. Must leave the trajectory bit-identical; check it
                                    against the same run without the flag. Refuses the settings that read them.
+    STEP_NORM_BATCH = 1            With FAST: F^-1 and Cayley batched by size instead of one call per matrix.
+                                   Same mathematics; only round-off may differ, so it is checked by val, not bits.
+    STEP_NORM_SIDES = 1            With FAST: each side normalised by its own sigma, c_in = rot_t / sigma_in,
+                                   c_out = rot_t / sigma_out, instead of both by the larger one.
     STEP_NORM_CAL = path           Append sqrt(curv) / sigma, the RMS base / sigma and sigma(X) / sigma(G)
                                    per layer every 50 steps.
     STEP_NORM_PROFILE = path       Rewrite cumulative seconds per optimizer part, synchronised with the GPU,
@@ -50,6 +54,7 @@ import torch
 import harness.train as train
 import ngd_pion.unified as unified
 from harness.run import main as run_main
+from ngd_pion.linalg import exact_fp32, skew
 from ngd_pion.unified import NGDPionUnified, generators, spectral_norm
 
 
@@ -63,6 +68,8 @@ D_LAST = int(os.environ.get("STEP_NORM_D_LAST", "0"))
 A_EVERY = int(os.environ.get("STEP_NORM_A_EVERY", "1"))
 ATTN_MULT = float(os.environ.get("STEP_NORM_ATTN_MULT", "1"))
 FAST = os.environ.get("STEP_NORM_FAST") == "1"
+BATCH = os.environ.get("STEP_NORM_BATCH") == "1"
+SIDES = os.environ.get("STEP_NORM_SIDES") == "1"
 FLOOR = 1e-5
 
 
@@ -121,25 +128,109 @@ class StepNorm(NGDPionUnified):
             return self._apply_fast(p, group)
         super()._apply(p, group)
 
-    def _apply_fast(self, p, group):
-        """The parent's `_apply` for trust none, Lie momentum or none, no alternation, without quad and curv."""
+    def _generators(self, p, group):
+        """(W, G_in, G_out) for `p`, with the momentum applied."""
         state = self.state[p]
         dt = group["compute_dtype"]
-        W = self._W
-        basis_in, basis_out = state["bases"]
+        W = p.detach().to(dt)
         G_in, G_out = generators(W, p.grad.detach().to(dt))
         if group["momentum"] == "lie":
             G_in = self._ema(state, "m_in", G_in, group["beta1"])
             G_out = self._ema(state, "m_out", G_out, group["beta1"])
+        return W, G_in, G_out
+
+    def _peak(self, group):
+        alpha = float(torch.as_tensor(group["alpha_max"], dtype=group["compute_dtype"]))
+        return group["lr"] * group.get("lr_scale", 1.0) * alpha
+
+    def _steps_of(self, p, group, X_in, X_out):
+        """(c_in, c_out, sigma) for `p`. Sets self._W for `_measure_angle`."""
+        state = self.state[p]
+        c = self._peak(group)
+        if not SIDES:
+            _, sigma = self._measure_angle(state, group, X_in, X_out, c)
+            return self._c, self._c, sigma
+        fresh = "angle_v_in" not in state or state["since_refactor"] == 0
+        iters = group["angle_warmup"] if fresh else group["angle_iters"]
+        s_in, state["angle_v_in"] = spectral_norm(X_in, iters, state.get("angle_v_in"))
+        s_out, state["angle_v_out"] = spectral_norm(X_out, iters, state.get("angle_v_out"))
+        angle = scheduled(c, state["step"])
+        return angle / max(float(s_in), 1e-30), angle / max(float(s_out), 1e-30), torch.maximum(s_in, s_out)
+
+    def _apply_fast(self, p, group):
+        """The parent's `_apply` for trust none, Lie momentum or none, no alternation, without quad and curv."""
+        state = self.state[p]
+        W, G_in, G_out = self._generators(p, group)
+        basis_in, basis_out = state["bases"]
         X_in = unified.natural_gradient(G_in, basis_in)
         X_out = unified.natural_gradient(G_out, basis_out)
-        alpha = float(torch.as_tensor(group["alpha_max"], dtype=dt))
-        c = group["lr"] * group.get("lr_scale", 1.0) * alpha
-        _, sigma = self._measure_angle(state, group, X_in, X_out, c)
-        W = self._retract(X_out, c, group, sigma) @ W @ self._retract(X_in, c, group, sigma)
-        p.copy_(W.to(p.dtype))
+        self._W = W
+        c_in, c_out, sigma = self._steps_of(p, group, X_in, X_out)
+        s = max(float(sigma), 1e-30)
+        if SIDES:
+            self._c = c_out
+            R_out = self._retract(X_out, c_out, group, s)
+            self._c = c_in
+            R_in = self._retract(X_in, c_in, group, s)
+        else:
+            R_out, R_in = self._retract(X_out, c_in, group, sigma), self._retract(X_in, c_in, group, sigma)
+        p.copy_((R_out @ W @ R_in).to(p.dtype))
         state["step"] += 1
         state["since_refactor"] += 1
+
+    def _step_batched(self, active, group):
+        """F^-1 and Cayley over stacks of one size; the per-matrix steps keep their order."""
+        rows = []
+        natural = {}
+        for p in active:
+            W, G_in, G_out = self._generators(p, group)
+            b_in, b_out = self.state[p]["bases"]
+            rows.append([p, W, None, None])
+            natural.setdefault(G_in.shape[0], []).append((len(rows) - 1, 2, G_in, b_in))
+            natural.setdefault(G_out.shape[0], []).append((len(rows) - 1, 3, G_out, b_out))
+        for items in natural.values():
+            P = torch.stack([b.P for *_, b in items])
+            den = torch.stack([b.denominator for *_, b in items])
+            G = torch.stack([g for _, _, g, _ in items])
+            Pt = P.transpose(-1, -2)
+            X = skew(P @ ((Pt @ G @ P) / den) @ Pt)
+            for k, (i, side, _, _) in enumerate(items):
+                rows[i][side] = X[k]
+        solves = {}
+        for i, (p, W, X_in, X_out) in enumerate(rows):
+            self._W = W
+            c_in, c_out, _ = self._steps_of(p, group, X_in, X_out)
+            solves.setdefault(X_in.shape[0], []).append((i, 2, c_in, X_in))
+            solves.setdefault(X_out.shape[0], []).append((i, 3, c_out, X_out))
+        for n, items in solves.items():
+            X = torch.stack([x for *_, x in items])
+            half = torch.as_tensor([0.5 * c for _, _, c, _ in items], dtype=X.dtype, device=X.device).reshape(-1, 1, 1)
+            eye = torch.eye(n, dtype=X.dtype, device=X.device).expand_as(X)
+            with exact_fp32():
+                R = torch.linalg.solve(eye + half * X, eye - half * X)
+            for k, (i, side, _, _) in enumerate(items):
+                rows[i][side] = R[k]
+        for p, W, R_in, R_out in rows:
+            p.copy_((R_out @ W @ R_in).to(p.dtype))
+            state = self.state[p]
+            state["step"] += 1
+            state["since_refactor"] += 1
+
+    def _step(self, closure_loss=None):
+        if not BATCH:
+            return super()._step(closure_loss)
+        for group in self.param_groups:
+            active = [p for p in group["params"] if p.grad is not None]
+            for p in active:
+                if not self._ready(p):
+                    raise RuntimeError("this variant needs both statistics")
+            stale = [p for p in active if "bases" not in self.state[p]]
+            if stale:
+                self._refactor(stale, group)
+            self._step_batched(active, group)
+            due = [p for p in active if self.state[p]["since_refactor"] >= group["t_fac"]]
+            if due:
+                self._refactor(due, group)
 
     def load_state_dict(self, state_dict):
         # The parent reloads `cov` but not `cov_backward` to the GPU, so a resume dies at the first backward hook (job 394420).
@@ -234,6 +325,10 @@ if __name__ == "__main__":
         if CAL or NORM != "spectral":
             raise SystemExit("STEP_NORM_FAST has no curv: spectral norm only, no CAL")
         train.DIAGNOSED = ()
+    if (BATCH or SIDES) and not FAST:
+        raise SystemExit("STEP_NORM_BATCH and _SIDES need STEP_NORM_FAST")
+    if (BATCH or SIDES) and (POWER != 1.0 or ATTN_MULT != 1.0 or PRECOND != "fisher"):
+        raise SystemExit("STEP_NORM_BATCH and _SIDES: plain step only")
     if PRECOND == "none":
         unified.natural_gradient = lambda G_skew, basis: G_skew
     elif PRECOND != "fisher":
