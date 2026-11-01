@@ -24,22 +24,20 @@ below is seed 0, one run per cell, unless it says otherwise.
 
 ---
 
-## As of 2026-10-31, 06:20: step_norm, what is known
+## As of 2026-11-01, 13:00: step_norm, what is known
 
-`c = rot_t / sigma`, alpha off, t_fac 1 (`scripts/probes/step_norm.py`). Journal 2026-10-31.
+`c = rot_t / sigma(X)` after F^-1, alpha off (`scripts/probes/step_norm.py`). Journal 2026-10-31 and 2026-11-01. val, B 512, Pion 3.8412 at 3000, 3.7063 at 5300, 3.5254 at 15000.
 
-    3000 steps, seeds 0-3, angle 0.4   3.7417 mean; +0.0976 over Pion, +0.0598 over t_fac 25 with alpha; rule passes
-    3000 steps, seed 0                 no momentum: F^-1 3.7399, G 4.2007
-                                       Lie momentum: F^-1 3.7032, G 3.8247 (both on the small-angle edge: provisional)
-    schedule, F^-1, no momentum        cosine 3.7399, linear 3.7311, warmcos 3.7688, constant 3.8313
-    15000 steps, seed 0                3.4862 at 0.1, 3.4867 at 0.4; +0.039 over Pion 3.5254; 0.2 died (exit 135, rtx6006), checkpoint on disk
+    3000, seeds 0-3, t_fac 1, momentum, angle 0.1   mean 3.7089; rule holds against Pion and against no momentum
+    3000, seeds 0-3, t_fac 1, no momentum, 0.4      mean 3.7417
+    3000, seed 0, t_fac 25: no momentum 3.7798, momentum 3.7227 (0.84 s a step; Pion 0.466; t_fac 1 1.75)
+    no F^-1, same norm: 4.2007, with momentum 3.8247
+    norms after F^-1: spectral 3.7399, RMS 3.7540, Fisher 3.8281 (edge). Before F^-1: 3.9951
+    schedule at 3000: cosine 3.7399, linear 3.7311, warmcos 3.7688, constant 3.8313. Fast decay at 15000 3.5087: fails
+    15000, seed 0: t_fac 1 no momentum 3.4710; t_fac 25 momentum 3.4748 at its only angle, 0.1
 
-    speed per step (estimate)          1.7-2.0x at 3000, 1.2x at 15000; a step costs 1.75 s against Pion's 0.48-0.67 s, so we lose on wall clock
-
-Running on 2026-10-31: 394419 momentum small angles; 394420 angle 0.2 resumed at 15000; 394425 t_fac 25; 394426 fast decay at 15000;
-394427 calibration, then grids for the fisher and rms norms (`STEP_NORM_NORM`). Rules in the sbatch headers.
-
-Open after those: seeds for the best momentum cell. Novelty unchecked. GitHub clean-up not started.
+Clock: behind Pion. At 42 min Pion 3.7063, t_fac 25 with momentum 3.7227. At 3.5 h Pion is unmeasured. No cost breakdown of the step yet.
+Open: cost breakdown; t_fac 1 with momentum at 15000; seeds at 15000. Novelty unchecked. GitHub clean-up not started.
 
 ## As of 2026-10-30, 20:35: what alpha is
 

@@ -1,13 +1,13 @@
 {
   "name": "ngd-pion-s-lr0.2-s0-78345757c7",
   "hash": "78345757c7",
-  "git_commit": "ad07f784993e",
+  "git_commit": "a605827a36b6",
   "untracked_modules": [],
   "tokens_per_step": 131072,
   "total_tokens": 1966080000,
   "machine": {
-    "host": "rtx6006",
-    "slurm_job": "394056",
+    "host": "rtx6005",
+    "slurm_job": "394461",
     "partition": "rtx",
     "torch": "2.13.0a0+9186a08b2c.nv26.07",
     "cuda": "13.3",

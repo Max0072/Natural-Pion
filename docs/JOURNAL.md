@@ -6804,3 +6804,15 @@ With the third point, piecewise: 3.7399 at about 4600 steps (1.5x, was 1.7x); 3.
 Cost ratio at t_fac 25 is 0.844 / 0.466 = 1.81, so break-even needs 1.81x in steps or a cheaper step: we are about 10% short at this budget. At t_fac 1 the ratio is 3.75 against 1.8x: about 2.1x slower.
 
 Partial: seed 1 with momentum 3.7045 (seed 0 3.7032). Fisher norm 3e-4 4.2170, 6e-4 4.0797, 1.2e-3 3.9418, 2.4e-3 3.8475, 4.8e-3 running.
+
+## 2026-11-01, 13:00 -- all finals: seeds hold; long lead persists; fast decay fails; RMS on F^-1 G close second
+
+No failed tasks. 3000 steps, seed 0 unless noted.
+
+**Seeds, F^-1, Lie momentum, angle 0.1, t_fac 1:** 3.7032, 3.7045, 3.7124, 3.7155, mean 3.7089. Rule holds against Pion and against no momentum; figures in the reply to the user and computed from runs-record. Seed spread here is wider than without momentum.
+
+**15000 steps.** t_fac 1, no momentum: 0.1 3.4863, **0.2 3.4710** (resumed from 7000 after the node failure), 0.4 3.4867. Interior. gap15 = 3.5254 - 3.4710 = +0.054. t_fac 25 with momentum, angle 0.1: 3.4748, gap15 = +0.051, rule says persists; prediction right. Its only angle, so unknown whether 0.1 is best. It took 3.5 h; Pion's 15000 took about 1.9 h at 0.466 s. Same-clock comparison needs Pion near 27000 steps, not run.
+
+**Fast decay, 15000:** 0.4/t0 500 3.5222, 0.4/t0 2000 3.5181, 0.8/t0 500 3.5087. E = 3.4862 - 3.5087 = -0.023, rule says it does not pay; prediction wrong. Against the 0.2 cosine, -0.038. Larger peak was better, an edge, but nothing here suggests beating the cosine.
+
+**Norms after F^-1.** Fisher: 3e-4 4.2170, 6e-4 4.0797, 1.2e-3 3.9418, 2.4e-3 3.8475, 4.8e-3 3.8281, best on the edge: N >= +0.088 so far, not extended. RMS: 3e-4 3.9576, 6e-4 3.8180, 1.2e-3 3.7728, **2.4e-3 3.7540**, 4.8e-3 3.7630. Interior. N = +0.014: between the thresholds, one seed cannot say; prediction |N| < 0.010 narrowly wrong. RMS on F^-1 G is 0.087 ahead of Pion, so most of the gain survives with Pion's own norm: F^-1 is the source, length control the condition. Fisher's norm losing while its angle floats fits "variance is bad" and does not prove it.
