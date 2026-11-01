@@ -16,7 +16,8 @@
 #     Q >= +0.020   keeping the spectrum is better
 #     else          one seed cannot say
 # Edge means extend. PREDICTION: Q >= -0.010 for both, low confidence. The user expects different speeds in different directions to win.
-#   sbatch -x rtx6003,rtx6004 scripts/sbatch/step_norm_power.sbatch
+#   sbatch -x rtx6003,rtx6004 -t 08:00:00 scripts/sbatch/step_norm_power.sbatch   (SVD every step, about 7 s/step; 5 h was too short)
+#   resume: RESUME_FLAG= sbatch --array=1 ... (RESUME_FLAG empty drops --no-resume)
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"
@@ -28,5 +29,5 @@ apptainer exec --env PYTHONUNBUFFERED=1 --env PYTHONPATH="$REPO" --env PYTORCH_C
     --nv --bind "$DATA_p330:$DATA_p330" --pwd "$REPO" "$SIF" \
     python scripts/probes/step_norm.py --optimizer ngd-pion-m --ngd-momentum lie --ngd-beta1 0.9 --lr "$L" --adamw-lr 8e-3 --ngd-trust none \
         --batch-sequences 512 --micro-batch 256 --rho-micro 128 --train-steps 3000 --ngd-t-fac 1 \
-        --precision bf16 --seed 0 --device cuda --log-every 23 --eval-every 500 --no-resume \
+        --precision bf16 --seed 0 --device cuda --log-every 23 --eval-every 500 ${RESUME_FLAG---no-resume} \
         --data-path "$DATA/c4_train.bin" --val-path "$DATA/c4_val.bin" --out-dir "$OUT"

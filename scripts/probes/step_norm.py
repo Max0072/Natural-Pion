@@ -28,6 +28,9 @@ Two controls, both off by default, so the default is what job 393882 ran:
     STEP_NORM_A_LAST, _D_LAST = k  Feed A or D only in the last k steps before each refactor. With alpha off they
                                    are read only there, so this asks how much of the collection is used.
     STEP_NORM_A_EVERY = n          Feed A every n-th step. Set --ngd-beta to beta^n to keep its time constant.
+    STEP_NORM_FAST = 1             Skip what nothing reads with alpha off: quad, curv, pred_drop and the per-layer
+                                   diagnostics with their probe. Must leave the trajectory bit-identical; check it
+                                   against the same run without the flag. Refuses the settings that read them.
     STEP_NORM_CAL = path           Append sqrt(curv) / sigma, the RMS base / sigma and sigma(X) / sigma(G)
                                    per layer every 50 steps.
     STEP_NORM_PROFILE = path       Rewrite cumulative seconds per optimizer part, synchronised with the GPU,
@@ -47,7 +50,7 @@ import torch
 import harness.train as train
 import ngd_pion.unified as unified
 from harness.run import main as run_main
-from ngd_pion.unified import NGDPionUnified, spectral_norm
+from ngd_pion.unified import NGDPionUnified, generators, spectral_norm
 
 
 PRECOND = os.environ.get("STEP_NORM_PRECOND", "fisher")
@@ -59,6 +62,7 @@ A_LAST = int(os.environ.get("STEP_NORM_A_LAST", "0"))
 D_LAST = int(os.environ.get("STEP_NORM_D_LAST", "0"))
 A_EVERY = int(os.environ.get("STEP_NORM_A_EVERY", "1"))
 ATTN_MULT = float(os.environ.get("STEP_NORM_ATTN_MULT", "1"))
+FAST = os.environ.get("STEP_NORM_FAST") == "1"
 FLOOR = 1e-5
 
 
@@ -113,7 +117,29 @@ class StepNorm(NGDPionUnified):
         CURRENT_P = id(p)
         G_SIGMAS.clear()
         self._W = p.detach().to(group["compute_dtype"])
+        if FAST:
+            return self._apply_fast(p, group)
         super()._apply(p, group)
+
+    def _apply_fast(self, p, group):
+        """The parent's `_apply` for trust none, Lie momentum or none, no alternation, without quad and curv."""
+        state = self.state[p]
+        dt = group["compute_dtype"]
+        W = self._W
+        basis_in, basis_out = state["bases"]
+        G_in, G_out = generators(W, p.grad.detach().to(dt))
+        if group["momentum"] == "lie":
+            G_in = self._ema(state, "m_in", G_in, group["beta1"])
+            G_out = self._ema(state, "m_out", G_out, group["beta1"])
+        X_in = unified.natural_gradient(G_in, basis_in)
+        X_out = unified.natural_gradient(G_out, basis_out)
+        alpha = float(torch.as_tensor(group["alpha_max"], dtype=dt))
+        c = group["lr"] * group.get("lr_scale", 1.0) * alpha
+        _, sigma = self._measure_angle(state, group, X_in, X_out, c)
+        W = self._retract(X_out, c, group, sigma) @ W @ self._retract(X_in, c, group, sigma)
+        p.copy_(W.to(p.dtype))
+        state["step"] += 1
+        state["since_refactor"] += 1
 
     def load_state_dict(self, state_dict):
         # The parent reloads `cov` but not `cov_backward` to the GPU, so a resume dies at the first backward hook (job 394420).
@@ -204,6 +230,10 @@ def profile(cls, path, names):
 if __name__ == "__main__":
     if not torch.cuda.is_available():
         raise SystemExit("needs a GPU")
+    if FAST:
+        if CAL or NORM != "spectral":
+            raise SystemExit("STEP_NORM_FAST has no curv: spectral norm only, no CAL")
+        train.DIAGNOSED = ()
     if PRECOND == "none":
         unified.natural_gradient = lambda G_skew, basis: G_skew
     elif PRECOND != "fisher":
