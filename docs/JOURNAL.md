@@ -6832,3 +6832,18 @@ Full combination not found: K-FAC direction in the Lie algebra of two-sided rota
 ## 2026-11-01, 13:45 -- flattening the step's spectrum
 
 User: try it, though different speeds in different directions probably win. `STEP_NORM_POWER`, `step_norm_power.sbatch`: p = 0, 0.5, angles 0.003-0.1, F^-1 with momentum. Rule and prediction in the header. Costs an SVD per side, layer and step.
+
+## 2026-11-01, 13:50 -- where a step's time goes
+
+Job 395035, momentum, angle 0.2, 400 steps, GPU-synchronised timers, seconds per step:
+
+               t_fac 25   t_fac 1
+    whole step 0.85       1.75      (Pion 0.466)
+    refactor   0.025      0.545
+    retract    0.157      0.163
+    angle      0.042      0.415     power iteration: warmup iters run at every refactor, so on every step at t_fac 1
+    rest of apply  0.050  0.052     F^-1, and curv which nothing reads with alpha off
+    observe    0.055      0.055
+    observe_backward 0.081 0.081
+
+At t_fac 25 the optimizer parts sum to 0.41, about the whole 0.384 excess over Pion. Sync inflates them somewhat. To break even at 3000 at 1.65x the step must reach 0.77 s; at 15000 at about 1.34x (extrapolated), 0.62 s.
