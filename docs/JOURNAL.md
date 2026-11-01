@@ -6816,3 +6816,5 @@ No failed tasks. 3000 steps, seed 0 unless noted.
 **Fast decay, 15000:** 0.4/t0 500 3.5222, 0.4/t0 2000 3.5181, 0.8/t0 500 3.5087. E = 3.4862 - 3.5087 = -0.023, rule says it does not pay; prediction wrong. Against the 0.2 cosine, -0.038. Larger peak was better, an edge, but nothing here suggests beating the cosine.
 
 **Norms after F^-1.** Fisher: 3e-4 4.2170, 6e-4 4.0797, 1.2e-3 3.9418, 2.4e-3 3.8475, 4.8e-3 3.8281, best on the edge: N >= +0.088 so far, not extended. RMS: 3e-4 3.9576, 6e-4 3.8180, 1.2e-3 3.7728, **2.4e-3 3.7540**, 4.8e-3 3.7630. Interior. N = +0.014: between the thresholds, one seed cannot say; prediction |N| < 0.010 narrowly wrong. RMS on F^-1 G is 0.087 ahead of Pion, so most of the gain survives with Pion's own norm: F^-1 is the source, length control the condition. Fisher's norm losing while its angle floats fits "variance is bad" and does not prove it.
+
+Sent, user's word: `step_norm_prof.sbatch`, cost breakdown at t_fac 25 and t_fac 1; `step_norm_mom15k.sbatch`, t_fac 1 with momentum at 15000. Rule in the header.

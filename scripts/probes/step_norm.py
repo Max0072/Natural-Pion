@@ -22,6 +22,8 @@ Two controls, both off by default, so the default is what job 393882 ran:
                                    pre: c = rot_t / sigma(G), the normalisation before F^-1, not after.
     STEP_NORM_CAL = path           Append sqrt(curv) / sigma, the RMS base / sigma and sigma(X) / sigma(G)
                                    per layer every 50 steps.
+    STEP_NORM_PROFILE = path       Rewrite cumulative seconds per optimizer part, synchronised with the GPU,
+                                   every 50 optimizer steps. The sync slows the run slightly.
 """
 
 from __future__ import annotations
@@ -30,6 +32,7 @@ import json
 import math
 import os
 import sys
+import time
 
 import torch
 
@@ -133,6 +136,30 @@ class StepNorm(NGDPionUnified):
         return super()._retract(X, self._c, group, s)
 
 
+def profile(cls, path, names):
+    """Wrap `names` with timers. Nested parts count in their parents: _step holds _refactor and _apply."""
+    totals = {n: [0.0, 0] for n in names}
+
+    def wrap(name):
+        orig = getattr(cls, name)
+
+        def timed(self, *a, **k):
+            torch.cuda.synchronize()
+            t = time.perf_counter()
+            out = orig(self, *a, **k)
+            torch.cuda.synchronize()
+            totals[name][0] += time.perf_counter() - t
+            totals[name][1] += 1
+            if name == "_step" and totals[name][1] % 50 == 0:
+                with open(path, "w") as f:
+                    json.dump(totals, f)
+            return out
+        setattr(cls, name, timed)
+
+    for n in names:
+        wrap(n)
+
+
 if __name__ == "__main__":
     if not torch.cuda.is_available():
         raise SystemExit("needs a GPU")
@@ -142,6 +169,9 @@ if __name__ == "__main__":
         raise SystemExit(f"unknown preconditioner {PRECOND}")
     if NORM == "pre" or CAL:
         unified.natural_gradient = recording_natural_gradient(unified.natural_gradient)
+    if os.environ.get("STEP_NORM_PROFILE"):
+        profile(StepNorm, os.environ["STEP_NORM_PROFILE"],
+                ["_step", "_refactor", "_apply", "_measure_angle", "_retract", "observe", "observe_backward"])
     train.NGD_IMPLEMENTATIONS["ngd-pion-s"] = StepNorm
     # `-m` is the name under which the harness honours --ngd-momentum; `-s` forces "none".
     train.NGD_IMPLEMENTATIONS["ngd-pion-m"] = StepNorm
