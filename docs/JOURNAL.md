@@ -6946,3 +6946,14 @@ Evidence for the early-decay hypothesis (the user's): at 15000 cosine peak 0.2 l
 Pion seeds at our wall time (3840 steps, lr 1e-3) against our t_fac 25 at 3000: seed 0 3.7804 vs 3.7242 (+0.056), seed 1 3.7767 vs 3.7176 (+0.059), seed 2 3.7728 vs 3.7241 (+0.049).
 Pion lr at 3840, seed 0: 5e-4 3.8397, 1e-3 3.7804, 2e-3 3.7668. 2e-3 wins by 0.014 >= 0.010 and is at the edge: by the rule it replaces 1e-3 as the clock baseline at this horizon (our gap 0.043), and 4e-3 is submitted (397081). The 19200 and 73242 Pion runs use 1e-3 and may need the same grid. Prediction (1e-3 stays best) wrong.
 
+
+## 2026-11-02, 21:10 -- what the Pion paper says about lr (read from arXiv HTML, 2605.12492v1)
+
+- 60M design runs (App. D.1): C4, seq 256, 9.6B tokens, batch 512, cosine to 0.01x, Megatron bf16. "The initial learning
+  rate is selected from {1e-4, 5e-4, 1e-3, 5e-3, 1e-2}, and we observe that lr=1e-3 consistently achieves the best
+  performance." No 2e-3 in the grid; warmup, weight decay and the AdamW lr of embed/head/norms not stated.
+- 60M numbers in the text: only 3.3575 bilateral / 3.3654 alternate (Sec. 2.4.3). No intermediate-step numbers.
+- 1.3B, 54B tokens (Table 1): AdamW 2.7700, Muon 2.7225, Pion 2.7350 -- Muon ahead of Pion in their own paper.
+- Pretraining appendix (D.2, summary only): max lr 5e-4 "for all methods", chosen for AdamW.
+Consequence for us: our 3840-step finding (Pion 2e-3 beats 1e-3 by 0.014, AdamW 8e-3 cell) falls between their grid
+points 1e-3 and 5e-3 and is at a short horizon; it does not contradict them. The 19200 grid (397120) decides our baseline lr.
