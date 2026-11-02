@@ -6957,3 +6957,12 @@ Pion lr at 3840, seed 0: 5e-4 3.8397, 1e-3 3.7804, 2e-3 3.7668. 2e-3 wins by 0.0
 - Pretraining appendix (D.2, summary only): max lr 5e-4 "for all methods", chosen for AdamW.
 Consequence for us: our 3840-step finding (Pion 2e-3 beats 1e-3 by 0.014, AdamW 8e-3 cell) falls between their grid
 points 1e-3 and 5e-3 and is at a short horizon; it does not contradict them. The 19200 grid (397120) decides our baseline lr.
+
+## 2026-11-02, 23:20 -- early decay at 15000: a tie; seeds 0-2 at 19200 by clock
+
+- isqrt peak 0.2, T0 1000, 15000 steps: 3.4750 vs best cosine (0.05) 3.4720. Rule was <= 3.4620 to win, |d| < 0.010 = tie.
+  Tie. Versus cosine at the same peak 0.2 (3.4940) it gains 0.019: early decay removes most of the peak sensitivity,
+  but does not beat a well-chosen cosine peak. Peak 0.1 still running.
+- Clock at 19200 (Pion lr 1e-3) vs ours 15000 @0.05: seed 0 0.0240, seed 1 0.0226, seed 2 0.0197; seed 3 running.
+- Clock at 3840 (Pion lr 1e-3) vs ours 3000: seeds 0-3 0.056 / 0.059 / 0.049 / 0.057.
+- Pion lr 4e-3 @3840 and the lr 2e-3 / 4e-3 grid @19200 still pending on priority.
