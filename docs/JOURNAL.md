@@ -6903,3 +6903,25 @@ RMS seed 3 3.7476, spectral 3.7416: gaps over seeds 0-3 0.0141/0.0091/0.0108/0.0
 t_fac 1 momentum 0.1 at 15000: 3.4788 (no momentum, same angle 3.4863, best 3.4710 at 0.2). gap15 to Pion 0.047. Momentum effect at equal angle 0.0075, below 0.010; the angle of momentum at 15000 is not tuned.
 Flat spectrum, no final: p=0 0.01 timed out at step 2967 (resume for the last 32 steps, 396428); at 2499 3.7404 against base 3.7291 (+0.011). p=0.5 0.1 at 2499 3.7409 (+0.012), 0.01 3.8535; 0.03 died in eigh (ill-conditioned A, error 60), 0.003 timed out at 1564. Not resumed: both shapes behind and 5-15x dearer.
 
+## 2026-11-02, 13:45 -- direct clock against Pion: ahead at 3000 and at 15000; RProp on the angle fails
+
+Batched build (FAST, BATCH, A and D last 6, momentum 0.9, cosine, angle 0.2), 3000 steps:
+
+    t_fac 25 seeds 0-3  3.7242 3.7176 3.7241 3.7205  mean 3.7216  0.60-0.61 s/step  ~1800 s
+    t_fac 10 seeds 0-3  3.7048 3.7052 3.7017 3.7012  mean 3.7032  0.70-0.72 s/step  ~2100 s
+    Pion seeds 0-3 mean 3.8394: gaps by steps 0.118 and 0.136, seed spread about 0.003.
+
+Pion run directly for our wall time, seed 0, rtx6006 (0.468 s/step):
+
+    Pion 3840 steps  1796 s  3.7804   t_fac 25 at ~1800 s: 3.7242 (seed 0), ahead by 0.056
+    Pion 4500 steps  2105 s  3.7404   t_fac 10 at 2098 s:  3.7048 (seed 0), ahead by 0.036
+    Pion 19200 steps 8915 s  3.4960   t_fac 25, 15000 steps, 8895 s: angle 0.1 3.4777 ahead by 0.018; 0.2 3.4940 (+0.002, level)
+
+Rule (>= +0.010 ahead): ahead on the clock at both horizons. Pion at 15000 3.5254: by steps 0.048. Predictions: 3000 ahead, right (interpolation had said Pion 3840 about 3.77, real 3.7804); 15000 by clock about 0.02, right. t_fac 25 beats Pion even with Pion given 2105 s (3.7404). Wall-clock factor at 3000: Pion to 3.7216 is about 4920 steps (log interpolation 4500-5300) = 2294 s against 1800, about 1.27x.
+Caveats: Pion clock runs are seed 0 only; ours ran on rtx6002/6005/6006, which measure within 1-2% of each other. Angle 0.1 at 15000 is at the grid's edge: 0.05 submitted.
+
+RProp multiplier on the angle (global vote of sign<G_t, G_t-1>, x1.2 / x0.5, m in [1e-3, 4]), t_fac 25 batched, seed 0:
+    cosine x m    3.7497  d = +0.0255 against 3.7242: worse
+    constant x m  3.8345  no better than constant alone (3.8313): it did not make the decay
+m fell to 0.009 in the first 23 steps, then rose; under cosine it climbed to the cap 4 as the cosine fell. Reading: agreement between consecutive raw gradients grows as the step shrinks, so the rule holds agreement near 79% and undoes the decay instead of following the loss. Predictions wrong for both (task 0 expected |d| < 0.010). Rejected.
+

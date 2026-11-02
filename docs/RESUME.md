@@ -24,19 +24,19 @@ below is seed 0, one run per cell, unless it says otherwise.
 
 ---
 
-## As of 2026-11-02, 09:30: step_norm, what is known
+## As of 2026-11-02, 13:45: step_norm, what is known
 
-`c = rot_t / sigma(X)` after F^-1, alpha off (`scripts/probes/step_norm.py`). Journal 2026-10-31 to 2026-11-02. val, B 512, Pion 3.8412 at 3000, 3.7063 at 5300, 3.5254 at 15000.
+`c = rot_t / sigma(X)` after F^-1, alpha off (`scripts/probes/step_norm.py`). Journal 2026-10-31 to 2026-11-02. val, B 512.
 
-Build: spectral norm after F^-1 (shared sigma of both sides), Lie momentum 0.9, t_fac 25, equal angles, A and D only in the last 6 steps before a refactor, cosine, STEP_NORM_FAST (bit-identical) and STEP_NORM_BATCH. Seed 0: 3.7242 at 0.596 s/step (Pion 0.466). t_fac 10: 3.7034 at 0.80 unbatched.
+Build: spectral norm after F^-1 (shared sigma of both sides), Lie momentum 0.9, cosine, equal angles, A and D only in the last 6 steps before a refactor, STEP_NORM_FAST (bit-identical), STEP_NORM_BATCH. `scripts/sbatch/step_norm_final.sbatch`.
 
-    3000, seeds 0-3, t_fac 1, momentum, angle 0.1   mean 3.7089; rule holds against Pion and no momentum
-    3000, seeds 0-3, t_fac 1, no momentum, 0.4      mean 3.7417; RMS norm worse by 0.0100 on average, every seed
-    15000, seed 0: t_fac 1 no momentum 3.4710 (0.2); momentum 0.1 3.4788; t_fac 25 momentum 3.4748
-    rejected: norm before F^-1, Fisher norm, attention angle multiples, per-side sigma, flat spectrum p=0 and 0.5, linear schedule (undecided), AdamW lr 4e-3/1.6e-2
+    3000, seeds 0-3: t_fac 25 mean 3.7216 (0.60 s/step), t_fac 10 mean 3.7032 (0.71); Pion 3.8394 (0.466)
+    clock, Pion run for our wall time, seed 0: 3000 ahead by 0.056 (t_fac 25) and 0.036 (t_fac 10); 15000 (8900 s) 3.4777 vs Pion 19200 3.4960, ahead by 0.018
+    by steps at 15000: 3.4777 vs Pion 3.5254
+    Muon (Natural-Muon, same cell, seed 0): 3.6505 at 3000, 0.452 s/step. We are behind Muon by steps and by clock.
+    rejected: norm before F^-1, Fisher and RMS norms, attention angle multiples, per-side sigma, flat spectrum p=0/0.5, linear schedule, AdamW lr 4e-3/1.6e-2, RProp multiplier on the angle
 
-Clock: estimate 22% ahead at 3000 on seed 0 (Pion interpolated). Running: direct Pion at 3840 and 4500 steps on rtx6006 (396429, with t_fac 10 batched seed 0), seeds 1-3 of both builds (396430).
-Open: Newton-Schulz retraction (spectrum drift), long horizons with the build, novelty recheck, GitHub clean-up.
+Running: 15000 at angle 0.05 (edge). Open: Pion clock seeds; 73242 steps; Newton-Schulz; novelty recheck; GitHub clean-up.
 
 ## As of 2026-10-30, 20:35: what alpha is
 

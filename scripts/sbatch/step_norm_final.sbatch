@@ -20,6 +20,7 @@
 #   11     Pion at 19200 steps, seed 0: its run in our 15000 steps' wall time (15000 x 0.596 / 0.466).
 #          Against Pion 15000 (3.5254) the step claim, against Pion 19200 the clock claim; same rule, |.| < 0.010 level.
 #          PREDICTION: both ahead by steps (gap about 0.05); by clock ahead by about 0.02, low confidence.
+#   12     angle 0.05 at 15000: 0.1 won at the edge of {0.1, 0.2} (3.4777 vs 3.4940), so the grid extends down.
 #   sbatch -x rtx6003,rtx6004 -t 04:30:00 --array=9-11 scripts/sbatch/step_norm_final.sbatch
 #   sbatch -x rtx6003,rtx6004 -w rtx6006 --array=0-2 scripts/sbatch/step_norm_final.sbatch
 #   sbatch -x rtx6003,rtx6004 --array=3-8%2 scripts/sbatch/step_norm_final.sbatch
@@ -28,8 +29,8 @@ REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"
 DATA="${DATA:-$DATA_p330/c4}"
 T=$SLURM_ARRAY_TASK_ID
-NAME=( tf10 pion3840 pion4500 tf25 tf10 tf25 tf10 tf25 tf10 tf25-15k-0.1 tf25-15k-0.2 pion19200 ); SEED=( 0 0 0 1 1 2 2 3 3 0 0 0 )
-TF=( 10 0 0 25 10 25 10 25 10 25 25 0 ); L=( 0.2 0 0 0.2 0.2 0.2 0.2 0.2 0.2 0.1 0.2 0 ); ST=( 3000 0 0 3000 3000 3000 3000 3000 3000 15000 15000 0 )
+NAME=( tf10 pion3840 pion4500 tf25 tf10 tf25 tf10 tf25 tf10 tf25-15k-0.1 tf25-15k-0.2 pion19200 tf25-15k-0.05 ); SEED=( 0 0 0 1 1 2 2 3 3 0 0 0 0 )
+TF=( 10 0 0 25 10 25 10 25 10 25 25 0 25 ); L=( 0.2 0 0 0.2 0.2 0.2 0.2 0.2 0.2 0.1 0.2 0 0.05 ); ST=( 3000 0 0 3000 3000 3000 3000 3000 3000 15000 15000 0 15000 )
 N="${NAME[$T]}"; S="${SEED[$T]}"
 OUT="$DATA_p330/runs/stepnormfinal/$N"; mkdir -p "$OUT"
 echo "node $(hostname) task $T $N seed $S"
