@@ -6925,3 +6925,11 @@ RProp multiplier on the angle (global vote of sign<G_t, G_t-1>, x1.2 / x0.5, m i
     constant x m  3.8345  no better than constant alone (3.8313): it did not make the decay
 m fell to 0.009 in the first 23 steps, then rose; under cosine it climbed to the cap 4 as the cosine fell. Reading: agreement between consecutive raw gradients grows as the step shrinks, so the rule holds agreement near 79% and undoes the decay instead of following the loss. Predictions wrong for both (task 0 expected |d| < 0.010). Rejected.
 
+## 2026-11-02, 17:15 -- WSD loses at peak 0.2; 15000 angle 0.05 level with 0.1
+
+WSD on the angle (constant at the peak, linear to the floor over the last fraction), batched t_fac 25, seed 0, 3000, peak 0.2; d = val - 3.7242 (cosine):
+    decay 20%  3.7578  +0.034    decay 10%  3.7763  +0.052    worse; prediction (|d| < 0.010 for 20%) wrong.
+At step 1999, in the stable phase, WSD is at 3.9199 against cosine 3.8519: holding 0.2 costs more than the short decay recovers. One peak only; WSD's best peak is usually lower than cosine's, so this rejects WSD at 0.2, not WSD.
+
+15000, batched t_fac 25, seed 0: angle 0.05 3.4720 (8929 s), 0.1 3.4777, 0.2 3.4940. 0.05 vs 0.1: -0.006, inside 0.010: flat between 0.05 and 0.1, no further extension. Against Pion 19200 (8915 s) 3.4960: ahead by 0.024; by steps against Pion 15000 3.5254: 0.053.
+

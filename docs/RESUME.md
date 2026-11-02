@@ -24,19 +24,19 @@ below is seed 0, one run per cell, unless it says otherwise.
 
 ---
 
-## As of 2026-11-02, 13:45: step_norm, what is known
+## As of 2026-11-02, 17:15: step_norm, what is known
 
 `c = rot_t / sigma(X)` after F^-1, alpha off (`scripts/probes/step_norm.py`). Journal 2026-10-31 to 2026-11-02. val, B 512.
 
 Build: spectral norm after F^-1 (shared sigma of both sides), Lie momentum 0.9, cosine, equal angles, A and D only in the last 6 steps before a refactor, STEP_NORM_FAST (bit-identical), STEP_NORM_BATCH. `scripts/sbatch/step_norm_final.sbatch`.
 
     3000, seeds 0-3: t_fac 25 mean 3.7216 (0.60 s/step), t_fac 10 mean 3.7032 (0.71); Pion 3.8394 (0.466)
-    clock, Pion run for our wall time, seed 0: 3000 ahead by 0.056 (t_fac 25) and 0.036 (t_fac 10); 15000 (8900 s) 3.4777 vs Pion 19200 3.4960, ahead by 0.018
-    by steps at 15000: 3.4777 vs Pion 3.5254
+    clock, Pion run for our wall time, seed 0: 3000 ahead by 0.056 (t_fac 25) and 0.036 (t_fac 10); 15000 (8900 s) 3.4720 at angle 0.05 (0.1: 3.4777) vs Pion 19200 3.4960, ahead by 0.024
+    by steps at 15000: 3.4720 vs Pion 3.5254
     Muon (Natural-Muon, same cell, seed 0): 3.6505 at 3000, 0.452 s/step. We are behind Muon by steps and by clock.
-    rejected: norm before F^-1, Fisher and RMS norms, attention angle multiples, per-side sigma, flat spectrum p=0/0.5, linear schedule, AdamW lr 4e-3/1.6e-2, RProp multiplier on the angle
+    rejected: norm before F^-1, Fisher and RMS norms, attention angle multiples, per-side sigma, flat spectrum p=0/0.5, linear schedule, WSD at peak 0.2, AdamW lr 4e-3/1.6e-2, RProp multiplier on the angle
 
-Running: 15000 at angle 0.05 (edge). Open: Pion clock seeds; 73242 steps; Newton-Schulz; novelty recheck; GitHub clean-up.
+Nothing running. Open: Pion clock seeds; 73242 steps; Newton-Schulz; novelty recheck; GitHub clean-up.
 
 ## As of 2026-10-30, 20:35: what alpha is
 
