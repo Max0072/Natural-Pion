@@ -14,6 +14,7 @@
 #   Clock gap per seed = Pion(our wall time) - ours; ahead if the mean is >= +0.010 and every seed is positive.
 # Pion lr, tasks 9-10, -t 01:30:00: lr 5e-4 and 2e-3 at 3840 steps, seed 0 (1e-3: 3.7804). A Pion lr beating 1e-3 by
 #   >= 0.010 replaces it as the baseline for the clock claim; a win at the edge extends.
+# Task 15, -t 01:30:00: Pion lr 4e-3 at 3840. 2e-3 gave 3.7668, 1e-3 3.7804: 2e-3 wins by 0.014 at the edge, so the grid extends.
 # Long horizon, tasks 11-14, -t 16:00:00:
 #   11 Pion 73242 steps (9.6B tokens; the corpus holds 10B, so Pion cannot run past it), about 9.5 h at 0.466 s.
 #   12, 13 ours 56900 steps (73242 x 0.466 / 0.60: Pion's full wall time), angle 0.025 / 0.05. Clock claim at full length.
@@ -29,11 +30,11 @@ SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"
 DATA="${DATA:-$DATA_p330/c4}"
 T=$SLURM_ARRAY_TASK_ID
 #      0        1         2       3        4         5       6        7         8       9           10          11        12         13        14
-KIND=( pion     pion      ours    pion     pion      ours    pion     pion      ours    pion        pion        pion      ours       ours      ours )
-STEPS=( 3840    19200     15000   3840     19200     15000   3840     19200     15000   3840        3840        73242     56900      56900     73242 )
-LR=(   1e-3     1e-3      0.05    1e-3     1e-3      0.05    1e-3     1e-3      0.05    5e-4        2e-3        1e-3      0.025      0.05      0.05 )
-SEED=( 1        1         1       2        2         2       3        3         3       0           0           0         0          0         0 )
-EV=(   500      1000      1000    500      1000      1000    500      1000      1000    500         500         2000      2000       2000      2000 )
+KIND=( pion     pion      ours    pion     pion      ours    pion     pion      ours    pion        pion        pion      ours       ours      ours       pion )
+STEPS=( 3840    19200     15000   3840     19200     15000   3840     19200     15000   3840        3840        73242     56900      56900     73242      3840 )
+LR=(   1e-3     1e-3      0.05    1e-3     1e-3      0.05    1e-3     1e-3      0.05    5e-4        2e-3        1e-3      0.025      0.05      0.05       4e-3 )
+SEED=( 1        1         1       2        2         2       3        3         3       0           0           0         0          0         0          0 )
+EV=(   500      1000      1000    500      1000      1000    500      1000      1000    500         500         2000      2000       2000      2000       500 )
 K="${KIND[$T]}"; ST="${STEPS[$T]}"; L="${LR[$T]}"; S="${SEED[$T]}"
 N="$K$ST-lr$L"; OUT="$DATA_p330/runs/stepnormlong/$N"; mkdir -p "$OUT"
 echo "node $(hostname) task $T $N seed $S"
