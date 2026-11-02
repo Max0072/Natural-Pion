@@ -16,6 +16,7 @@ Two controls, both off by default, so the default is what job 393882 ran:
                                    keeps its cosine. warmcos: linear up over the first 20%,
                                    then cosine, roughly the shape alpha gave.
                                    hyper: peak / (1 + t / STEP_NORM_T0).
+                                   wsd: peak, then linear to the floor over the last STEP_NORM_DECAY of the steps.
     STEP_NORM_NORM = fisher | rms  What the angle fixes in place of sigma: c = rot_t / sqrt(X F X),
                                    parent's curv; or c = rot_t * sqrt(m n) / ||W X_in + X_out W||_F,
                                    Pion's RMS on the same X. The logged `angle` is then the real c * sigma.
@@ -93,6 +94,9 @@ def scheduled(c: float, t: int) -> float:
         if u < 0.2:
             return peak * (t + 1) / (0.2 * steps)
         return FLOOR + 0.5 * (peak - FLOOR) * (1.0 + math.cos(math.pi * (u - 0.2) / 0.8))
+    if SCHEDULE == "wsd":
+        start = 1.0 - float(os.environ["STEP_NORM_DECAY"])
+        return peak if u < start else FLOOR + (peak - FLOOR) * (1.0 - u) / (1.0 - start)
     if SCHEDULE == "hyper":
         return peak / (1.0 + t / float(os.environ["STEP_NORM_T0"]))
     raise SystemExit(f"unknown schedule {SCHEDULE}")
