@@ -42,7 +42,8 @@ def main() -> None:
     copied = same = missing = in_progress = 0
     total = 0
     now = time.time()
-    for manifest in sorted(runs.glob("*/*/manifest.json")):
+    # Two levels and three: some families group runs by variant (stepnormcombo/batch/<run>).
+    for manifest in sorted([*runs.glob("*/*/manifest.json"), *runs.glob("*/*/*/manifest.json")]):
         run = manifest.parent
         rel = run.relative_to(runs)
         log = run / "log.jsonl"
