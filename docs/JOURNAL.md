@@ -6885,3 +6885,21 @@ RMS seeds 1, 2 at 2.4e-3: 3.7527, 3.7527; spectral same seeds 3.7436, 3.7419; ga
 
 Flat spectrum p=0: SVD every step costs about 7 s/step, not 1.75; the 5 h limit stops at about step 2400 (not checked before submitting; my miss). val at 999/1499 by angle: 0.003 4.2924/-, 0.01 4.0695/3.9307, 0.03 4.2398/4.0637, 0.1 4.9649/4.5863; base p=1, 0.1: 4.0559/3.9236. Cancelled 0.003, 0.03, 0.1 at about step 1400-1900, they cannot finish and are not the best. 0.01 keeps running. p=0.5 tasks held, not cancelled. Partial curves are not a result.
 
+## 2026-11-02, 09:30 -- combined build: FAST is bit-identical, batching takes the step to 0.596 s
+
+FAST (no quad, curv, diagnostics), 300 steps against the same run without it: train_loss at all 14 logged steps and val at 99/199/299 bit-identical (4.667611479759216). Then the grid, 3000 steps, seed 0, t_fac 25, momentum 0.9, A and D last 6; d = val - 3.7227.
+
+    cos 0.2 (FAST)        3.7227   0       0.697 s/step   identical, as required
+    batched F^-1, Cayley  3.7242  +0.0015  0.596          pass
+    linear 0.2 / 0.1      3.7229 / 3.7263                 undecided: cosine stays
+    t_fac 10, 0.2 / 0.1   3.7034 / 3.7063  -0.019  0.80   better, dearer
+    AdamW 4e-3 / 1.6e-2   3.7367 / 3.7195  +0.014 / -0.003  8e-3 stays (1.6e-2 inside noise)
+    sides 0.2 / 0.1       3.7481 / 3.7412  +0.025 / +0.018  each side by its own sigma is worse: shared sigma stays
+
+Predictions: FAST s/step 0.70 right; batching 0.03-0.08 saved, wrong: 0.10. Sides |d|<0.010 wrong, worse. Keeping the ratio F^-1 sets between the two sides matters.
+Clock, estimate only (Pion log-interpolated 3000-5300): batched 3.7242 in 1789 s, Pion about 4909 steps = 2288 s: about 22% ahead on seed 0. Direct Pion runs at 3840 and 4500 steps submitted (396429), with seeds 1-3 of t_fac 25 and t_fac 10 batched (396430).
+
+RMS seed 3 3.7476, spectral 3.7416: gaps over seeds 0-3 0.0141/0.0091/0.0108/0.0060, mean 0.0100: spectral better on every seed.
+t_fac 1 momentum 0.1 at 15000: 3.4788 (no momentum, same angle 3.4863, best 3.4710 at 0.2). gap15 to Pion 0.047. Momentum effect at equal angle 0.0075, below 0.010; the angle of momentum at 15000 is not tuned.
+Flat spectrum, no final: p=0 0.01 timed out at step 2967 (resume for the last 32 steps, 396428); at 2499 3.7404 against base 3.7291 (+0.011). p=0.5 0.1 at 2499 3.7409 (+0.012), 0.01 3.8535; 0.03 died in eigh (ill-conditioned A, error 60), 0.003 timed out at 1564. Not resumed: both shapes behind and 5-15x dearer.
+

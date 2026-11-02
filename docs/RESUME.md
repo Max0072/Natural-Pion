@@ -24,24 +24,19 @@ below is seed 0, one run per cell, unless it says otherwise.
 
 ---
 
-## As of 2026-11-01, 19:00: step_norm, what is known
+## As of 2026-11-02, 09:30: step_norm, what is known
 
-`c = rot_t / sigma(X)` after F^-1, alpha off (`scripts/probes/step_norm.py`). Journal 2026-10-31 and 2026-11-01. val, B 512, Pion 3.8412 at 3000, 3.7063 at 5300, 3.5254 at 15000.
+`c = rot_t / sigma(X)` after F^-1, alpha off (`scripts/probes/step_norm.py`). Journal 2026-10-31 to 2026-11-02. val, B 512, Pion 3.8412 at 3000, 3.7063 at 5300, 3.5254 at 15000.
 
-    3000, seeds 0-3, t_fac 1, momentum, angle 0.1   mean 3.7089; rule holds against Pion and against no momentum
-    3000, seeds 0-3, t_fac 1, no momentum, 0.4      mean 3.7417
-    3000, seed 0, t_fac 25: no momentum 3.7798, momentum 3.7227 (0.84 s a step; Pion 0.466; t_fac 1 1.75)
-    no F^-1, same norm: 4.2007, with momentum 3.8247
-    norms after F^-1: spectral 3.7399, RMS 3.7540, Fisher 3.8281 (edge). Before F^-1: 3.9951
-    schedule at 3000: cosine 3.7399, linear 3.7311, warmcos 3.7688, constant 3.8313. Fast decay at 15000 3.5087: fails
-    15000, seed 0: t_fac 1 no momentum 3.4710; t_fac 25 momentum 3.4748 at its only angle, 0.1
+Build: spectral norm after F^-1 (shared sigma of both sides), Lie momentum 0.9, t_fac 25, equal angles, A and D only in the last 6 steps before a refactor, cosine, STEP_NORM_FAST (bit-identical) and STEP_NORM_BATCH. Seed 0: 3.7242 at 0.596 s/step (Pion 0.466). t_fac 10: 3.7034 at 0.80 unbatched.
 
-    attention angle x0.25/0.5/2/4, t_fac 1: 3.7876/3.7467/3.7600/3.7789, equal 3.7399: equal stays
-    RMS seeds 0-2 3.7540/3.7527/3.7527, spectral 3.7399/3.7436/3.7419; seed 3 pending
-    t_fac 25, momentum 0.2, base 3.7227 at 0.843 s: A and D only in the last 6 steps before a refactor 3.7227 at 0.744 s; beta_D 0.9/0.95 no change
+    3000, seeds 0-3, t_fac 1, momentum, angle 0.1   mean 3.7089; rule holds against Pion and no momentum
+    3000, seeds 0-3, t_fac 1, no momentum, 0.4      mean 3.7417; RMS norm worse by 0.0100 on average, every seed
+    15000, seed 0: t_fac 1 no momentum 3.4710 (0.2); momentum 0.1 3.4788; t_fac 25 momentum 3.4748
+    rejected: norm before F^-1, Fisher norm, attention angle multiples, per-side sigma, flat spectrum p=0 and 0.5, linear schedule (undecided), AdamW lr 4e-3/1.6e-2
 
-Clock: about level with Pion at 3000 on seed 0. adlast6 3.7227 in 2233 s; Pion's estimated time to it 2302 s (log interpolation 3000-5300 of steps, not a run; val noise 0.006 is about +-2.6%). Not yet a win: needs a direct Pion run and seeds.
-Open: flat spectrum p=0 angle 0.01 (ahead-of-limit: reaches about step 2430 at the 5 h limit, needs a resume; script has --no-resume); p=0.5 held (395062_4-7, needs a decision); t_fac 1 momentum 15000 running; fast class (no curv/quad, no diagnostics) with bit-identity check. Novelty unchecked. GitHub clean-up not started.
+Clock: estimate 22% ahead at 3000 on seed 0 (Pion interpolated). Running: direct Pion at 3840 and 4500 steps on rtx6006 (396429, with t_fac 10 batched seed 0), seeds 1-3 of both builds (396430).
+Open: Newton-Schulz retraction (spectrum drift), long horizons with the build, novelty recheck, GitHub clean-up.
 
 ## As of 2026-10-30, 20:35: what alpha is
 
