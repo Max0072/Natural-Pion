@@ -35,6 +35,10 @@ Two controls, both off by default, so the default is what job 393882 ran:
                                    Same mathematics; only round-off may differ, so it is checked by val, not bits.
     STEP_NORM_SIDES = 1            With FAST: each side normalised by its own sigma, c_in = rot_t / sigma_in,
                                    c_out = rot_t / sigma_out, instead of both by the larger one.
+    STEP_NORM_RPROP = 1            With BATCH: one multiplier m on every layer's angle, RProp's rule on a global vote.
+                                   Each layer votes sign(<G_t, G_t-1>) on its raw generators (before momentum and F^-1);
+                                   mean vote > 0: m *= 1.2, < 0: m *= 0.5; m in [1e-3, 4], starts at 1. Logged to
+                                   STEP_NORM_RPROP_LOG every 23 steps.
     STEP_NORM_CAL = path           Append sqrt(curv) / sigma, the RMS base / sigma and sigma(X) / sigma(G)
                                    per layer every 50 steps.
     STEP_NORM_PROFILE = path       Rewrite cumulative seconds per optimizer part, synchronised with the GPU,
@@ -70,6 +74,8 @@ ATTN_MULT = float(os.environ.get("STEP_NORM_ATTN_MULT", "1"))
 FAST = os.environ.get("STEP_NORM_FAST") == "1"
 BATCH = os.environ.get("STEP_NORM_BATCH") == "1"
 SIDES = os.environ.get("STEP_NORM_SIDES") == "1"
+RPROP = os.environ.get("STEP_NORM_RPROP") == "1"
+RPROP_LOG = os.environ.get("STEP_NORM_RPROP_LOG")
 FLOOR = 1e-5
 
 
@@ -134,6 +140,10 @@ class StepNorm(NGDPionUnified):
         dt = group["compute_dtype"]
         W = p.detach().to(dt)
         G_in, G_out = generators(W, p.grad.detach().to(dt))
+        if RPROP:
+            if "rp_in" in state:
+                self._votes.append((G_in * state["rp_in"]).sum() + (G_out * state["rp_out"]).sum())
+            state["rp_in"], state["rp_out"] = G_in.clone(), G_out.clone()
         if group["momentum"] == "lie":
             G_in = self._ema(state, "m_in", G_in, group["beta1"])
             G_out = self._ema(state, "m_out", G_out, group["beta1"])
@@ -149,6 +159,8 @@ class StepNorm(NGDPionUnified):
         c = self._peak(group)
         if not SIDES:
             _, sigma = self._measure_angle(state, group, X_in, X_out, c)
+            if RPROP:
+                self._c *= self._m
             return self._c, self._c, sigma
         fresh = "angle_v_in" not in state or state["since_refactor"] == 0
         iters = group["angle_warmup"] if fresh else group["angle_iters"]
@@ -182,12 +194,24 @@ class StepNorm(NGDPionUnified):
         """F^-1 and Cayley over stacks of one size; the per-matrix steps keep their order."""
         rows = []
         natural = {}
+        self._votes = []
         for p in active:
             W, G_in, G_out = self._generators(p, group)
             b_in, b_out = self.state[p]["bases"]
             rows.append([p, W, None, None])
             natural.setdefault(G_in.shape[0], []).append((len(rows) - 1, 2, G_in, b_in))
             natural.setdefault(G_out.shape[0], []).append((len(rows) - 1, 3, G_out, b_out))
+        if RPROP:
+            self._m = getattr(self, "_m", 1.0)
+            vote = float(torch.sign(torch.stack(self._votes)).mean()) if self._votes else 0.0
+            if vote > 0:
+                self._m = min(4.0, self._m * 1.2)
+            elif vote < 0:
+                self._m = max(1e-3, self._m * 0.5)
+            self._t = getattr(self, "_t", 0) + 1
+            if RPROP_LOG and self._t % 23 == 0:
+                with open(RPROP_LOG, "a") as f:
+                    f.write(json.dumps({"step": self._t, "m": self._m, "vote": vote}) + "\n")
         for items in natural.values():
             P = torch.stack([b.P for *_, b in items])
             den = torch.stack([b.denominator for *_, b in items])
@@ -325,6 +349,8 @@ if __name__ == "__main__":
         if CAL or NORM != "spectral":
             raise SystemExit("STEP_NORM_FAST has no curv: spectral norm only, no CAL")
         train.DIAGNOSED = ()
+    if RPROP and not BATCH:
+        raise SystemExit("STEP_NORM_RPROP needs STEP_NORM_BATCH")
     if (BATCH or SIDES) and not FAST:
         raise SystemExit("STEP_NORM_BATCH and _SIDES need STEP_NORM_FAST")
     if (BATCH or SIDES) and (POWER != 1.0 or ATTN_MULT != 1.0 or PRECOND != "fisher"):
