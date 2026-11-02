@@ -6933,3 +6933,16 @@ At step 1999, in the stable phase, WSD is at 3.9199 against cosine 3.8519: holdi
 
 15000, batched t_fac 25, seed 0: angle 0.05 3.4720 (8929 s), 0.1 3.4777, 0.2 3.4940. 0.05 vs 0.1: -0.006, inside 0.010: flat between 0.05 and 0.1, no further extension. Against Pion 19200 (8915 s) 3.4960: ahead by 0.024; by steps against Pion 15000 3.5254: 0.053.
 
+## 2026-11-02, 19:30 -- schedule laws do not fit our runs; Pion lr 2e-3 beats 1e-3 at 3840
+
+Fitting loss-vs-schedule laws (scripts/analysis/fit.py, fit2.py; CPU) on 17 runs of the t_fac 25 + momentum family (cosine peaks 0.1-0.8, seeds, linear, WSD, RProp, 15000 at 0.05/0.1/0.2), testing on runs left out:
+    Tissue et al. 2024 (S1 forward area, S2 annealing area)   rms 0.15; cannot have an optimal peak (larger always better), predicts 0.8 best
+    saturating progress + lagged noise floor                   rms 0.058; at 15000 ranks 0.2 best (real: 0.05)
+    + AdamW's cosine as a second progress term, points >= 1499  rms 0.044; finals biased +0.04, rankings within 3000 and at 15000 wrong
+Errors of 0.02-0.07 against differences of 0.01-0.05 to be predicted: no law here is usable to design a schedule. Not pursued; the schedule question goes to direct runs (early decay, 397034). Note: the first fit2 run sat 1.5 h on the login node at 100% CPU (Python EMA loop); stopped, vectorised (lfilter), rerun niced in 15 min.
+
+Evidence for the early-decay hypothesis (the user's): at 15000 cosine peak 0.2 leads at step 999 (4.1129 vs 4.1525 for 0.05), is overtaken by 2999 (3.9094 vs 3.8735) and loses at the end (3.4940 vs 3.4720).
+
+Pion seeds at our wall time (3840 steps, lr 1e-3) against our t_fac 25 at 3000: seed 0 3.7804 vs 3.7242 (+0.056), seed 1 3.7767 vs 3.7176 (+0.059), seed 2 3.7728 vs 3.7241 (+0.049).
+Pion lr at 3840, seed 0: 5e-4 3.8397, 1e-3 3.7804, 2e-3 3.7668. 2e-3 wins by 0.014 >= 0.010 and is at the edge: by the rule it replaces 1e-3 as the clock baseline at this horizon (our gap 0.043), and 4e-3 is submitted (397081). The 19200 and 73242 Pion runs use 1e-3 and may need the same grid. Prediction (1e-3 stays best) wrong.
+
