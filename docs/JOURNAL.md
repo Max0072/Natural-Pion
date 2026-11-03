@@ -6996,3 +6996,18 @@ Run dir $DATA_p330/runs-muon/muon-lr0.001-s0-491e524f91. 0.447 s/step, ~9.1 h, a
 Compare against Pion 3.3706 and ours 3.3296 (same steps) / 3.3468 (Pion's clock); for Muon's own clock take ours-56900 at
 ~32 700 s (slightly favours Muon: our cosine is set for the longer run). PREDICTION (low confidence): Muon 3.33-3.36;
 we level or ahead by steps, Muon level or ahead by clock.
+
+## 2026-11-03, 12:20 -- initial spectrum: a power-law tail at alpha 3 helps (-0.022); flat spectra hurt
+
+Final build, angle 0.2, 3000 steps, seed 0, base normal(0, 0.02) 3.7242. Only the 56 rotated matrices change.
+
+    pl alpha 2   3.7158  -0.008  tie
+    pl alpha 3   3.7020  -0.022  better (rule <= 3.7142)
+    pl alpha 5   3.7182  -0.006  tie
+    flat (inf)   3.7701  +0.046  worse
+    orthogonal   3.7749  +0.051  worse
+Prediction (alpha 2-3 better by 0.005-0.02, flat and orthogonal worse) right in direction; alpha 3 slightly beyond. Interior in alpha.
+Caveat: the tail adds energy as well as shape. One seed. Next, not submitted: alpha 3 at 15000 for ours and for Pion.
+
+Muon full length, mid-run (same 73242-step cosine): step 21999 Muon 3.5625, ours 3.6695, Pion 3.7406. Muon ahead of us by 0.107
+there; our lead over Pion went 0.071 at that step -> 0.041 at the end, so gaps compress, but Muon finishing ahead is now likely.
