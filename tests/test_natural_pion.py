@@ -137,3 +137,15 @@ def test_newton_schulz_retraction_matches_cayley_at_small_angles():
     before = [torch.linalg.svdvals(p.detach().double()) for p in _weights(11)]
     for p, s0 in zip(b, before):
         assert torch.allclose(torch.linalg.svdvals(p.detach().double()), s0, rtol=1e-4)
+
+
+def test_truncated_exponential_is_close_to_cayley_and_inflates_the_spectrum():
+    a, b = _weights(13), _weights(13)
+    oa = NaturalPionFast(a, lr=0.2, t_fac=5, stats_window=2)
+    ob = NaturalPionFast(b, lr=0.2, t_fac=5, stats_window=2, retraction="trunc")
+    ta, tb = _drive(oa, a, 30, 14, _cosine), _drive(ob, b, 30, 14, _cosine)
+    w0 = _weights(13)
+    for x, y, z in zip(ta[-1], tb[-1], w0):
+        assert (x - y).abs().max() < 5e-2 * (x - z).abs().max()       # third-order differences, 30 steps at 0.2
+        s0 = torch.linalg.svdvals(z.detach().double())
+        assert (torch.linalg.svdvals(y.double()) >= s0 * (1 - 1e-6)).all()  # T^T T = I + A^4/4 >= I: never shrinks
