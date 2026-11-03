@@ -687,26 +687,37 @@ momentum at the same step.
 
 ## 6 Related work
 
-<!-- TODO: every description in this section is to be checked against the papers' method sections
-(literature check in progress, 2026-11-03); nothing here is final until then. -->
+<!-- Checked 2026-11-03 against the method sections of FISMO, Go-MUON, ISO, POET-X, POET and 2207.07287
+(arXiv HTML); the newer items (Mousse) from abstracts only. Re-run the novelty search before submission. -->
 
-**Orthogonal equivalence training.** POET (Qiu et al., 2025) reparameterises $W = R W_0 P$ with
-learned orthogonal factors, and POET-X (2026) makes it memory-efficient. Pion (Shi et al., 2026) turns
-the same principle into an optimizer, with updates in the Lie algebra. ISO (Isospectral Optimization,
-2026) keeps the spectra of a pretrained model and changes only its singular frames, for reinforcement
-learning from verifiable rewards. All of them move along the gradient on the generators. Natural Pion
-keeps Pion's manifold and changes the direction to the natural gradient.
+**Orthogonal equivalence training.** POET (Qiu et al., 2025) reparameterises $W = R W_0 P$ with orthogonal
+$R$, $P$ built from skew-symmetric parameters by a truncated Cayley–Neumann series and trained with AdamW;
+POET-X (Qiu et al., 2026) makes it memory-efficient with block-stochastic rotations. Pion (Shi et al.,
+2026) turns the same principle into an optimizer, with updates in the Lie algebra. ISO (Zhu et al.,
+2026) keeps the spectrum of a pretrained model fixed through a frame parameterisation $W = U\Sigma_0 V^\top$,
+applies AdamW or Muon to the frames and retracts them by a polar map, for reinforcement learning from
+verifiable rewards; it observes that "spectrum preservation alone does not determine optimization
+quality; how the fixed-spectrum geometry is parameterized and optimized is consequential". None of these
+uses a curvature metric on the orbit: they move along the gradient with a first-order or orthogonalised
+preconditioner. Natural Pion keeps Pion's manifold and changes the metric to the Fisher.
 
-**Natural gradient and Kronecker factorisations.** The natural gradient (Amari, 1998) has a long line
-of approximations. K-FAC (Martens & Grosse, 2015) factorises the Fisher of a layer into input and
-output-gradient moments, and we use the same independence approximation. Here it acts on the
-rotation generators, where it gives the symmetric two-term operator of Proposition 1 rather than a
-Kronecker product. Shampoo (Gupta et al., 2018) and its successors precondition the weight gradient
-with Kronecker factors built from the gradient itself. Natural gradient methods on manifolds have
-been studied in general (e.g. arXiv:2207.07287). We are not aware of a closed form for two-sided
-rotations of weight matrices. <!-- TODO: claim stands only after the arXiv re-check. --> Recent work combines K-FAC with a polar (Muon-style) additive update
-(FISMO, arXiv:2601.21750; Go-MUON, arXiv:2608.09763). Natural Pion's update is multiplicative and
-keeps the spectrum.
+**Natural gradient on manifolds and Kronecker factorisations.** The natural gradient (Amari, 1998) has a
+long line of approximations. K-FAC (Martens & Grosse, 2015) factorises the Fisher of a layer into input
+and output-gradient moments; Shampoo (Gupta et al., 2018) builds Kronecker factors from the gradient
+itself. Riemannian natural gradient methods (Hu et al., 2024) define the Fisher on a manifold's tangent
+space, use a retraction, and work out a K-FAC-style Kronecker approximation for Grassmann manifolds.
+Natural Pion is an instance of that framework on a different manifold, the orbit of a matrix under
+two-sided rotations. There the K-FAC Fisher on the generators is the two-term operator of Proposition 1
+rather than a Kronecker product, and Section 3.2 inverts it exactly. We did not find this operator, or a
+natural gradient for orthogonal-equivalence updates, in prior work.
+
+**Curvature-aware orthogonalised updates.** A recent family puts Kronecker curvature into Muon's
+additive step. FISMO (Xu et al., 2026) fits Kronecker factors to gradient outer products and takes
+$W \leftarrow W - \eta P^{-1/2}\,\mathrm{Polar}(\tilde G)\, Q^{-1/2}$ under a spectral-norm trust region in that
+metric. Go-MUON (Che, 2026) applies Muon between inverse fourth roots of K-FAC's activation and
+output-gradient moments, and states that the result is "not a natural-gradient step". Mousse (2026) runs
+Muon in Shampoo-whitened coordinates. All three are additive and change the weight spectrum; Natural
+Pion's update is a rotation and keeps it.
 
 **Orthogonalised additive updates.** Muon (Jordan et al., 2024) replaces the update by its orthogonal
 polar factor, $W \leftarrow W - \eta\, UV^\top$, which equalises the update's singular values but
@@ -758,21 +769,22 @@ of all matrices takes {{rl_refactor_b200:.0f}} s on one B200.
 
 *(To be verified and completed before submission; arXiv identifiers as recorded in the project notes.)*
 
+- Che, T. *Second-order Muon done right: a principled marriage of spectral geometry and curvature (Go-MUON).* arXiv:2608.09763, 2026.
+- Hu, J., Ao, R., So, A. M.-C., Yang, M., Wen, Z. *Riemannian natural gradient methods.* SIAM J. Sci. Comput. 46(1), 2024; arXiv:2207.07287.
+- Mousse. arXiv:2603.09697, 2026. *(abstract only; authors to add)*
+- Qiu, Z., Liu, L., Weller, A., Shi, H., Liu, W. *POET-X: memory-efficient LLM training by scaling orthogonal transformation.* ICML 2026; arXiv:2603.05500.
+- Xu, C., Yan, W., Zhang, Y.-J. A. *FISMO: Fisher-structured momentum-orthogonalized optimizer.* arXiv:2601.21750, 2026.
+- Zhu, H., Cong, W., Sha, Z., et al. *ISO: an RLVR-native optimization stack.* arXiv:2607.19331, 2026.
 - Agarwal, N., Anil, R., Hazan, E., Koren, T., Zhang, C. *Disentangling adaptive gradient methods from learning rates.* arXiv:2002.11803, 2020.
 - Amari, S. *Natural gradient works efficiently in learning.* Neural Computation, 1998.
 - Bernstein, J., Newhouse, L. *Old optimizer, new norm: an anthology.* 2024.
-- FISMO. arXiv:2601.21750.
-- Go-MUON. arXiv:2608.09763.
 - Gupta, V., Koren, T., Singer, Y. *Shampoo: preconditioned stochastic tensor optimization.* ICML 2018.
-- ISO, Isospectral Optimization. arXiv:2607.19331.
 - Jordan, K., et al. *Muon: an optimizer for hidden layers in neural networks.* 2024.
 - Kakade, S. *A natural policy gradient.* NeurIPS 2001.
 - Li, J., Li, F., Todorovic, S. *Efficient Riemannian optimization on the Stiefel manifold via the Cayley transform.* ICLR 2020, arXiv:2002.01113.
 - Martens, J., Grosse, R. *Optimizing neural networks with Kronecker-factored approximate curvature.* ICML 2015, arXiv:1503.05671.
 - Martin, C. H., Mahoney, M. W. *Implicit self-regularization in deep neural networks.* JMLR, 2021.
-- POET-X. arXiv:2603.05500.
-- Qiu, Z., et al. *Reparameterized LLM training via orthogonal equivalence transformation (POET).* NeurIPS 2025, arXiv:2506.08001.
-- Riemannian natural gradient methods. arXiv:2207.07287.
+- Qiu, Z., Buchholz, S., Xiao, T. Z., Dax, M., Schölkopf, B., Liu, W. *Reparameterized LLM training via orthogonal equivalence transformation (POET).* NeurIPS 2025; arXiv:2506.08001.
 - Shi, et al. *Pion: a spectrum-preserving optimizer via orthogonal equivalence transformation.* arXiv:2605.12492, 2026.
 - Wen, Z., Yin, W. *A feasible method for optimization with orthogonality constraints.* Mathematical Programming, 2013.
 - Raffel, C., et al. *Exploring the limits of transfer learning with a unified text-to-text transformer (C4, T5).* JMLR 2020.

@@ -75,3 +75,19 @@ be read.
    "language model".
 3. Read the method sections of POET-X and ISO, not the abstracts.
 4. Repeat one week before any submission: this area is moving monthly.
+
+## Re-check, 2026-11-03 (method sections read via a subagent; full texts in the session scratchpad)
+
+No work found that preconditions a spectrum-preserving two-sided rotation `W <- R_out W R_in` with a Fisher,
+K-FAC or Shampoo metric, nor the operator `(SXA + AXS)/2` on the generators.
+* FISMO 2601.21750 (Xu, Yan, Zhang): additive, Kronecker factors fitted to gradient outer products (Shampoo-like),
+  polar step under a spectral-norm trust region. Spectrum not preserved.
+* Go-MUON 2608.09763 (Che): additive, Muon between K-FAC inverse fourth roots; "not a natural-gradient step".
+* ISO 2607.19331 (Zhu et al.): spectrum fixed via frames `U Sigma_0 V^T`, AdamW/Muon on frames, polar retraction;
+  RLVR only; compares to Pion directly (Pion below best-tuned AdamW there). No Fisher.
+* POET-X 2603.05500 (ICML 2026): block-stochastic two-sided rotations, Cayley-Neumann (approximate), AdamW.
+* Riemannian NG 2207.07287 (Hu et al., SIAM J. Sci. Comput. 2024): the parent framework; K-FAC form only on
+  Grassmann manifolds. Cite as the framework Natural Pion instantiates.
+* From abstracts only: Mousse 2603.09697 (Muon in Shampoo-whitened coordinates), Spectrally Targeted Muon
+  2610.10965, ORCA 2610.06116, Symo 2606.00442, inversion-free Riemannian NG 2604.02969.
+Not done: Google Scholar (CAPTCHA); FISMO's citers (rate limit). Re-run before submission.
