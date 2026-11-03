@@ -4,7 +4,7 @@ import torch
 from ngd_pion.linalg import spectral_norm
 from ngd_pion.factorization import basis_identity_anchor
 from ngd_pion.direction import generators
-from ngd_pion.fast import _floor_share
+from ngd_pion.legacy.fast import _floor_share
 
 torch.manual_seed(0)
 

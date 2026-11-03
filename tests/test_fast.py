@@ -17,7 +17,7 @@ import pytest
 import torch
 import torch.nn as nn
 
-from ngd_pion.fast import FastNGDPion
+from ngd_pion.legacy.fast import FastNGDPion
 from ngd_pion.linalg import skew, spectral_norm
 from ngd_pion.optimizer import NGDPion
 
@@ -220,7 +220,7 @@ def test_fast_s_is_bit_identical_to_its_reference():
     import torch
 
     from ngd_pion.with_s import NGDPionS
-    from ngd_pion.with_s_fast import FastNGDPionS
+    from ngd_pion.legacy.with_s_fast import FastNGDPionS
 
     DT = torch.float64
     M, N = 6, 4

@@ -13,8 +13,8 @@ import pytest
 import torch
 
 from ngd_pion.direction import generators
-from ngd_pion.momentum import MomentumNGDPionS
-from ngd_pion.with_s_fast import FastNGDPionS
+from ngd_pion.legacy.momentum import MomentumNGDPionS
+from ngd_pion.legacy.with_s_fast import FastNGDPionS
 
 DT = torch.float64
 M, N = 6, 4

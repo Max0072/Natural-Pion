@@ -23,8 +23,8 @@ import time
 
 import torch
 
-from ngd_pion.fast import FastNGDPion
-from ngd_pion.with_s_fast import FastNGDPionS
+from ngd_pion.legacy.fast import FastNGDPion
+from ngd_pion.legacy.with_s_fast import FastNGDPionS
 
 # hidden 512, 8 layers, ffn 1376: 32 square, 16 tall, 8 wide.
 SHAPES = [((512, 512), 32), ((1376, 512), 16), ((512, 1376), 8)]

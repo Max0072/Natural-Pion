@@ -17,10 +17,10 @@ from __future__ import annotations
 import pytest
 import torch
 
-from ngd_pion.momentum import MomentumNGDPionS
+from ngd_pion.legacy.momentum import MomentumNGDPionS
 from ngd_pion.optimizer import NGDPion
 from ngd_pion.unified import NGDPionUnified
-from ngd_pion.with_s_fast import FastNGDPionS
+from ngd_pion.legacy.with_s_fast import FastNGDPionS
 
 DT = torch.float64
 M, N = 6, 4
@@ -280,7 +280,7 @@ def test_exact_alpha_agrees_with_the_diagnostic_class():
     same for both, and both draw their token sample from a generator seeded
     identically, so the numbers have to match.
     """
-    from ngd_pion.exact_curv import ExactCurvNGDPionS
+    from ngd_pion.legacy.exact_curv import ExactCurvNGDPionS
 
     W, x, d, grads = _fixture(seed=11)
     one = grads[:1]

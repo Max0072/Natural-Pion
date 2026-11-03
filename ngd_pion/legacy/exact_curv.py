@@ -74,7 +74,7 @@ from __future__ import annotations
 
 import torch
 
-from .direction import generators, natural_gradient
+from ..direction import generators, natural_gradient
 from .with_s_fast import FastNGDPionS
 
 __all__ = ["ExactCurvNGDPionS", "exact_curv"]

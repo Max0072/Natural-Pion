@@ -281,7 +281,7 @@ def test_shampoo_is_untouched_by_the_factor():
     same step -- so its `eta` means what it meant before the change."""
     import torch
 
-    from ngd_pion.shampoo import ShampooPion
+    from ngd_pion.legacy.shampoo import ShampooPion
 
     DT = torch.float64
     g = torch.Generator().manual_seed(4)

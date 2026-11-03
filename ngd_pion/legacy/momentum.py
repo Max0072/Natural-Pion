@@ -67,8 +67,8 @@ from __future__ import annotations
 
 import torch
 
-from .direction import fisher_apply, generators, natural_gradient, trust_region_alpha
-from .linalg import cayley, spectral_norm
+from ..direction import fisher_apply, generators, natural_gradient, trust_region_alpha
+from ..linalg import cayley, spectral_norm
 from .with_s_fast import FastNGDPionS
 
 __all__ = ["MomentumNGDPionS"]

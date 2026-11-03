@@ -21,19 +21,19 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ngd_pion.fast import FastNGDPion
+from ngd_pion.legacy.fast import FastNGDPion
 from ngd_pion.hooks import attach
 from ngd_pion.optimizer import NGDPion
 from ngd_pion.pion_baseline import Pion
 from ngd_pion.with_s import NGDPionS, attach_backward
-from ngd_pion.with_s_fast import FastNGDPionS
-from ngd_pion.op_damped import OpDampedNGDPion
-from ngd_pion.powered import PoweredNGDPion
-from ngd_pion.momentum import MomentumNGDPionS
-from ngd_pion.shampoo import ShampooPion
+from ngd_pion.legacy.with_s_fast import FastNGDPionS
+from ngd_pion.legacy.op_damped import OpDampedNGDPion
+from ngd_pion.legacy.powered import PoweredNGDPion
+from ngd_pion.legacy.momentum import MomentumNGDPionS
+from ngd_pion.legacy.shampoo import ShampooPion
 from ngd_pion.unified import NGDPionUnified
-from ngd_pion.damped import DampedNGDPionS
-from ngd_pion.exact_curv import ExactCurvNGDPionS
+from ngd_pion.legacy.damped import DampedNGDPionS
+from ngd_pion.legacy.exact_curv import ExactCurvNGDPionS
 from ngd_pion.linalg import EIGH_FALLBACKS
 from ngd_pion.natural_pion import NaturalPion, NaturalPionFast
 

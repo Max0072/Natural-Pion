@@ -141,7 +141,7 @@ def test_exact_fp32_restores_what_it_changed():
 
 # --- Newton-Schulz: measured, tested, and deliberately not wired in ---------
 #
-# `ngd_pion.fast` does not use this. It was written, measured and then left
+# `ngd_pion.legacy.fast` does not use this. It was written, measured and then left
 # out, because the rotation angles this method produces are far past the range
 # where it is usable -- one to two radians per step at `lr = 1e-3` on small
 # problems, against the `||A|| = angle/2 < 0.4` it needs. The primitive stays

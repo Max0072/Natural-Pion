@@ -32,8 +32,8 @@ from __future__ import annotations
 
 import torch
 
-from .factorization import Basis
-from .linalg import floor_eigenvalues, is_identity, safe_eigh
+from ..factorization import Basis
+from ..linalg import floor_eigenvalues, is_identity, safe_eigh
 
 __all__ = ["basis_identity_anchor_op", "basis_congruence_op", "build_bases_op"]
 

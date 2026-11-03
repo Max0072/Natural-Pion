@@ -33,9 +33,9 @@ from __future__ import annotations
 
 import torch
 
-from .direction import fisher_apply, generators, natural_gradient, trust_region_alpha
-from .linalg import cayley, spectral_norm
-from .optimizer import NGDPion
+from ..direction import fisher_apply, generators, natural_gradient, trust_region_alpha
+from ..linalg import cayley, spectral_norm
+from ..optimizer import NGDPion
 
 __all__ = ["FastNGDPion"]
 

@@ -111,8 +111,8 @@ from collections import defaultdict
 
 import torch
 
-from .direction import generators
-from .linalg import cayley, exact_fp32, floor_eigenvalues, safe_eigh, skew, spectral_norm
+from ..direction import generators
+from ..linalg import cayley, exact_fp32, floor_eigenvalues, safe_eigh, skew, spectral_norm
 
 __all__ = ["ShampooPion", "inverse_root", "gram"]
 

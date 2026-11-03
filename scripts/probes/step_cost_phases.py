@@ -26,7 +26,7 @@ import torch
 
 from ngd_pion.direction import fisher_apply, generators, natural_gradient
 from ngd_pion.linalg import cayley, cayley_newton_schulz, spectral_norm
-from ngd_pion.with_s_fast import FastNGDPionS
+from ngd_pion.legacy.with_s_fast import FastNGDPionS
 from step_cost_with_s import SHAPES, build, timed
 
 T_FAC = 25

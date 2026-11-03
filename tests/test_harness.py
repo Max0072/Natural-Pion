@@ -23,7 +23,7 @@ from harness.train import (
     lr_at,
     train,
 )
-from ngd_pion.fast import FastNGDPion
+from ngd_pion.legacy.fast import FastNGDPion
 from ngd_pion.optimizer import NGDPion
 from ngd_pion.pion_baseline import Pion
 

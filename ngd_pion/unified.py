@@ -63,7 +63,7 @@ from collections import defaultdict
 import torch
 
 from .direction import fisher_apply, generators, natural_gradient, trust_region_alpha
-from .exact_curv import exact_curv
+from .legacy.exact_curv import exact_curv
 from .factorization import basis_congruence, basis_identity_anchor
 from .linalg import cayley, cayley_newton_schulz, is_identity, spectral_norm
 from .with_s import NGDPionS

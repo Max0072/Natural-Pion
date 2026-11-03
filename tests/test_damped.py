@@ -14,7 +14,7 @@ import dataclasses
 import pytest
 import torch
 
-from ngd_pion.damped import _basis_raw_anchor, _basis_raw_congruence
+from ngd_pion.legacy.damped import _basis_raw_anchor, _basis_raw_congruence
 from ngd_pion.direction import skew
 
 N = 6

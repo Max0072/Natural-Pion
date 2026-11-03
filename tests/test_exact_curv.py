@@ -26,7 +26,7 @@ import pytest
 import torch
 
 from ngd_pion.direction import fisher_apply
-from ngd_pion.exact_curv import exact_curv
+from ngd_pion.legacy.exact_curv import exact_curv
 
 DT = torch.float64
 M, N = 5, 6          # d_out, d_in

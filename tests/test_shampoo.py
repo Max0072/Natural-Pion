@@ -16,8 +16,8 @@ import pytest
 import torch
 
 from ngd_pion.direction import generators
-from ngd_pion.shampoo import ShampooPion, gram, inverse_root
-from ngd_pion.shampoo_reference import ShampooPionReference
+from ngd_pion.legacy.shampoo import ShampooPion, gram, inverse_root
+from ngd_pion.legacy.shampoo_reference import ShampooPionReference
 
 DT = torch.float64
 M, N = 8, 6          # d_out, d_in; both even so a generic skew is full rank

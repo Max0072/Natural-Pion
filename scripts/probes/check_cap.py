@@ -1,6 +1,6 @@
 import sys; sys.path.insert(0, "/onyx/data/p330/Natural-Pion")
 import torch
-from ngd_pion.fast import FastNGDPion
+from ngd_pion.legacy.fast import FastNGDPion
 
 torch.manual_seed(0)
 def build(angle_max, lr):

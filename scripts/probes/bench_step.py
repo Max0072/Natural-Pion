@@ -9,7 +9,7 @@ ROOT, LABEL = sys.argv[1], sys.argv[2]
 DIAG = int(sys.argv[3]) if len(sys.argv) > 3 else 0
 sys.path.insert(0, ROOT)
 import torch
-from ngd_pion.fast import FastNGDPion
+from ngd_pion.legacy.fast import FastNGDPion
 
 torch.manual_seed(0)
 torch.set_num_threads(8)

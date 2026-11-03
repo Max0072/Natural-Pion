@@ -65,8 +65,8 @@ from collections import defaultdict
 
 import torch
 
-from .factorization import Basis
-from .linalg import floor_eigenvalues, is_identity, safe_eigh
+from ..factorization import Basis
+from ..linalg import floor_eigenvalues, is_identity, safe_eigh
 from .with_s_fast import FastNGDPionS
 
 __all__ = ["DampedNGDPionS"]

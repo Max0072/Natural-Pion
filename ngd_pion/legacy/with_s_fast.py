@@ -22,9 +22,9 @@ from __future__ import annotations
 
 import torch
 
-from .direction import fisher_apply, generators, natural_gradient, trust_region_alpha
-from .linalg import cayley, spectral_norm
-from .with_s import NGDPionS
+from ..direction import fisher_apply, generators, natural_gradient, trust_region_alpha
+from ..linalg import cayley, spectral_norm
+from ..with_s import NGDPionS
 
 __all__ = ["FastNGDPionS"]
 

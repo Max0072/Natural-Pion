@@ -46,8 +46,8 @@ from __future__ import annotations
 
 import torch
 
-from .direction import fisher_apply, generators, natural_gradient, trust_region_alpha
-from .linalg import cayley, spectral_norm
+from ..direction import fisher_apply, generators, natural_gradient, trust_region_alpha
+from ..linalg import cayley, spectral_norm
 from .op_damped import OpDampedNGDPion
 
 __all__ = ["PoweredNGDPion", "signal_to_noise"]
