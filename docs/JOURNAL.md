@@ -6979,3 +6979,12 @@ Pion lr at 19200: 1e-3 3.4960, 2e-3 3.5138, 4e-3 3.8802; at 3840 4e-3 4.1523. 1e
 2e-3 wins only at 3840. Prediction "1e-3 best within 0.010" wrong at 3840, right at 19200.
 Seed 3 at 19200: Pion 3.5046 vs ours 3.4702, 0.034. Clock gaps at 8900 s: 0.024 / 0.023 / 0.020 / 0.034, mean 0.025.
 Early decay isqrt peak 0.1: 3.4818, worse than cosine 0.05 by 0.010. Both early-decay arms rejected; cosine stays.
+
+## 2026-11-03 -- published Muon numbers near our setting (literature search)
+
+No published Muon val for 60M / C4 / seq 256 / 9.6B tokens. Pion paper: 60M only as figures (Pion 3.3575 / 3.3654);
+Table 1, 1.3B, 54B tokens: AdamW 2.7700, Muon 2.7225, Pion 2.7350. POET (2506.08001) Table 2: 60M at 30B tokens, batch
+256, no Muon row (AdamW ppl 26.68 = 3.284). Closest Muon at 60M, C4, seq 256, batch 512, 10K steps (1.0-1.3B tokens):
+HTMuon 2603.10067 T1 ppl 28.80 (3.360); MoLS 2605.05794 T1 28.99 (3.367); Magma 2602.15322 T1 28.93 (3.365, copied);
+Conda 2509.24218 T1 29.89 (3.398). Schedules there: 10% warmup, cosine to 10%. Cross-harness offsets are ~0.02-0.04
+(our Pion vs the paper's), so these are context, not a baseline; a Muon full-length run in our harness is the comparison.
