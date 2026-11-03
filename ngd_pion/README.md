@@ -1,3 +1,9 @@
+# ngd_pion
+
+**The method is `natural_pion.py`** (`NaturalPion`, exact form; `NaturalPionFast`, the form we run), see
+`docs/paper/FINAL.md`. Variants that were tried and set aside moved to `legacy/` on 2026-11-03 (imports are
+`ngd_pion.legacy.<module>`); the table below predates that and describes them as they were judged.
+
 # Which variant is which
 
 Nine optimizer names are registered in `harness.train.NGD_IMPLEMENTATIONS` and

@@ -18,6 +18,11 @@ on a side branch to hide them -- in a public repository every branch is public
 anyway, and the split that works is between this repository and the snapshot,
 not between two branches of it.
 
+**As of 2026-11-03 the method is Natural Pion**, `ngd_pion/natural_pion.py` (`NaturalPion`, `NaturalPionFast`),
+written up with every result in [`docs/paper/FINAL.md`](docs/paper/FINAL.md). Much of what follows describes the
+earlier method (the `alpha` trust ratio of `docs/history/ALGORITHM.md`) and remains as its record. Set-aside
+variants are in `ngd_pion/legacy/`; the jobs behind the paper are in `scripts/paper/`.
+
 ## Read before changing anything
 
 0. **[`docs/RESUME.md`](docs/RESUME.md)** — start here if you are picking this
