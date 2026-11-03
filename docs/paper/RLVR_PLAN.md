@@ -135,7 +135,13 @@ Base image: `docker://verlai/verl:vllm017.latest`, their pin.
 4. **Container.** Checked 2026-11-03: `ngd-pion.sif` (NGC PyTorch 26.07, torch 2.13, transformers 5.15,
    flash-attn 2.7.4) has no vLLM, VeRL, Ray, DeepSpeed or Accelerate. RLVR needs a new image built on VeRL's
    own supported image (versions pinned by VeRL, not by us); building it is the first stage-0 job.
-5. **Time one refactor** (one set of 6144-wide `eigh`), separately from the step; see 3.3.
+5. **Refactor cost, measured 2026-11-03** (`scripts/probes/rl_refactor_cost.py`, random SPD inputs, all 28 layers,
+   one GPU, batches of 12 per `eigh` call): one refactor **58 s on a B200** (64 s on an RTX PRO 6000), of which the
+   84 sides 6144 wide take 44 s; one Cayley step for all sides **4.6 s** (B200). Spread over 8 GPUs a refactor is
+   ~7 s and the Cayley step ~0.6 s, both small against a 1-3 min GRPO step, so T_fac 1-5 is affordable once the
+   optimizer step is distributed; on one GPU T_fac 1 would add a minute per step. (MAGMA warns that its batched
+   `eigh` is meant for small sizes; unbatched calls at 6144 may be faster, not measured.)
+   Original item: **time one refactor** (one set of 6144-wide `eigh`), separately from the step; see 3.3.
 6. **Time one step** (20 steps of GRPO on 8 B200) to fix the budget in §3.6.
 
 ### 3.3 Decisions specific to RL
