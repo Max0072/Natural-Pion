@@ -134,7 +134,8 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
         # `ngd_*` defaults cannot leak in. `--lr` is the peak rotation angle in radians.
         blocks = ({id(m.weight): cfg.model.heads for m in model.query_projections()}
                   if cfg.np_split_q_per_head else None)
-        rot = NATURAL_PION[cfg.optimizer](weights, lr=cfg.lr, beta1=cfg.ngd_beta1, row_blocks=blocks)
+        rot = NATURAL_PION[cfg.optimizer](weights, lr=cfg.lr, beta1=cfg.ngd_beta1, row_blocks=blocks,
+                                          eps=cfg.ngd_eps, damping=cfg.np_damping)
         recorder = attach(linears, rot)
     elif cfg.optimizer in NGD_IMPLEMENTATIONS:
         kw = {}

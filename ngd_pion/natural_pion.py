@@ -57,6 +57,9 @@ class NaturalPion(torch.optim.Optimizer):
         eps: spectral floor, relative to the largest eigenvalue, on every spectrum that is inverted.
         angle_iters, angle_warmup: power-iteration steps for `||X||_2`, warm-started from the previous
             step's vector; `angle_warmup` right after a rebuild, where `X` jumps.
+        damping: Tikhonov-style damping relative to each matrix's largest Fisher eigenvalue: the denominator
+            (lam_i + lam_j)/2 becomes (lam_i + lam_j)/2 + damping * max. In the basis this is F + delta B X B,
+            damping in the metric of the anchor factor. 0 (default) leaves only the floor `eps`.
         row_blocks: `{id(weight): k}` splits that weight's rows into `k` equal blocks, each rotated as a
             separate matrix with its own Fisher (input moment `A` shared, output moment the block's
             diagonal block of `D`). Pion rotates the query projection per attention head this way.
@@ -76,6 +79,7 @@ class NaturalPion(torch.optim.Optimizer):
         angle_iters: int = 2,
         angle_warmup: int = 50,
         row_blocks: dict[int, int] | None = None,
+        damping: float = 0.0,
     ) -> None:
         if lr <= 0.0:
             raise ValueError(f"lr must be positive, got {lr}")
@@ -100,6 +104,7 @@ class NaturalPion(torch.optim.Optimizer):
         super().__init__(params, dict(
             lr=lr, beta1=beta1, beta_a=beta_a, beta_d=beta_d, t_fac=t_fac, stats_window=stats_window,
             eps=eps, angle_iters=angle_iters, angle_warmup=angle_warmup, compute_dtype=torch.float32,
+            damping=damping,
         ))
 
     # --- statistics, fed by hooks -----------------------------------------------------------------
@@ -251,6 +256,8 @@ class NaturalPion(torch.optim.Optimizer):
         for items in by_size.values():
             P = torch.stack([b.P for *_, b in items])
             den = torch.stack([b.denominator for *_, b in items])     # (lam_i + lam_j) / 2
+            if group["damping"]:
+                den = den + group["damping"] * den.amax(dim=(-2, -1), keepdim=True)
             G = torch.stack([g for _, _, g, _ in items])
             Pt = P.transpose(-1, -2)
             X = skew(P @ ((Pt @ G @ P) / den) @ Pt)

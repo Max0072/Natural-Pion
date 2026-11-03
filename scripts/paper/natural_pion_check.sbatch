@@ -15,4 +15,4 @@ apptainer exec --env PYTHONUNBUFFERED=1 --env PYTHONPATH="$REPO" --env PYTORCH_C
     python -m harness.run --optimizer natural-pion-fast --lr 0.2 --ngd-beta1 0.9 --train-steps 3000 --max-steps 500 \
       --batch-sequences 512 --micro-batch 256 --rho-micro 128 --precision bf16 --seed 0 --device cuda --log-every 23 \
       --eval-every 500 --adamw-lr 8e-3 --data-path "$DATA/c4_train.bin" --val-path "$DATA/c4_val.bin" \
-      --out-dir "$DATA_p330/runs/npcheck" --no-resume
+      --out-dir "${OUT:-$DATA_p330/runs/npcheck}" --no-resume
