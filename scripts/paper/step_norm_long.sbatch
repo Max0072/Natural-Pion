@@ -17,16 +17,16 @@
 # Task 15, -t 01:30:00: Pion lr 4e-3 at 3840. 2e-3 gave 3.7668, 1e-3 3.7804: 2e-3 wins by 0.014 at the edge, so the grid extends.
 # Tasks 16-17, -t 04:30:00: Pion lr 2e-3 / 4e-3 at 19200, seed 0 (1e-3: 3.4960; ours 15000 @0.05: 3.4720). Baseline at
 #   19200 = best of the three. PREDICTION: the higher-lr gain is smaller than at 3840; our gap shrinks to ~0.015, stays >= 0.010.
-#   sbatch -x rtx6003,rtx6004 -t 04:30:00 --array=16-17 scripts/sbatch/step_norm_long.sbatch
+#   sbatch -x rtx6003,rtx6004 -t 04:30:00 --array=16-17 scripts/paper/step_norm_long.sbatch
 # Long horizon, tasks 11-14, -t 16:00:00:
 #   11 Pion 73242 steps (9.6B tokens; the corpus holds 10B, so Pion cannot run past it), about 9.5 h at 0.466 s.
 #   12, 13 ours 56900 steps (73242 x 0.466 / 0.60: Pion's full wall time), angle 0.025 / 0.05. Clock claim at full length.
 #   14 ours 73242 steps, angle 0.05: the step claim at full length.
 # PREDICTION: seeds keep the sign (ahead at both horizons on every seed); Pion lr 1e-3 stays best within 0.010;
 # at full length by clock ahead by less than at 15000 (0.024), possibly level. Low confidence on the last.
-#   sbatch -x rtx6003,rtx6004 -t 04:30:00 --array=0-8%3 scripts/sbatch/step_norm_long.sbatch
-#   sbatch -x rtx6003,rtx6004 -t 01:30:00 --array=9-10 scripts/sbatch/step_norm_long.sbatch
-#   sbatch -x rtx6003,rtx6004 -t 16:00:00 --array=11-14 scripts/sbatch/step_norm_long.sbatch
+#   sbatch -x rtx6003,rtx6004 -t 04:30:00 --array=0-8%3 scripts/paper/step_norm_long.sbatch
+#   sbatch -x rtx6003,rtx6004 -t 01:30:00 --array=9-10 scripts/paper/step_norm_long.sbatch
+#   sbatch -x rtx6003,rtx6004 -t 16:00:00 --array=11-14 scripts/paper/step_norm_long.sbatch
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"

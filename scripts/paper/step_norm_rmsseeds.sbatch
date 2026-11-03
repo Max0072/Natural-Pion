@@ -14,7 +14,7 @@
 #     mean < 0.010                                       the norm does not matter
 #     else                                               unresolved
 # PREDICTION: spectral better, mean about 0.014.
-#   sbatch -x rtx6003,rtx6004 scripts/sbatch/step_norm_rmsseeds.sbatch
+#   sbatch -x rtx6003,rtx6004 scripts/paper/step_norm_rmsseeds.sbatch
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"

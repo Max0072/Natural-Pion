@@ -18,7 +18,7 @@
 #     N <= -0.020   this norm is better
 #     else          one seed cannot say
 # Edge means extend. PREDICTION: rms |N| < 0.010; fisher N >= +0.020, because its angle floats.
-#   sbatch -x rtx6003,rtx6004 scripts/sbatch/step_norm_norm.sbatch
+#   sbatch -x rtx6003,rtx6004 scripts/paper/step_norm_norm.sbatch
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"

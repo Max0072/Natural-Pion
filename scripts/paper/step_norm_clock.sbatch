@@ -17,7 +17,7 @@
 # Task 1: t_fac 25, Lie momentum, angle 0.1, 15000 steps, about 3.5 h. gap15 = 3.5254 - val: >= +0.020 persists, +0.010..+0.020 decaying, < +0.010 gone.
 # Its clock comparison needs Pion near 26000 steps, which does not exist yet.
 # PREDICTION: task 0 parity; task 1 persists.
-#   sbatch scripts/sbatch/step_norm_clock.sbatch
+#   sbatch scripts/paper/step_norm_clock.sbatch
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"

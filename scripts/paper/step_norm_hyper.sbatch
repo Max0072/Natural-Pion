@@ -15,7 +15,7 @@
 #     E <  0.010   it does not
 #     between      one seed cannot say
 # PREDICTION: E >= 0.020.
-#   sbatch -x rtx6003,rtx6004 scripts/sbatch/step_norm_hyper.sbatch
+#   sbatch -x rtx6003,rtx6004 scripts/paper/step_norm_hyper.sbatch
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"

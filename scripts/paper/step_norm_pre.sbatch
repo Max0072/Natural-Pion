@@ -19,7 +19,7 @@
 #     P <= -0.020   before is better
 #     else          one seed cannot say
 # Edge means extend, and so does a decade grid's best cell: refine before concluding. PREDICTION: P >= +0.020.
-#   sbatch -x rtx6003,rtx6004 scripts/sbatch/step_norm_pre.sbatch
+#   sbatch -x rtx6003,rtx6004 scripts/paper/step_norm_pre.sbatch
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"

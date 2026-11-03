@@ -14,7 +14,7 @@
 #     M <  +0.010   equal is as good as anything here
 #     between       one seed cannot say
 # Best at m = 1/4 or 4 means extend. PREDICTION: M < +0.010.
-#   sbatch -x rtx6003,rtx6004 scripts/sbatch/step_norm_attn.sbatch
+#   sbatch -x rtx6003,rtx6004 scripts/paper/step_norm_attn.sbatch
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"

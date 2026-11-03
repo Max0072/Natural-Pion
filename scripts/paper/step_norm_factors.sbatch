@@ -22,7 +22,7 @@
 #     else          one seed cannot say
 # One angle: a change of beta could move the best angle, so a loss here is not final. Step cost read from the log's window.
 # PREDICTION: 0 no change; 1, 2 no change or better; 3 no change; 4, 5 worse.
-#   sbatch -x rtx6003,rtx6004 scripts/sbatch/step_norm_factors.sbatch
+#   sbatch -x rtx6003,rtx6004 scripts/paper/step_norm_factors.sbatch
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"

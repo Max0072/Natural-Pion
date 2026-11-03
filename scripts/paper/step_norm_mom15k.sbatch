@@ -11,7 +11,7 @@
 # Best configuration by steps at 15000: t_fac 1, Lie momentum, angle 0.1, seed 0.
 # gap15 = 3.5254 - val: >= +0.020 persists, +0.010..+0.020 decaying, < +0.010 gone. Momentum's effect = 3.4710 - val: >= +0.010 it still pays at this horizon.
 # PREDICTION: persists, momentum's effect >= +0.010. One angle: the optimum moved with horizon before, so an edge cannot be judged here.
-#   sbatch -x rtx6003,rtx6004 scripts/sbatch/step_norm_mom15k.sbatch
+#   sbatch -x rtx6003,rtx6004 scripts/paper/step_norm_mom15k.sbatch
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"

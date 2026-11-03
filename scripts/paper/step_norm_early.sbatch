@@ -14,7 +14,7 @@
 # Batched t_fac 25 build, seed 0, 15000 steps, peak 0.2 / 0.1. Control: cosine 0.2 3.4940, best cosine 0.05 3.4720.
 #   val <= 3.4620  early decay beats the best cosine; |val - 3.4720| < 0.010 only the scale matters; worse otherwise.
 # PREDICTION: peak 0.2 beats cosine 0.2 by >= 0.010 (about even odds); beating 3.4720, low confidence.
-#   sbatch -x rtx6003,rtx6004 scripts/sbatch/step_norm_early.sbatch
+#   sbatch -x rtx6003,rtx6004 scripts/paper/step_norm_early.sbatch
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"

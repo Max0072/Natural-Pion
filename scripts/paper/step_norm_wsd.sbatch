@@ -13,7 +13,7 @@
 # d = val - 3.7242 (same build, cosine). |d| < 0.010: WSD is as good, and long horizons can be tuned by branching decays off one
 # constant run. d >= +0.010 worse, <= -0.010 better.
 # PREDICTION: 20% |d| < 0.010, medium confidence; 10% worse than 20%.
-#   sbatch -x rtx6003,rtx6004 scripts/sbatch/step_norm_wsd.sbatch
+#   sbatch -x rtx6003,rtx6004 scripts/paper/step_norm_wsd.sbatch
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"

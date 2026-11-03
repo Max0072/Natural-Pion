@@ -22,7 +22,7 @@
 #   6,7 tf10-0.2, tf10-0.1  t_fac 10: worth it if the clock improves after the extra refactors. Predict d about -0.010, 0.03-0.06 s dearer.
 #   8,9 adw4e-3, adw1.6e-2  AdamW lr, never tuned with this rotation. d <= -0.010 moves it; a win at the edge extends. Predict |d| < 0.010.
 #   10,11 sides0.2, sides0.1 each side by its own sigma. d <= -0.010 better. Predict |d| < 0.010, low confidence.
-#   sbatch -x rtx6003,rtx6004 --array=0-1 scripts/sbatch/step_norm_combo.sbatch, then --array=2-4 only if identical
+#   sbatch -x rtx6003,rtx6004 --array=0-1 scripts/paper/step_norm_combo.sbatch, then --array=2-4 only if identical
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"

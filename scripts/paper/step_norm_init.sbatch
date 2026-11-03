@@ -14,7 +14,7 @@
 #   4    orthogonal, every sv 1
 # Rule: better if val <= 3.7142 (base - 0.010); the best then goes to 15000 steps, and Pion gets the same init.
 # PREDICTION (low confidence): alpha 2-3 better by 0.005-0.02; flat and orthogonal worse.
-#   sbatch -x rtx6003,rtx6004 -t 01:30:00 --array=0-4 scripts/sbatch/step_norm_init.sbatch
+#   sbatch -x rtx6003,rtx6004 -t 01:30:00 --array=0-4 scripts/paper/step_norm_init.sbatch
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"

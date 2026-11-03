@@ -16,7 +16,7 @@
 #     Q >= +0.020   keeping the spectrum is better
 #     else          one seed cannot say
 # Edge means extend. PREDICTION: Q >= -0.010 for both, low confidence. The user expects different speeds in different directions to win.
-#   sbatch -x rtx6003,rtx6004 -t 08:00:00 scripts/sbatch/step_norm_power.sbatch   (SVD every step, about 7 s/step; 5 h was too short)
+#   sbatch -x rtx6003,rtx6004 -t 08:00:00 scripts/paper/step_norm_power.sbatch   (SVD every step, about 7 s/step; 5 h was too short)
 #   resume: RESUME_FLAG= sbatch --array=1 ... (RESUME_FLAG empty drops --no-resume)
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"

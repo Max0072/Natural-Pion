@@ -28,7 +28,7 @@
 # A best cell on an edge means extend before concluding, in A and in B.
 # Tasks 14-16 extend A: best X = G was on the 0.1 edge (4.2007). Same rule applies to the extended grid.
 #
-#   sbatch -x rtx6003,rtx6004 scripts/sbatch/step_norm_abl.sbatch
+#   sbatch -x rtx6003,rtx6004 scripts/paper/step_norm_abl.sbatch
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"

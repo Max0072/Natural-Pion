@@ -1,3 +1,8 @@
+> **Archive.** These are the job scripts of the work before the final method (2026-08 to 2026-10): the
+> `alpha` trust ratio, Shampoo, damping, the early protocols. They are kept because the journal cites them.
+> They ran from `scripts/sbatch/`; paths inside them are as they were. The scripts behind the paper are in
+> [`scripts/paper/`](../../paper/README.md).
+
 # The job scripts
 
 Every one carries its own reasoning in the header -- what is being tested, what

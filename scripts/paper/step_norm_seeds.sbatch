@@ -22,7 +22,7 @@
 # which is the claim that this beats the method as it stood.
 # Angle 0.4 was picked on seed 0, so seed 0's gap leans favourable; seeds 1-3 are not.
 #
-#   sbatch -x rtx6004 scripts/sbatch/step_norm_seeds.sbatch
+#   sbatch -x rtx6004 scripts/paper/step_norm_seeds.sbatch
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"

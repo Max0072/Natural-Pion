@@ -22,7 +22,7 @@
 # Tasks 10-13 extend: both best cells were on the small edge (F^-1 0.1 3.7032, G 0.05 3.8247). Same rule.
 # PREDICTION: G gains at least 0.10 from momentum, F^-1 gains less, gain with momentum >= 0.020.
 #
-#   sbatch -x rtx6003,rtx6004 scripts/sbatch/step_norm_mom.sbatch
+#   sbatch -x rtx6003,rtx6004 scripts/paper/step_norm_mom.sbatch
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"

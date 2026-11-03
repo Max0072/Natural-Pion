@@ -21,7 +21,7 @@
 # A best cell on an edge means extend first. One seed.
 # PREDICTION: persists.
 #
-#   sbatch -x rtx6003,rtx6004 scripts/sbatch/step_norm_15k.sbatch
+#   sbatch -x rtx6003,rtx6004 scripts/paper/step_norm_15k.sbatch
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"

@@ -15,7 +15,7 @@
 #   1  constant x m    can RProp make the decay itself? constant alone gave 3.8313 (t_fac 1, no momentum)
 # d <= -0.010 better, |d| < 0.010 no change, >= +0.010 worse. Read m's trajectory in rprop.jsonl.
 # PREDICTION: task 0 |d| < 0.010; task 1 worse than 0 but far better than constant alone; m falls in the second half. Low confidence.
-#   sbatch -x rtx6003,rtx6004 scripts/sbatch/step_norm_rprop.sbatch
+#   sbatch -x rtx6003,rtx6004 scripts/paper/step_norm_rprop.sbatch
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"

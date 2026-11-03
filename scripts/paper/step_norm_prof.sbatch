@@ -9,7 +9,7 @@
 #SBATCH -o logs/%x-%A_%a.out
 #SBATCH -e logs/%x-%A_%a.err
 # Where a step's time goes. Lie momentum, angle 0.2, 400 steps, no evaluation in the window read. Task 0 t_fac 25, task 1 t_fac 1.
-#   sbatch -x rtx6003,rtx6004 scripts/sbatch/step_norm_prof.sbatch
+#   sbatch -x rtx6003,rtx6004 scripts/paper/step_norm_prof.sbatch
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"

@@ -31,7 +31,7 @@
 # PREDICTION. N >= 0.8. Equal angle for all layers also removes alpha's between-layer
 # variation (3.9x), which is the way this could fall short.
 #
-#   sbatch -x rtx6004 scripts/sbatch/step_norm.sbatch
+#   sbatch -x rtx6004 scripts/paper/step_norm.sbatch
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"
