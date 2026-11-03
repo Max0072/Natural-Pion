@@ -107,8 +107,20 @@ Pion steps along $-G_{\mathrm{in}}$ and $-G_{\mathrm{out}}$ with three further i
   $W\Omega_{\mathrm{in}} + \Omega_{\mathrm{out}} W$ equals a target (0.2 times the learning rate).
 * **A truncated exponential retraction** $e^{\Omega} \approx I + \Omega + \Omega^2/2$.
 
-Embeddings, the output head and normalization gains are trained by AdamW. Only the 2-D weights inside
-the transformer blocks are rotated.
+Both rotations are applied at every step (the *bilateral* update; Pion also describes an alternating
+variant, which it finds slightly worse at 60M). The query projection is rotated per attention head: each
+head's block of rows is treated as a separate matrix. Embeddings, the output head and normalization
+gains are trained by AdamW. Only the 2-D weights inside the transformer blocks are rotated.
+
+**Why preserve the spectrum.** Pion motivates the constraint by what it buys, and these properties are
+what Natural Pion inherits. The spectral norm of every weight is fixed by the dynamics, so no weight
+decay or explicit normalisation is needed to control it. Pion reports that a 60M model without
+normalization layers trains stably to the end of its 9.6B-token budget, where AdamW and Muon diverge to
+NaN. It also reports that the optimal learning rate transfers across model widths (a μP-compatible
+variant), and that the minimum hyperspherical energy of the Gaussian initialisation is preserved
+throughout training. At 1.3B parameters and 54B tokens it is within 0.0125 of Muon in validation loss
+and ahead of AdamW and Muon on downstream benchmarks. Pion establishes the constraint. This paper is about
+the direction of motion inside it.
 
 ### 2.2 The natural gradient and K-FAC
 
@@ -119,10 +131,17 @@ natural gradient $F^{-1}\nabla L$ is the steepest-descent direction in that metr
 $$-F^{-1}\nabla L \;\propto\; \arg\min_{\Delta}\; \langle \nabla L, \Delta\rangle
 \quad \text{s.t.} \quad \tfrac12 \Delta^\top F \Delta \le \varepsilon .$$
 
-For a linear layer $y = Wx$, a single example contributes the gradient $\delta x^\top$, where
-$\delta = \partial \ell / \partial y$. K-FAC (Martens & Grosse, 2015) assumes $x$ and $\delta$ are
-independent, which gives $F_W \approx A \otimes D$ with $A = \mathbb{E}[xx^\top]$ and
-$D = \mathbb{E}[\delta\delta^\top]$. As an operator on matrices, $F_W(V) = D V A$.
+In a language model the "examples" of this expectation are token positions. A linear layer $y = Wx$
+sees one input vector $x_t$ and receives one output gradient $\delta_t = \partial \ell_t / \partial y_t$
+per token $t$, and its weight gradient is the average of the per-token outer products
+$\delta_t x_t^\top$. K-FAC (Martens & Grosse, 2015) assumes $x$ and $\delta$ are independent, which gives
+$F_W \approx A \otimes D$ with $A = \mathbb{E}_t[x_t x_t^\top]$ and $D = \mathbb{E}_t[\delta_t\delta_t^\top]$.
+As an operator on matrices, $F_W(V) = D V A$.
+
+Strictly, the Fisher averages over outputs $y$ sampled from the model. Like most K-FAC
+implementations, we use the **empirical Fisher**: $\delta_t$ is the gradient of the training loss at
+the observed next token. In an earlier variant of our method, sampling the targets from the model
+instead changed the validation loss by 0.001 (3.9091 against 3.9102 at 3 000 steps).
 
 ---
 
@@ -130,46 +149,90 @@ $D = \mathbb{E}[\delta\delta^\top]$. As an operator on matrices, $F_W(V) = D V A
 
 ### 3.1 The Fisher on rotation generators
 
-Consider the input side first. The map from the generator to the change in $W$ is
-$J(\Omega) = W\Omega$, and its adjoint onto $\mathfrak{so}(n)$ is $J^*(M) = \operatorname{skew}(W^\top M)$.
-The Fisher on the generator is the pull-back $J^* F_W J$.
+We derive the Fisher of the input-side generator $\Omega_{\mathrm{in}} \in \mathfrak{so}(n)$ in four
+steps: write it as the covariance of the per-token gradients in the skew space, expand it, apply the
+K-FAC assumption, and simplify. The output side follows by symmetry.
 
-**Proposition 1 (Fisher on the generators).** Under the K-FAC approximation, the Fisher
-information with respect to $\Omega_{\mathrm{in}}$ and $\Omega_{\mathrm{out}}$ (each side taken
-separately) is
+**Step 1: the Fisher as a covariance on $\mathfrak{so}(n)$.** By Section 2.1, the gradient of token
+$t$'s loss with respect to $\Omega_{\mathrm{in}}$ is
+
+$$g_t = \operatorname{skew}(W^\top \delta_t\, x_t^\top) \in \mathfrak{so}(n).$$
+
+The (empirical) Fisher on $\mathfrak{so}(n)$ is the second moment of $g_t$. A second moment of
+elements of a vector space is a linear operator on that space:
+
+$$F_{\mathrm{in}}(X) = \mathbb{E}_t\big[\langle g_t, X\rangle\, g_t\big], \qquad X \in \mathfrak{so}(n),$$
+
+so that $\langle X, F_{\mathrm{in}}(X)\rangle = \mathbb{E}_t[\langle g_t, X\rangle^2]$ is the variance of
+the directional derivative along $X$. In coordinates this is an $\tfrac{n(n-1)}{2} \times
+\tfrac{n(n-1)}{2}$ matrix, about $1.7\cdot10^{10}$ entries for $n = 512$, and it cannot be stored, let
+alone inverted.
+
+**Step 2: each token's generator is a bivector.** Write $u_t = W^\top \delta_t \in \mathbb{R}^n$, the
+output gradient pulled back to the input space. Then
+
+$$g_t = \tfrac12\big(u_t x_t^\top - x_t u_t^\top\big) = \tfrac12\, u_t \wedge x_t,$$
+
+the antisymmetrised outer product of two vectors. Its pairing with a skew $X$ is a single bilinear
+form: since $x^\top X u = -u^\top X x$,
+
+$$\langle g_t, X\rangle = \tfrac12\big(u_t^\top X x_t - x_t^\top X u_t\big) = u_t^\top X x_t .$$
+
+**Step 3: expand.** Substituting both expressions into Step 1 and moving the scalar
+$u_t^\top X x_t$ next to the vector it pairs with:
+
+$$F_{\mathrm{in}}(X) = \tfrac12\,\mathbb{E}_t\big[(u_t^\top X x_t)\, u_t x_t^\top\big]
+- \tfrac12\,\mathbb{E}_t\big[(u_t^\top X x_t)\, x_t u_t^\top\big]
+= \tfrac12\,\mathbb{E}_t\big[u_t u_t^\top\, X\, x_t x_t^\top\big]
+- \tfrac12\,\mathbb{E}_t\big[x_t x_t^\top\, X^\top u_t u_t^\top\big].$$
+
+Each term is now a product of a quantity that depends on $u_t$ only, $X$, and a quantity that depends
+on $x_t$ only.
+
+**Step 4: the K-FAC assumption.** Assume, as K-FAC does, that the layer's input $x_t$ and its output
+gradient $\delta_t$ (hence $u_t$) are independent. The expectation of each product then factorises:
+
+$$\mathbb{E}_t\big[u u^\top X x x^\top\big] = \mathbb{E}[u u^\top]\, X\, \mathbb{E}[x x^\top] = S X A,
+\qquad
+\mathbb{E}_t\big[x x^\top X^\top u u^\top\big] = A X^\top S,$$
+
+with $A = \mathbb{E}[x x^\top]$ and $S = \mathbb{E}[u u^\top] = W^\top \mathbb{E}[\delta\delta^\top] W = W^\top D W$.
+
+**Step 5: simplify.** With $X^\top = -X$ the two terms add:
+
+$$F_{\mathrm{in}}(X) = \tfrac12\big(S X A - A X^\top S\big) = \tfrac12\big(S X A + A X S\big).$$
+
+**The output side.** For $\Omega_{\mathrm{out}} \in \mathfrak{so}(m)$, token $t$'s generator is
+$\operatorname{skew}(\delta_t x_t^\top W^\top) = \tfrac12\,\delta_t \wedge v_t$ with $v_t = W x_t$, the input
+pushed forward to the output space. Steps 2-5 are unchanged with $(u, x)$ replaced by $(v, \delta)$, and
+$\mathbb{E}[v v^\top] = W A W^\top$.
+
+**Proposition 1 (Fisher on the generators).** Under the K-FAC independence assumption, and treating
+the two sides separately,
 
 $$F_{\mathrm{in}}(X) = \tfrac12\big(S X A + A X S\big), \qquad S = W^\top D W,$$
 $$F_{\mathrm{out}}(Y) = \tfrac12\big(D Y V + V Y D\big), \qquad V = W A W^\top,$$
 
-for $X \in \mathfrak{so}(n)$ and $Y \in \mathfrak{so}(m)$. Both operators are self-adjoint and positive
-semi-definite on the skew matrices.
+for $X \in \mathfrak{so}(n)$, $Y \in \mathfrak{so}(m)$. Both operators are self-adjoint and positive
+semi-definite on the skew matrices: $\langle Z, SXA + AXS\rangle$ is symmetric in $X$ and $Z$, and
+$\langle X, F_{\mathrm{in}}(X)\rangle = \mathbb{E}[(u^\top X x)^2] \ge 0$ before the factorisation and
+$\tfrac12\langle X, SXA + AXS\rangle = \|S^{1/2} X A^{1/2}\|_F^2 \ge 0$ after it. $\square$
 
-*Proof.* Input side:
-$J^* F_W J(X) = \operatorname{skew}(W^\top D\, W X\, A) = \operatorname{skew}(S X A)
-= \tfrac12(SXA - A X^\top S) = \tfrac12(SXA + AXS)$, using $X^\top = -X$.
-
-The same result follows from per-example generators, which shows where the structure comes from. One
-example's input-side generator is
-
-$$g = \operatorname{skew}(W^\top \delta\, x^\top) = \tfrac12(u x^\top - x u^\top), \qquad u = W^\top\delta,$$
-
-a bivector $u \wedge x$. For skew $X$, $\langle g, X\rangle = u^\top X x$. Hence
-
-$$\mathbb{E}\big[\langle g, X\rangle\, g\big]
-= \tfrac12\,\mathbb{E}\big[u u^\top X x x^\top\big] - \tfrac12\,\mathbb{E}\big[x x^\top X^\top u u^\top\big]
-= \tfrac12\big(S X A + A X S\big),$$
-
-where the last step uses the independence of $u$ and $x$. The output side is the same computation with
-$g = \operatorname{skew}(\delta\, v^\top)$, $v = Wx$, and $\mathbb{E}[vv^\top] = WAW^\top$.
-
-For self-adjointness, $\langle Z, SXA + AXS\rangle$ is symmetric in $X$ and $Z$. Positivity follows from
-$\langle X, F_{\mathrm{in}}(X)\rangle = \mathbb{E}[(u^\top X x)^2] \ge 0$. $\square$
+**A second route to the same operator.** The map from the generator to the change of $W$ is
+$J(\Omega) = W\Omega$, with adjoint $J^*(M) = \operatorname{skew}(W^\top M)$ onto $\mathfrak{so}(n)$.
+Pulling K-FAC's Fisher on $W$ back through it gives
+$J^* F_W J(X) = \operatorname{skew}(W^\top D W X A) = \operatorname{skew}(S X A) = \tfrac12(SXA + AXS)$.
+Proposition 1 is therefore exactly K-FAC's Fisher, expressed on the rotation generators. The derivation
+above shows why it keeps a Kronecker-like form there: each token contributes a bivector of two
+independent vectors.
 
 **Remarks.**
 
-* **Size.** A general covariance on $\mathfrak{so}(n)$ has $O(n^4)$ entries. Here it is fixed by two
-  $n \times n$ matrices. This is K-FAC's saving carried over to the rotation generators: the
-  per-example generator is built out of two vectors.
+* **What is approximated.** Three things: the independence of $x$ and $\delta$ (Step 4, as in K-FAC);
+  the coupling between the two sides and between layers (dropped); and the empirical Fisher in place
+  of the true one (Section 2.2). Everything after Step 4 is exact algebra.
+* **Size.** The operator of Step 1 has $O(n^4)$ entries. Proposition 1 fixes it by two $n \times n$
+  matrices.
 * **The output gradient enters both sides.** It appears on the input side through $S = W^\top D W$,
   and the input moment appears on the output side through $V = W A W^\top$. If $D$ is replaced by $I$
   (no backward statistic), the two sides receive the wrong relative scale (Appendix B).
