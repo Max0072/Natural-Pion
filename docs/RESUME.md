@@ -24,19 +24,20 @@ below is seed 0, one run per cell, unless it says otherwise.
 
 ---
 
-## As of 2026-11-02, 17:15: step_norm, what is known
+## As of 2026-11-03, 09:05: step_norm, what is known
 
-`c = rot_t / sigma(X)` after F^-1, alpha off (`scripts/probes/step_norm.py`). Journal 2026-10-31 to 2026-11-02. val, B 512.
+`c = rot_t / sigma(X)` after F^-1, alpha off (`scripts/probes/step_norm.py`). Journal 2026-10-31 to 2026-11-03. val, B 512, AdamW 8e-3.
 
-Build: spectral norm after F^-1 (shared sigma of both sides), Lie momentum 0.9, cosine, equal angles, A and D only in the last 6 steps before a refactor, STEP_NORM_FAST (bit-identical), STEP_NORM_BATCH. `scripts/sbatch/step_norm_final.sbatch`.
+Build: spectral norm after F^-1 (shared sigma of both sides), Lie momentum 0.9, cosine, equal angles, A and D only in the last 6 steps before a refactor, STEP_NORM_FAST (bit-identical), STEP_NORM_BATCH, t_fac 25 (0.60 s/step; Pion 0.466). `scripts/sbatch/step_norm_long.sbatch`.
 
-    3000, seeds 0-3: t_fac 25 mean 3.7216 (0.60 s/step), t_fac 10 mean 3.7032 (0.71); Pion 3.8394 (0.466)
-    clock, Pion run for our wall time, seed 0: 3000 ahead by 0.056 (t_fac 25) and 0.036 (t_fac 10); 15000 (8900 s) 3.4720 at angle 0.05 (0.1: 3.4777) vs Pion 19200 3.4960, ahead by 0.024
-    by steps at 15000: 3.4720 vs Pion 3.5254
-    Muon (Natural-Muon, same cell, seed 0): 3.6505 at 3000, 0.452 s/step. We are behind Muon by steps and by clock.
-    rejected: norm before F^-1, Fisher and RMS norms, attention angle multiples, per-side sigma, flat spectrum p=0/0.5, linear schedule, WSD at peak 0.2, AdamW lr 4e-3/1.6e-2, RProp multiplier on the angle
+    full length, seed 0: Pion 73242 steps 3.3706 (34063 s); ours 56900 steps (34012 s, same clock) 3.3468 at angle 0.05 (0.025: 3.3577), ahead by 0.024; ours 73242 steps 3.3296, ahead by 0.041 by steps. Paper's Pion (Megatron): 3.3575.
+    clock 8900 s, Pion 19200 vs ours 15000 @0.05, seeds 0-3: 0.024 / 0.023 / 0.020 / 0.034
+    clock 1800 s, Pion 3840 vs ours 3000, seeds 0-3: 0.056 / 0.059 / 0.049 / 0.057 (vs Pion lr 2e-3 on seed 0: 0.043)
+    Pion lr: 3840 steps 5e-4 3.8397, 1e-3 3.7804, 2e-3 3.7668, 4e-3 4.1523; 19200 steps 1e-3 3.4960, 2e-3 3.5138, 4e-3 3.8802 -> 1e-3 at the long horizons
+    Muon (Natural-Muon, same cell, seed 0): 3.6505 at 3000, 0.452 s/step. We are behind Muon at 3000 by steps and by clock; not compared at length.
+    rejected: norm before F^-1, Fisher and RMS norms, attention angle multiples, per-side sigma, flat spectrum p=0/0.5, linear schedule, WSD at peak 0.2, early decay isqrt (0.2: 3.4750, 0.1: 3.4818 vs cosine 3.4720), AdamW lr 4e-3/1.6e-2, RProp multiplier, schedule-law fits
 
-Nothing running. Open: Pion clock seeds; 73242 steps; Newton-Schulz; novelty recheck; GitHub clean-up.
+Nothing running. Open: Muon at full length; Newton-Schulz; novelty recheck; GitHub clean-up.
 
 ## As of 2026-10-30, 20:35: what alpha is
 

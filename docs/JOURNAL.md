@@ -6966,3 +6966,16 @@ points 1e-3 and 5e-3 and is at a short horizon; it does not contradict them. The
 - Clock at 19200 (Pion lr 1e-3) vs ours 15000 @0.05: seed 0 0.0240, seed 1 0.0226, seed 2 0.0197; seed 3 running.
 - Clock at 3840 (Pion lr 1e-3) vs ours 3000: seeds 0-3 0.056 / 0.059 / 0.049 / 0.057.
 - Pion lr 4e-3 @3840 and the lr 2e-3 / 4e-3 grid @19200 still pending on priority.
+
+## 2026-11-03, 09:05 -- full length: ahead of Pion by clock (0.024) and by steps (0.041)
+
+    Pion 73242 steps, lr 1e-3             3.3706   34063 s
+    ours 56900 steps (same clock), 0.05   3.3468   34012 s   ahead by 0.024
+    ours 56900 steps, 0.025               3.3577
+    ours 73242 steps, 0.05                3.3296   43402 s   ahead by 0.041 by steps
+Prediction (smaller clock gap than 0.024 at 15000, possibly level) wrong: the gap holds at full length.
+Our same-clock number is also below the paper's own Pion, 3.3575 (Megatron; different harness, not a like comparison).
+Pion lr at 19200: 1e-3 3.4960, 2e-3 3.5138, 4e-3 3.8802; at 3840 4e-3 4.1523. 1e-3 is right at the long horizons;
+2e-3 wins only at 3840. Prediction "1e-3 best within 0.010" wrong at 3840, right at 19200.
+Seed 3 at 19200: Pion 3.5046 vs ours 3.4702, 0.034. Clock gaps at 8900 s: 0.024 / 0.023 / 0.020 / 0.034, mean 0.025.
+Early decay isqrt peak 0.1: 3.4818, worse than cosine 0.05 by 0.010. Both early-decay arms rejected; cosine stays.
