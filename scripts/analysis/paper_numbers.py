@@ -414,9 +414,26 @@ try:
 except Exception as e:  # numpy missing, etc.
     for k in ("mc_err_in", "mc_err_out", "pullback_err"):
         missing(k, f"scripts/analysis/check_fisher.py failed: {e}")
+for ret in ("ns", "trunc"):
+    for st in ("3000", "15000"):
+        hits = runs(f"np{ret}/s{st}/*")
+        if hits and info(hits[0])["done"]:
+            put(f"ret_{ret}_{st}", info(hits[0])["val"], f"np{ret}/s{st}: natural-pion-fast with the {ret} retraction")
+        else:
+            missing(f"ret_{ret}_{st}", f"scripts/paper/natural_pion_ns.sbatch with RET={ret}, {st} steps")
+    f = R / "probes" / f"paper_checks_{ret}.json"
+    if f.exists():
+        d = json.load(open(f))
+        put(f"ret_{ret}_drift", d["fp32_drift_3000_median"], f"{f.name}: spectrum of the 3000-step {ret} checkpoint vs init, median over matrices")
+        put(f"ret_{ret}_drift_max", d["fp32_drift_3000_max"], f"{f.name}: worst matrix")
+    else:
+        missing(f"ret_{ret}_drift", f"scripts/probes/paper_checks.py <np{ret}/s3000 checkpoint> {ret}")
+        missing(f"ret_{ret}_drift_max", "same")
+missing("trunc_effect", "a phrase from the trunc runs: what the truncated exponential does to val and spectrum")
+
 PC = R / "probes" / "paper_checks.json"
 pc = json.load(open(PC)) if PC.exists() else {}
-for k in ("tf32_drift", "fp32_drift_200", "fp32_drift_3000", "fp32_drift_3000_max", "fp32_drift_3000_signed_mean", "power_speedup",
+for k in ("trunc_drift_toy", "tf32_drift", "fp32_drift_200", "fp32_drift_3000", "fp32_drift_3000_max", "fp32_drift_3000_signed_mean", "power_speedup",
           "power_cold_1", "power_cold_5", "power_cold_20", "power_warm_1", "ns_cost", "ns_err_02", "ns_err_04",
           "ns_err_08", "fp32_onestep_cayley", "fp32_onestep_ns", "ns_drift_toy", "cayley_drift_toy", "kfac_vs_exact",
           "svd_exact_s", "svd_power_s"):

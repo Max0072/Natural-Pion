@@ -99,7 +99,11 @@ def ns_checks():
     g = torch.Generator(device="cpu").manual_seed(5)
     W0 = torch.randn(256, 256, generator=g).to(DEV)
     s0 = torch.linalg.svdvals(W0.double())
-    for name, ret in (("cayley", lambda X, c: cayley(X, c)), ("ns", lambda X, c: cayley_newton_schulz(X, c, 2))):
+    def trunc(X, c):
+        A = -c * X
+        return torch.eye(X.shape[-1], device=X.device, dtype=X.dtype) + A + 0.5 * (A @ A)
+    for name, ret in (("cayley", lambda X, c: cayley(X, c)), ("ns", lambda X, c: cayley_newton_schulz(X, c, 2)),
+                      ("trunc", trunc)):
         W = W0.clone()
         gg = torch.Generator(device="cpu").manual_seed(6)
         with exact_fp32():
@@ -202,6 +206,14 @@ def checkpoint_checks(ckpt: Path):
 
 
 def main():
+    # `paper_checks.py <checkpoint> <tag>` measures only that checkpoint's spectrum (and K-FAC) and writes
+    # runs-record/probes/paper_checks_<tag>.json; without a tag, everything, into paper_checks.json.
+    if len(sys.argv) > 2:
+        checkpoint_checks(Path(sys.argv[1]))
+        dst = ROOT / "runs-record" / "probes" / f"paper_checks_{sys.argv[2]}.json"
+        json.dump(OUT, open(dst, "w"), indent=1)
+        print(json.dumps(OUT, indent=1))
+        return
     ckpt = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(
         f"{os.environ['DATA_p330']}/runs/stepnormcombo/batch/ngd-pion-m-lr0.2-s0-e24857dcf7/checkpoint.pt")
     torch.backends.cuda.matmul.allow_tf32 = False
