@@ -57,6 +57,9 @@ class NaturalPion(torch.optim.Optimizer):
         eps: spectral floor, relative to the largest eigenvalue, on every spectrum that is inverted.
         angle_iters, angle_warmup: power-iteration steps for `||X||_2`, warm-started from the previous
             step's vector; `angle_warmup` right after a rebuild, where `X` jumps.
+        row_blocks: `{id(weight): k}` splits that weight's rows into `k` equal blocks, each rotated as a
+            separate matrix with its own Fisher (input moment `A` shared, output moment the block's
+            diagonal block of `D`). Pion rotates the query projection per attention head this way.
     """
 
     def __init__(
@@ -72,6 +75,7 @@ class NaturalPion(torch.optim.Optimizer):
         eps: float = 1e-4,
         angle_iters: int = 2,
         angle_warmup: int = 50,
+        row_blocks: dict[int, int] | None = None,
     ) -> None:
         if lr <= 0.0:
             raise ValueError(f"lr must be positive, got {lr}")
@@ -88,6 +92,11 @@ class NaturalPion(torch.optim.Optimizer):
         for p in params:
             if p.dim() != 2:
                 raise ValueError(f"NaturalPion takes 2-D weights, got shape {tuple(p.shape)}")
+        self.row_blocks = dict(row_blocks or {})
+        for p in params:
+            k = self.row_blocks.get(id(p), 1)
+            if k < 1 or p.shape[0] % k:
+                raise ValueError(f"row_blocks {k} does not divide {p.shape[0]} rows")
         super().__init__(params, dict(
             lr=lr, beta1=beta1, beta_a=beta_a, beta_d=beta_d, t_fac=t_fac, stats_window=stats_window,
             eps=eps, angle_iters=angle_iters, angle_warmup=angle_warmup, compute_dtype=torch.float32,
@@ -137,28 +146,48 @@ class NaturalPion(torch.optim.Optimizer):
         state = self.state[param]
         return "cov" in state and state["cov"].ready and "cov_backward" in state and state["cov_backward"].ready
 
+    def _units(self, p: torch.Tensor) -> list[slice]:
+        """The row blocks of `p` that rotate as separate matrices: one block unless `row_blocks` splits it."""
+        k = self.row_blocks.get(id(p), 1)
+        h = p.shape[0] // k
+        return [slice(i * h, (i + 1) * h) for i in range(k)]
+
+    @staticmethod
+    def _unit_state(state: dict, i: int) -> dict:
+        """Per-block state. Block 0 lives in the parameter's own state, so an unsplit weight keeps the layout
+        it always had; further blocks get their own dicts."""
+        if i == 0:
+            return state
+        return state.setdefault("blocks", {}).setdefault(i, {})
+
     # --- the Fisher basis ---------------------------------------------------------------------------
 
     def _refactor(self, params: list[torch.Tensor], group: dict) -> None:
         """Bases with `P^T B P = I`, `P^T C P = diag(lam)` for in (A, W^T D W) and out (D, W A W^T),
         batched over matrices of equal shape."""
         dt, eps = group["compute_dtype"], group["eps"]
-        by_shape: dict[tuple[int, int], list[torch.Tensor]] = defaultdict(list)
+        by_shape: dict[tuple[int, int], list[tuple]] = defaultdict(list)
         for p in params:
-            by_shape[tuple(p.shape)].append(p)
+            units = self._units(p)
+            for i, rows in enumerate(units):
+                shape = (rows.stop - rows.start, p.shape[1])
+                by_shape[shape].append((p, i, rows, len(units) == 1))
         for members in by_shape.values():
-            W = torch.stack([p.detach().to(dt) for p in members])
-            A = torch.stack([self.state[p]["cov"].matrix.to(device=p.device, dtype=dt) for p in members])
-            D = torch.stack([self.state[p]["cov_backward"].matrix.to(device=p.device, dtype=dt) for p in members])
+            W = torch.stack([p.detach().to(dt) if whole else p.detach().to(dt)[rows] for p, _, rows, whole in members])
+            A = torch.stack([self.state[p]["cov"].matrix.to(device=p.device, dtype=dt) for p, *_ in members])
+            D = torch.stack([
+                self.state[p]["cov_backward"].matrix.to(device=p.device, dtype=dt) if whole
+                else self.state[p]["cov_backward"].matrix.to(device=p.device, dtype=dt)[rows, rows]
+                for p, _, rows, whole in members])
             Wt = W.transpose(-1, -2)
             gram_out = W @ A @ Wt
             gram_in = Wt @ D @ W
             basis_out = basis_identity_anchor(gram_out, eps) if is_identity(D) else basis_congruence(D, gram_out, eps)
             basis_in = basis_identity_anchor(A, eps) if is_identity(gram_in) else basis_congruence(A, gram_in, eps)
-            for i, p in enumerate(members):
-                self.state[p]["bases"] = (
-                    type(basis_in)(basis_in.P[i], basis_in.lam[i], basis_in.orthogonal, None, 1.0),
-                    type(basis_out)(basis_out.P[i], basis_out.lam[i], basis_out.orthogonal, None, 1.0),
+            for j, (p, i, _, _) in enumerate(members):
+                self._unit_state(self.state[p], i)["bases"] = (
+                    type(basis_in)(basis_in.P[j], basis_in.lam[j], basis_in.orthogonal, None, 1.0),
+                    type(basis_out)(basis_out.P[j], basis_out.lam[j], basis_out.orthogonal, None, 1.0),
                 )
                 self.state[p]["since_refactor"] = 0
 
@@ -200,19 +229,23 @@ class NaturalPion(torch.optim.Optimizer):
 
     def _rotate(self, active: list[torch.Tensor], group: dict) -> None:
         dt, beta1 = group["compute_dtype"], group["beta1"]
-        rows = []                                  # [p, W, X_in, X_out]
+        rows = []                                  # [p, W, X_in, X_out, block index, block rows, whole]
         by_size: dict[int, list] = {}              # side size -> [(row, slot, generator, basis)]
         for p in active:
-            state = self.state[p]
-            W = p.detach().to(dt)
-            G_in, G_out = generators(W, p.grad.detach().to(dt))
-            if beta1 > 0.0:
-                G_in = self._ema(state, "m_in", G_in, beta1)
-                G_out = self._ema(state, "m_out", G_out, beta1)
-            b_in, b_out = state["bases"]
-            rows.append([p, W, None, None])
-            by_size.setdefault(G_in.shape[0], []).append((len(rows) - 1, 2, G_in, b_in))
-            by_size.setdefault(G_out.shape[0], []).append((len(rows) - 1, 3, G_out, b_out))
+            units = self._units(p)
+            Wp, Gp = p.detach().to(dt), p.grad.detach().to(dt)
+            for i, r in enumerate(units):
+                whole = len(units) == 1
+                state = self._unit_state(self.state[p], i)
+                W, G = (Wp, Gp) if whole else (Wp[r], Gp[r])
+                G_in, G_out = generators(W, G)
+                if beta1 > 0.0:
+                    G_in = self._ema(state, "m_in", G_in, beta1)
+                    G_out = self._ema(state, "m_out", G_out, beta1)
+                b_in, b_out = state["bases"]
+                rows.append([p, W, None, None, i, r, whole])
+                by_size.setdefault(G_in.shape[0], []).append((len(rows) - 1, 2, G_in, b_in))
+                by_size.setdefault(G_out.shape[0], []).append((len(rows) - 1, 3, G_out, b_out))
 
         # X = F^-1 G: in the basis F is elementwise division by 2 (lam_i + lam_j)
         for items in by_size.values():
@@ -226,8 +259,10 @@ class NaturalPion(torch.optim.Optimizer):
 
         # c = theta / sigma, shared by both sides of a matrix
         solves: dict[int, list] = {}
-        for i, (p, W, X_in, X_out) in enumerate(rows):
-            c = group["lr"] / max(self._sigma(self.state[p], group, X_in, X_out), 1e-30)
+        for i, (p, W, X_in, X_out, b, _, _) in enumerate(rows):
+            state = self._unit_state(self.state[p], b)
+            state["since_refactor"] = self.state[p]["since_refactor"]
+            c = group["lr"] / max(self._sigma(state, group, X_in, X_out), 1e-30)
             solves.setdefault(X_in.shape[0], []).append((i, 2, c, X_in))
             solves.setdefault(X_out.shape[0], []).append((i, 3, c, X_out))
 
@@ -240,8 +275,15 @@ class NaturalPion(torch.optim.Optimizer):
             for k, (i, slot, _, _) in enumerate(items):
                 rows[i][slot] = R[k]
 
-        for p, W, R_in, R_out in rows:
-            p.copy_((R_out @ W @ R_in).to(p.dtype))
+        new: dict[int, list] = {}
+        for p, W, R_in, R_out, b, r, whole in rows:
+            if whole:
+                p.copy_((R_out @ W @ R_in).to(p.dtype))
+            else:
+                new.setdefault(id(p), [p, []])[1].append(R_out @ W @ R_in)
+        for p, blocks in new.values():
+            p.copy_(torch.cat(blocks, dim=0).to(p.dtype))
+        for p in active:
             state = self.state[p]
             state["step"] += 1
             state["since_refactor"] += 1
@@ -257,9 +299,13 @@ class NaturalPion(torch.optim.Optimizer):
                 for key in ("cov", "cov_backward"):
                     if key in state:
                         state[key].to(p.device)
-                if "bases" in state:
-                    state["bases"] = tuple(
-                        type(b)(b.P.to(p.device), b.lam.to(p.device), b.orthogonal, None, 1.0) for b in state["bases"])
+                for unit in [state, *state.get("blocks", {}).values()]:
+                    if "bases" in unit:
+                        unit["bases"] = tuple(
+                            type(b)(b.P.to(p.device), b.lam.to(p.device), b.orthogonal, None, 1.0) for b in unit["bases"])
+                    for key in ("m_in", "m_out", "angle_v_in", "angle_v_out"):
+                        if isinstance(unit.get(key), torch.Tensor):
+                            unit[key] = unit[key].to(p.device)
 
 
 class NaturalPionFast(NaturalPion):

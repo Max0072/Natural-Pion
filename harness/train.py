@@ -132,7 +132,9 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
         # The final method (docs/paper/FINAL.md). Only the angle and the momentum come from the
         # configuration; cadence, statistics window and factor EMAs are the class's own, so the legacy
         # `ngd_*` defaults cannot leak in. `--lr` is the peak rotation angle in radians.
-        rot = NATURAL_PION[cfg.optimizer](weights, lr=cfg.lr, beta1=cfg.ngd_beta1)
+        blocks = ({id(m.weight): cfg.model.heads for m in model.query_projections()}
+                  if cfg.np_split_q_per_head else None)
+        rot = NATURAL_PION[cfg.optimizer](weights, lr=cfg.lr, beta1=cfg.ngd_beta1, row_blocks=blocks)
         recorder = attach(linears, rot)
     elif cfg.optimizer in NGD_IMPLEMENTATIONS:
         kw = {}

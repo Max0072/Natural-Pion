@@ -424,6 +424,10 @@ class RunConfig:
     # whole run. The only compensation left is the embedding and the head.
     decay_norms_and_biases: bool = False
 
+    # Natural Pion: rotate the query projection per attention head, as published Pion does
+    # (`pion_split_q_per_head`). Dropped from the hash while False, so every earlier run keeps its name.
+    np_split_q_per_head: bool = False
+
     # plumbing, deliberately excluded from the hash
     data_path: str = "data/c4_train.bin"
     val_path: str = "data/c4_val.bin"
@@ -473,6 +477,8 @@ class RunConfig:
         d = asdict(self)
         for key in self._EXCLUDED:
             d.pop(key, None)
+        if not d.get("np_split_q_per_head"):
+            d.pop("np_split_q_per_head", None)
         return d
 
     @property

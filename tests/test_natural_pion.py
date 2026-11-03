@@ -105,3 +105,23 @@ def test_rejects_bad_arguments():
         NaturalPion([torch.nn.Parameter(torch.zeros(3))])
     with pytest.raises(ValueError):
         NaturalPion(_weights(0), t_fac=5, stats_window=6)
+
+
+def test_row_blocks_rotate_each_block_and_keep_its_spectrum():
+    params = _weights(7)
+    q = params[1]                                       # 8 x 8, split into 4 blocks of 2 rows
+    before = [torch.linalg.svdvals(q.detach()[2 * i:2 * i + 2].double()) for i in range(4)]
+    opt = NaturalPionFast(params, lr=0.2, t_fac=5, stats_window=2, row_blocks={id(q): 4})
+    _drive(opt, params, 30, 8, _cosine)
+    for i in range(4):
+        after = torch.linalg.svdvals(q.detach()[2 * i:2 * i + 2].double())
+        assert torch.allclose(before[i], after, rtol=1e-4), i
+    assert "blocks" in opt.state[q] and len(opt.state[q]["blocks"]) == 3
+
+
+def test_one_block_is_the_unsplit_optimizer():
+    a, b = _weights(9), _weights(9)
+    oa = NaturalPionFast(a, lr=0.2, t_fac=5, stats_window=2)
+    ob = NaturalPionFast(b, lr=0.2, t_fac=5, stats_window=2, row_blocks={id(b[1]): 1})
+    for x, y in zip(_drive(oa, a, 20, 10, _cosine)[-1], _drive(ob, b, 20, 10, _cosine)[-1]):
+        assert torch.equal(x, y)
