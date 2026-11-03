@@ -1,222 +1,120 @@
-# NGD-Pion
+# Natural Pion
 
-A curvature-preconditioned variant of [Pion](https://arxiv.org/abs/2605.12492).
+Spectrum-preserving rotations along the natural gradient. A variant of [Pion](https://arxiv.org/abs/2605.12492).
 
-Pion updates a weight matrix by orthogonal rotations on both sides, which leaves
-its singular values untouched for the whole of training, and drives the rotation
-with the raw gradient. NGD-Pion preconditions that rotation by the Fisher
-operator on the bivector tangent space instead.
+Pion trains each weight matrix only by rotating it on both sides, `W <- R_out W R_in`, so the singular values of
+`W` never change, and it drives the rotation with the raw gradient. **Natural Pion keeps that constraint and changes
+the direction:** it turns `W` along the Kronecker-factored natural gradient on the rotation group, and it sets the
+step as a fixed rotation angle, in radians, of each matrix's largest rotation plane.
 
-The idea in one line: **take the covariance of the gradient on the Lie algebra,
-and it turns out to be expressible through the covariance of the activations.**
-A general covariance operator on `so(512)` would carry about `8.6e9` free
-numbers; this one carries `131,328`, because the generator is a bivector and the
-covariance of a bivector factorises.
+**Result** (LLaMA-60M, C4, 9.6B tokens; `val` = held-out cross-entropy, lower is better):
 
-## The algorithm
+| | steps | wall time | val |
+|---|---|---|---|
+| Pion (published configuration, lr 1e-3) | 73 242 | 34 063 s | 3.3706 |
+| **Natural Pion, same wall time** | 56 900 | 34 012 s | **3.3468** |
+| **Natural Pion, same steps** | 73 242 | 43 402 s | **3.3296** |
 
-**Pion's geometry.** A weight matrix is updated by rotating both of its spaces:
+At equal wall time it is ahead of Pion on all four seeds at every horizon measured (mean gap 0.055 at 1 800 s,
+0.025 at 8 900 s). To reach Pion's final loss it needs at least ~1.45x fewer steps. A heavy-tailed initial spectrum
+(power-law tail, exponent 3) helps Natural Pion and does not help Pion. Full write-up, ablations and limitations:
+**[`docs/paper/FINAL.md`](docs/paper/FINAL.md)**.
 
-```
-W  <-  R_out · W · R_in
-```
+## The method
 
-Both rotations are orthogonal, so the singular values of `W` never move — the
-spectrum you initialise with is the spectrum you finish with. What is learned is
-the rotation, and rotations near the identity are parameterised by
-skew-symmetric matrices: the Lie algebra `so(n)`.
-
-**The gradient there.** Differentiate the loss along
-`W(t) = exp(t·Ω_out) W exp(t·Ω_in)`. For any skew `Ω`,
+For a weight `W` (m x n) with gradient `G`:
 
 ```
-<G, W·Ω_in>  = ½ <G_in,  Ω_in>       G_in  = Wᵀ G − Gᵀ W
-<G, Ω_out·W> = ½ <G_out, Ω_out>      G_out = G Wᵀ − W Gᵀ
+G_in  = skew(W^T G),   G_out = skew(G W^T)          the gradient with respect to a rotation, skew(M) = (M - M^T)/2
+M     = beta1 M + (1 - beta1) G                     Lie momentum on each side (as in Pion)
+X     = F^-1(M)                                     natural gradient, each side
+sigma = max(||X_in||_2, ||X_out||_2)
+c     = theta_t / sigma                             the largest rotation plane turns by theta_t
+W    <- Cay(X_out, c) W Cay(X_in, c)                Cay(X, c) = (I + c/2 X)^-1 (I - c/2 X), exactly orthogonal
 ```
 
-So `G_in` and `G_out` *are* the Riemannian gradient with respect to the
-rotation, doubled. Pion steps along them directly.
-
-**The idea.** Step along the *natural* gradient instead — `F⁻¹G`, where `F` is
-the covariance of the gradient on the algebra. Steepest descent in the metric
-the noise actually has, rather than the Euclidean one.
-
-**Why that is even possible.** For a single sample `G = δxᵀ` the generator is
+**Why `F` is cheap.** For one token the generator is a bivector, `skew(W^T d x^T)`. The covariance of a bivector of
+two independent vectors is fixed by their two covariances, so with `A = E[x x^T]` (layer input) and
+`D = E[d d^T]` (gradient at the layer output) the Fisher operator on skew `X` is
 
 ```
-G_in = (Wᵀδ) ∧ x = δ'xᵀ − xδ'ᵀ
+F(X) = 2 (B X C + C X B),   in-side (B, C) = (A, W^T D W),   out-side (B, C) = (D, W A W^T)
 ```
 
-a **bivector** — an antisymmetrised outer product of two vectors. The covariance
-of such an object, when the two vectors are independent, is fixed entirely by
-their two covariances. Writing `A = E[xxᵀ]` and `S' = Wᵀ E[δδᵀ] W`, the
-covariance as an operator on skew `X` is
+A congruence `P` with `P^T B P = I`, `P^T C P = diag(lam)` makes it elementwise:
+`X = P [ (P^T G P) / (2 (lam_i + lam_j)) ] P^T`. One generalized eigendecomposition per side, reused for `t_fac`
+steps; every inverted spectrum is floored at `1e-4 * lam_max`, the only regularisation.
 
-```
-F(X) = 2 ( A X S'  +  S' X A )
-```
+**Why the angle.** `F^-1` gives a good direction and a bad scale: it amplifies by four or more orders of magnitude,
+unevenly across layers. Taking the direction from `F^-1 G` and the length from a fixed angle is what makes it work
+(FINAL.md section 6.2: the more evenly the matrices turn, the lower the loss).
 
-That is the whole content of the method. A general covariance operator on
-`so(512)` would carry about `8.6·10⁹` free numbers; this one carries `131,328`,
-and not by luck — it follows from the generator being built out of two vectors.
+## Use
 
-**Taking `S = I`.** The backward covariance is assumed isotropic. The out-side
-operator then becomes `2(XA' + A'X)` with `A' = W A Wᵀ`, a plain symmetric
-eigenproblem, and `A = E[xxᵀ]` is the only statistic the method keeps —
-no backward hook has to exist.
+```python
+import torch
+from ngd_pion import NaturalPionFast, attach, attach_backward
 
-**Inverting `F`.** It is *not* the map `X ↦ AXS'`, which would invert as
-`A⁻¹GS'⁻¹`; the sum of the two orderings does not factor unless `A` and `S'`
-commute, and they do not. But `A` is positive definite, so there is a congruence
-`P` with
-
-```
-Pᵀ A P = I        Pᵀ S' P = diag(λ)
+linears = [m for m in model.modules() if isinstance(m, torch.nn.Linear) and m is not model.head]
+opt = NaturalPionFast([m.weight for m in linears], lr=0.05)   # lr = peak rotation angle, radians
+attach(linears, opt)              # feeds A = E[x x^T] from the forward pass
+attach_backward(linears, opt)     # feeds D = E[d d^T] from the backward pass
+# embeddings, head and norm gains: AdamW, as in Pion. Schedule opt's lr (cosine in our runs).
 ```
 
-and in those coordinates the operator is elementwise. Substituting `X = P Y Pᵀ`
-turns `F(X) = G` into
+`NaturalPion` is the exact form (basis and statistics every step); `NaturalPionFast` the form we run (basis every
+25 steps, statistics in the 6 steps before each rebuild, batched over equal shapes; 1.28x Pion's step time).
 
-```
-2 (λᵢ + λⱼ) · Yᵢⱼ = (Pᵀ G P)ᵢⱼ
-```
+In the harness:
 
-Divide, transform back. One eigendecomposition per side, reused for `T_fac`
-steps. For a square or tall `W` under an orthogonal initialisation the
-congruence is unnecessary and `λ` is simply the spectrum of `A`.
-
-**The step.**
-
-```
-A   <- β·A + (1−β)·xᵀx/n                    forward activations only
-G_in, G_out                                 the generators above
-X   =  P [ (Pᵀ G P) / (2(λᵢ+λⱼ)) ] Pᵀ       both sides
-α   =  min(1, quad/curv)                    reads out basis staleness
-W   <- Cayley(−η·α·X_out) · W · Cayley(−η·α·X_in)
+```bash
+pytest -q
+python scripts/prepare_data.py --out data --target-tokens 1e10
+python -m harness.run --optimizer natural-pion-fast --lr 0.05 --train-steps 56900 --adamw-lr 8e-3 \
+    --batch-sequences 512 --micro-batch 256 --precision bf16
+python -m harness.run --optimizer pion --lr 1e-3 --train-steps 73242 --adamw-lr 8e-3 ...   # the baseline
 ```
 
-with `Cayley(−cX) = (I + c/2·X)⁻¹ (I − c/2·X)`, which is *exactly* orthogonal
-for skew `X` at any step size. That is why the spectrum is preserved exactly
-here and only approximately in Pion, whose truncated exponential satisfies
-`RᵀR = I + A⁴/4`.
-
-**The approximations, named.** One is `x ⊥ δ'`, the K-FAC independence
-assumption, which is not true in a deep network.
-
-The other is `S = I`, and it is less of a concession than it looks. The
-measured `S` is strongly anisotropic — no simple model fits it — but *using* it
-makes the step worse: on a toy transformer the direction built with `S = I`
-reduced held-out loss **1.4-1.9x more** than the one built with the measured
-`S`. A covariance estimated from a finite sample is too noisy to invert, and
-isotropising it acts as regularisation rather than simplification. Whether that
-survives the far larger samples of a real run is **untested**; see
-[`AGENTS.md`](AGENTS.md).
-
-Everything downstream of the two is exact algebra, not a further approximation.
-
-**Regularisation is one knob.** Every spectrum that reaches a denominator is
-floored at `max(λ, ε·λ_max)`, and nothing else is damped anywhere.
-
-## Where to look
-
-| | |
-|---|---|
-| **[`docs/RESUME.md`](docs/RESUME.md)** | **start here** — what is running right now, and what to do next |
-| **[`docs/history/PLAN.md`](docs/history/PLAN.md)** | the plan: claims stated so they can fail, stages, cost |
-| **[`docs/history/VALIDATION.md`](docs/history/VALIDATION.md)** | audit of what the numbers are, and are not |
-| **[`docs/LITERATURE.md`](docs/LITERATURE.md)** | the literature check on novelty: what was searched, what is prior art, what the check cannot show |
-| **[`docs/decisions/`](docs/decisions/README.md)** | decision records: what was decided, why, on what evidence |
-| **[`runs-record/`](runs-record/README.md)** | `manifest.json` and `log.jsonl` of every run: the source of every number in `docs/` |
-| **[`docs/history/ALGORITHM.md`](docs/history/ALGORITHM.md)** | the specification — every decision with the measurement behind it |
-| **[`AGENTS.md`](AGENTS.md)** | state of play, decisions not to reopen, traps already hit |
-| **[`docs/CLUSTER.md`](docs/CLUSTER.md)** | the cluster sequence, in order |
-
-Read `docs/history/ALGORITHM.md` before changing anything. Each module implements one of its
-sections and names it in the docstring.
+`RunConfig`'s hash names the output directory and covers every field that can change a result.
 
 ## Layout
 
 ```
 ngd_pion/
-  reference.py       numpy transcription of the spec — the oracle, not for training
-  linalg.py          skew, the spectral floor, Cayley
-  covariance.py      §3  the input covariance
-  factorization.py   §4  the bases
-  direction.py       §1 §5 §6  generators through trust region
-  optimizer.py       §7  orchestration and retraction
-  pion_baseline.py   published Pion, the baseline (ablation switches kept, unused)
-harness/
-  model.py           LLaMA-60M in their configuration
-  data.py            memmapped token corpus
-  config.py          run configuration; its hash names the run
-  train.py           the loop
-  instrument.py      per-layer diagnostics
-  anchor.py          reproduce their published figure
+  natural_pion.py    the method: NaturalPion, NaturalPionFast
+  covariance.py      A and D, exponential moving averages in exact fp32
+  direction.py       generators, F^-1 in a basis
+  factorization.py   the bases (identity anchor, congruence) and the spectral floor
+  linalg.py          skew, Cayley, power iteration, exact fp32
+  hooks.py           forward hook (A); with_s.attach_backward is the backward hook (D)
+  pion_baseline.py   published Pion, the baseline
+  optimizer.py, with_s.py, unified.py   the reference implementations the work grew from (alpha trust ratio)
+  reference.py       numpy oracle for the tests
+  legacy/            variants tried and set aside (damping, F^-p, Shampoo on so(n), ...)
+harness/             LLaMA-60M, C4 corpus, the training loop, run configuration
+scripts/
+  paper/             every job behind docs/paper/FINAL.md, indexed by section
+  analysis/          final_tables.py regenerates FINAL.md's tables from runs-record/
+  probes/            single-question measurements; step_norm.py is where the method was developed
+  rl/                preparation for the RLVR experiment
+  cluster/           infrastructure jobs (data, preflight, throughput, resume, train)
+  archive/sbatch/    job scripts of the earlier work
+runs-record/         manifest.json and log.jsonl of every run: the source of every number
+docs/
+  paper/             FINAL.md (method and results), RLVR_PLAN.md (next experiment)
+  RESUME.md          what is running now and what comes next
+  decisions/         decision records
+  CLUSTER.md, LITERATURE.md
+  history/           JOURNAL.md (every decision, in order), PLAN.md, VALIDATION.md, ALGORITHM.md (the earlier spec)
 ```
 
-## Use
+## Status and limits
 
-```python
-from ngd_pion import NGDPion, attach
+* One model size (60M) and one data set; full length on one seed.
+* Muon in the same harness is ahead of us at 3000 steps; its full-length run is in progress.
+* All comparisons are inside one harness: our Pion is 0.013 above the Pion paper's own 60M number (Megatron).
+* Next: RLVR, where a step costs minutes of generation and fewer steps matter most
+  ([`docs/paper/RLVR_PLAN.md`](docs/paper/RLVR_PLAN.md)).
 
-linears = [m for m in model.modules() if isinstance(m, torch.nn.Linear)]
-opt = NGDPion([m.weight for m in linears], lr=1e-3)
-recorder = attach(linears, opt)          # feeds the input covariance
-```
-
-The optimizer takes parameters rather than modules, and the covariance is
-supplied from outside. `attach` covers `nn.Linear`; anything else — Megatron's
-parallel linears, a fused QKV projection — writes its own adapter of the same
-size without this package changing.
-
-Give it 2-D weights only. Embeddings, the output head, norm gains and biases
-belong to another optimizer, which is how Pion splits parameters too.
-
-## Running
-
-```bash
-pytest -q                                        # 261 passed, 1 skipped, ~28 s
-python scripts/prepare_data.py --out data --target-tokens 1e10
-python -m harness.run --optimizer ngd-pion --lr 1e-3
-python -m harness.run --anchor bilateral         # calibration; read AGENTS.md first
-```
-
-`RunConfig`'s hash names the output directory and covers every field that can
-change a result, so a sweep is a job array over flags.
-
-## Comparison design
-
-The baseline is **published Pion**, and the measurement is `ngd-pion-s` against
-`pion`, each with its own tuned learning rates, same seed, same data, same
-hardware. It compares two whole methods and claims nothing about which component
-of NGD-Pion does the work.
-
-An earlier design compared against `pion_ablated` (Pion with momentum and RMS
-scaling switched off, so that one variable separated the arms). It was dropped,
-and removed from the code, on 2026-09-22: Pion's RMS scaling is what keeps its truncated exponential from
-diverging (`R^T R = I + A^4/4`, so it inflates every step unless the angle stays
-small), so an ablated Pion must borrow Cayley and is no longer Pion. At 150 steps
-it was also worse than freezing the matrices. See `docs/history/VALIDATION.md` V2.
-
-## Status
-
-The mathematics is verified against independent routes: the Fisher operator
-against Monte Carlo, the closed-form solve against an explicit Kronecker
-system, the descent lemma, the sign, Cayley's exactness, spectrum preservation.
-
-**It has been trained at scale, and the result is small.** Full-length runs
-(73 242 steps, 9.6B tokens) exist for every live variant. With AdamW pinned at
-1e-3, `ngd-pion-s` ends 0.014 behind the like-for-like Pion run (3.3860 against
-3.3719, one run each). At the classical batch with both optimizers tuned it is
-ahead early: 3.7954 against 3.8412 after 3000 steps, one seed, no error bar yet.
-What is known and what is not is in [`docs/history/VALIDATION.md`](docs/history/VALIDATION.md);
-what to do next is in [`docs/history/PLAN.md`](docs/history/PLAN.md). The toy least-squares
-check that once stood here was a kill criterion, not a result.
-
-## Tests
-
-The torch path is correct insofar as it reproduces `reference.py`, and the tests
-pin that. Several also pin findings that would otherwise silently regress — that
-the spectral floor's lower bound is set by the working precision, that the step
-is invariant to whatever `eigh` happens to return, that the truncated
-exponential diverges unscaled. Their docstrings say which.
+The history of how the method was found, including every negative result, is in
+[`docs/history/JOURNAL.md`](docs/history/JOURNAL.md).
