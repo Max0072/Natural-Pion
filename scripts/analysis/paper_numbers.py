@@ -303,6 +303,20 @@ put("speedup_vs_exact", NUM["tf1_mom_sps"] / NUM["batch_sps"], "tf1_mom_sps / ba
 put("fisher_empirical", best("fisher/*", at=2999, ngd_fisher_mc_every=0)[0], "best of runs-record/fisher at step 2999 (runs cut by --max-steps), empirical D")
 put("fisher_true", best("fisher/*", at=2999, ngd_fisher_mc_every=1)[0], "best of runs-record/fisher at step 2999, D from sampled targets")
 
+# chapter 4: Pion at the same evaluation cadence as the 3000-step runs; memory; unprofiled remainder
+put("pion3000_sps", sps("stepnormfinal/pion3840/*", 0), "Pion 3840 steps, seed 0, eval every 500 like the 3000-step runs (the 3000-step Pion run, adamw2d, ran on older code and is not used for timing)")
+put("cost_ratio_3000", NUM["batch_sps"] / NUM["pion3000_sps"], "batch_sps / pion3000_sps")
+for t in ("tfac1", "tfac25"):
+    parts = sum(NUM[f"prof_{t}_{k}"] for k in ("refactor", "angle", "retract", "rest", "stats"))
+    put(f"prof_{t}_other", NUM[f"prof_{t}_step"] - parts, f"prof_{t}_step - sum of the profiled parts (forward, backward, AdamW, data)")
+
+def peak(pattern):
+    g = [r.get("peak_gb") for r in _rows(one(pattern)) if r.get("peak_gb")]
+    return max(g)
+put("peak_pion", peak("adamw2d/pion-lr0.001-s0-9e6e6d32f6"), "max peak_gb in the Pion 3000-step log (micro-batch 256)")
+put("peak_np", peak("stepnormcombo/batch/*"), "max peak_gb in the Natural Pion Fast 3000-step log (micro-batch 256)")
+put("peak_d", NUM["peak_np"] - NUM["peak_pion"], "peak_np - peak_pion")
+
 # appendix D: initial spectrum
 I, IL = "stepnorminit", "stepnorminitlong"
 put("init_normal", NUM["batch_val"], "= batch_val")

@@ -404,10 +404,11 @@ Tikhonov on Natural Pion before submission. -->
 
 ## 4 Making it fast: Natural Pion Fast
 
-Algorithm 1 costs {{tf1_mom_sps:.2f}} s per step in our setting, against Pion's {{pion_sps:.3f}} s. This section takes it to
+Algorithm 1 costs {{tf1_mom_sps:.2f}} s per step in our setting, against Pion's {{pion3000_sps:.3f}} s. This section takes it to
 {{batch_sps:.3f}} s, one change at a time, and gives for each change what it saves and what it costs in loss. All
-numbers are at 3 000 steps, seed 0, Lie momentum 0.9. Seconds per step are measured on the training
-runs themselves unless marked as profiled.
+numbers are at 3 000 steps, seed 0, Lie momentum 0.9. Seconds per step are wall-clock time over steps of
+the training runs themselves, evaluation every 500 steps included for every method, unless marked as
+profiled.
 
 ### 4.1 Where the time goes
 
@@ -421,9 +422,11 @@ the parts slightly).*
 | Cayley retraction | {{prof_tfac1_retract:.3f}} | {{prof_tfac25_retract:.3f}} |
 | $F^{-1}$ and the rest of the step | {{prof_tfac1_rest:.3f}} | {{prof_tfac25_rest:.3f}} |
 | accumulating $A$ and $D$ | {{prof_tfac1_stats:.3f}} | {{prof_tfac25_stats:.3f}} |
+| forward, backward, AdamW, data (not profiled) | {{prof_tfac1_other:.3f}} | {{prof_tfac25_other:.3f}} |
 | whole step | {{prof_tfac1_step:.2f}} | {{prof_tfac25_step:.2f}} |
 
-Forward, backward and AdamW are common to all methods and are not counted as overhead.
+Forward, backward and AdamW are common to all methods. Pion's whole step at the same cadence is
+{{pion3000_sps:.3f}} s.
 
 ### 4.2 Amortised refresh
 
@@ -447,21 +450,23 @@ At 15 000 steps the difference is gone: {{tf1_mom_15k:.4f}} for $T_{\mathrm{fac}
 
 ### 4.3 Statistics only where they are read
 
-Nothing but a refresh reads $A$ and $D$. With EMA factor 0.5, an observation more than 6 steps old
-carries less than 2% of the weight. So we accumulate $A$ and $D$ only in the 6 steps before each
-refresh, which is 6 of every 25 steps.
+Nothing but a refresh reads $A$ and $D$. So we accumulate them only in the 6 steps before each refresh,
+which is 6 of every 25 steps, and shorten the EMA of $A$ from 0.95 to 0.5 so that the window dominates
+it: an observation more than 6 steps old then carries less than 2% of the weight. The EMA of $D$ is 0.5
+throughout.
 
-| change ($T_{\mathrm{fac}} = 25$) | val | s / step |
-|---|---|---|
-| both every step (reference) | {{win_ref:.4f}} | {{win_ref_sps:.3f}} |
-| $D$ only in the last 6 steps | {{win_dlast6:.4f}} | {{win_dlast6_sps:.3f}} |
-| $A$ only in the last 6 steps | {{win_alast6:.4f}} | {{win_alast6_sps:.3f}} |
-| **$A$ and $D$ only in the last 6 steps** | **{{win_adlast6:.4f}}** | **{{win_adlast6_sps:.3f}}** |
-| $A$ every second step | {{win_aevery2:.4f}} | {{win_aevery2_sps:.3f}} |
-| EMA of $D$ at 0.9 / 0.95 instead of 0.5 | {{win_betad09:.4f}} / {{win_betad095:.4f}} | {{win_betad09_sps:.3f}} / {{win_betad095_sps:.3f}} |
+| change ($T_{\mathrm{fac}} = 25$) | EMA of $A$ / $D$ | val | s / step |
+|---|---|---|---|
+| both every step (reference) | 0.95 / 0.5 | {{win_ref:.4f}} | {{win_ref_sps:.3f}} |
+| $D$ only in the last 6 steps | 0.95 / 0.5 | {{win_dlast6:.4f}} | {{win_dlast6_sps:.3f}} |
+| $A$ only in the last 6 steps | 0.5 / 0.5 | {{win_alast6:.4f}} | {{win_alast6_sps:.3f}} |
+| **$A$ and $D$ only in the last 6 steps** | 0.5 / 0.5 | **{{win_adlast6:.4f}}** | **{{win_adlast6_sps:.3f}}** |
+| $A$ every second step | 0.9025 / 0.5 | {{win_aevery2:.4f}} | {{win_aevery2_sps:.3f}} |
+| $D$ with a longer EMA | 0.95 / 0.9, 0.95 | {{win_betad09:.4f}} / {{win_betad095:.4f}} | {{win_betad09_sps:.3f}} / {{win_betad095_sps:.3f}} |
 
-Every change is within {{win_maxdev:.3f}} of the reference, inside run-to-run noise. The factor's memory does not
-matter here, so we take the cheapest option.
+Every change is within {{win_maxdev:.3f}} of the reference, inside run-to-run noise. Neither the window nor the
+factors' memory matters here, so we take the cheapest option. ($A$ every second step uses $0.95^2$ to keep
+its time constant.)
 
 ### 4.4 A warm power iteration for $\sigma$
 
@@ -494,8 +499,8 @@ per size instead of one call per matrix. The mathematics is unchanged and only r
   both methods sit at the round-off floor after one step ({{fp32_onestep_err}}), but over 3 000 steps on a
   $256 \times 256$ test matrix the spectrum drifts by {{ns_drift_toy}} with Newton–Schulz against {{cayley_drift_toy}} with
   Cayley. Exact preservation of the spectrum is the point of the method, so we keep the solve.
-* **Exact SVD to reshape the step's spectrum** (the polar step in Section 5.4): {{svd_sps_lo:.1f}}–{{svd_sps_hi:.1f}} s per step, and no
-  better in loss.
+* **Exact SVD to reshape the step's spectrum** (the polar step in Section 5.4): {{svd_sps_lo:.1f}}–{{svd_sps_hi:.1f}} s per step, and worse in
+  loss.
 * **A larger $T_{\mathrm{fac}}$ beyond 25** saves little: the refresh is already {{prof_tfac25_refactor:.3f}} s per step.
 
 ### 4.8 Summary
@@ -509,13 +514,15 @@ per size instead of one call per matrix. The mathematics is unchanged and only r
 | + statistics only before a refresh (4.3) | {{win_adlast6_sps:.3f}} | {{win_adlast6:.4f}} |
 | + compute only what the step uses (4.5) | {{fast_sps:.3f}} | {{ref_tf25:.4f}} (bit-identical: {{fast_bit_identical}}) |
 | **+ batching by shape (4.6)**: Natural Pion Fast | **{{batch_sps:.3f}}** | **{{batch_val:.4f}}** |
-| Pion | {{pion_sps:.3f}} | {{pion3000_s0:.4f}} |
+| Pion | {{pion3000_sps:.3f}} | {{pion3000_s0:.4f}} |
 
 **Algorithm 2: Natural Pion Fast.** It is Algorithm 1 with the bases refreshed every 25 steps; $A$ and
 $D$ accumulated (EMA 0.5) only in the 6 steps before a refresh; $\sigma$ by warm power iteration (2
 iterations, 50 after a refresh); $F^{-1}$ and Cayley batched by shape. At 3 000 steps it is {{exact_vs_fast_3000:.3f}}
 behind Algorithm 1 over four seeds. At 15 000 steps it is level or ahead. It is {{speedup_vs_exact:.1f}}x faster per step
-and {{cost_ratio:.2f}}x slower than Pion. All results in Section 5 use it.
+and {{cost_ratio_3000:.2f}}x slower than Pion at the same evaluation cadence ({{cost_ratio:.2f}}x over the full-length
+runs). Its peak GPU memory is {{peak_np:.1f}} GB against Pion's {{peak_pion:.1f}} GB (+{{peak_d:.1f}} GB for $A$, $D$, the bases
+and the momentum). All results in Section 5 use it.
 
 ---
 

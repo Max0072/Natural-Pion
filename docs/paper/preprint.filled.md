@@ -404,10 +404,11 @@ Tikhonov on Natural Pion before submission. -->
 
 ## 4 Making it fast: Natural Pion Fast
 
-Algorithm 1 costs 1.77 s per step in our setting, against Pion's 0.465 s. This section takes it to
+Algorithm 1 costs 1.77 s per step in our setting, against Pion's 0.468 s. This section takes it to
 0.596 s, one change at a time, and gives for each change what it saves and what it costs in loss. All
-numbers are at 3 000 steps, seed 0, Lie momentum 0.9. Seconds per step are measured on the training
-runs themselves unless marked as profiled.
+numbers are at 3 000 steps, seed 0, Lie momentum 0.9. Seconds per step are wall-clock time over steps of
+the training runs themselves, evaluation every 500 steps included for every method, unless marked as
+profiled.
 
 ### 4.1 Where the time goes
 
@@ -421,9 +422,11 @@ the parts slightly).*
 | Cayley retraction | 0.163 | 0.157 |
 | $F^{-1}$ and the rest of the step | 0.052 | 0.050 |
 | accumulating $A$ and $D$ | 0.136 | 0.136 |
+| forward, backward, AdamW, data (not profiled) | 0.455 | 0.454 |
 | whole step | 1.77 | 0.86 |
 
-Forward, backward and AdamW are common to all methods and are not counted as overhead.
+Forward, backward and AdamW are common to all methods. Pion's whole step at the same cadence is
+0.468 s.
 
 ### 4.2 Amortised refresh
 
@@ -447,21 +450,23 @@ At 15 000 steps the difference is gone: 3.4788 for $T_{\mathrm{fac}} = 1$, 3.472
 
 ### 4.3 Statistics only where they are read
 
-Nothing but a refresh reads $A$ and $D$. With EMA factor 0.5, an observation more than 6 steps old
-carries less than 2% of the weight. So we accumulate $A$ and $D$ only in the 6 steps before each
-refresh, which is 6 of every 25 steps.
+Nothing but a refresh reads $A$ and $D$. So we accumulate them only in the 6 steps before each refresh,
+which is 6 of every 25 steps, and shorten the EMA of $A$ from 0.95 to 0.5 so that the window dominates
+it: an observation more than 6 steps old then carries less than 2% of the weight. The EMA of $D$ is 0.5
+throughout.
 
-| change ($T_{\mathrm{fac}} = 25$) | val | s / step |
-|---|---|---|
-| both every step (reference) | 3.7227 | 0.843 |
-| $D$ only in the last 6 steps | 3.7272 | 0.788 |
-| $A$ only in the last 6 steps | 3.7205 | 0.806 |
-| **$A$ and $D$ only in the last 6 steps** | **3.7227** | **0.744** |
-| $A$ every second step | 3.7223 | 0.817 |
-| EMA of $D$ at 0.9 / 0.95 instead of 0.5 | 3.7206 / 3.7201 | 0.851 / 0.844 |
+| change ($T_{\mathrm{fac}} = 25$) | EMA of $A$ / $D$ | val | s / step |
+|---|---|---|---|
+| both every step (reference) | 0.95 / 0.5 | 3.7227 | 0.843 |
+| $D$ only in the last 6 steps | 0.95 / 0.5 | 3.7272 | 0.788 |
+| $A$ only in the last 6 steps | 0.5 / 0.5 | 3.7205 | 0.806 |
+| **$A$ and $D$ only in the last 6 steps** | 0.5 / 0.5 | **3.7227** | **0.744** |
+| $A$ every second step | 0.9025 / 0.5 | 3.7223 | 0.817 |
+| $D$ with a longer EMA | 0.95 / 0.9, 0.95 | 3.7206 / 3.7201 | 0.851 / 0.844 |
 
-Every change is within 0.005 of the reference, inside run-to-run noise. The factor's memory does not
-matter here, so we take the cheapest option.
+Every change is within 0.005 of the reference, inside run-to-run noise. Neither the window nor the
+factors' memory matters here, so we take the cheapest option. ($A$ every second step uses $0.95^2$ to keep
+its time constant.)
 
 ### 4.4 A warm power iteration for $\sigma$
 
@@ -494,8 +499,8 @@ per size instead of one call per matrix. The mathematics is unchanged and only r
   both methods sit at the round-off floor after one step (**[fp32_onestep_err?]**), but over 3 000 steps on a
   $256 \times 256$ test matrix the spectrum drifts by **[ns_drift_toy?]** with Newton–Schulz against **[cayley_drift_toy?]** with
   Cayley. Exact preservation of the spectrum is the point of the method, so we keep the solve.
-* **Exact SVD to reshape the step's spectrum** (the polar step in Section 5.4): 6.8–7.8 s per step, and no
-  better in loss.
+* **Exact SVD to reshape the step's spectrum** (the polar step in Section 5.4): 6.8–7.8 s per step, and worse in
+  loss.
 * **A larger $T_{\mathrm{fac}}$ beyond 25** saves little: the refresh is already 0.025 s per step.
 
 ### 4.8 Summary
@@ -509,13 +514,15 @@ per size instead of one call per matrix. The mathematics is unchanged and only r
 | + statistics only before a refresh (4.3) | 0.744 | 3.7227 |
 | + compute only what the step uses (4.5) | 0.697 | 3.7227 (bit-identical: yes) |
 | **+ batching by shape (4.6)**: Natural Pion Fast | **0.596** | **3.7242** |
-| Pion | 0.465 | 3.8412 |
+| Pion | 0.468 | 3.8412 |
 
 **Algorithm 2: Natural Pion Fast.** It is Algorithm 1 with the bases refreshed every 25 steps; $A$ and
 $D$ accumulated (EMA 0.5) only in the 6 steps before a refresh; $\sigma$ by warm power iteration (2
 iterations, 50 after a refresh); $F^{-1}$ and Cayley batched by shape. At 3 000 steps it is 0.013
 behind Algorithm 1 over four seeds. At 15 000 steps it is level or ahead. It is 3.0x faster per step
-and 1.29x slower than Pion. All results in Section 5 use it.
+and 1.28x slower than Pion at the same evaluation cadence (1.29x over the full-length
+runs). Its peak GPU memory is 42.8 GB against Pion's 42.3 GB (+0.5 GB for $A$, $D$, the bases
+and the momentum). All results in Section 5 use it.
 
 ---
 
