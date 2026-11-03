@@ -1,6 +1,6 @@
 # NGD-Pion: spectrum-preserving rotations along the natural gradient
 
-Status: final write-up of the method and its results, 2026-11-03. It is the basis for the paper.
+Status: final write-up of the method and its results, 2026-11-03 (updated 14:00 with the initial-spectrum results). It is the basis for the paper.
 The full reasoning is in [`JOURNAL.md`](JOURNAL.md), the current state in [`RESUME.md`](RESUME.md),
 and every run's manifest and log in [`../runs-record/`](../runs-record/).
 
@@ -267,6 +267,30 @@ correlation, not a measured cause.
 | no diagnostics (e) | bit-identical over 300 steps | | 0.697 |
 | batched F^-1 and Cayley (d) | 3.7242 | 3.7227 | 0.596 |
 
+### 6.5 The initial spectrum (it is frozen, so it is part of the model)
+
+The rotated matrices keep their initial singular values for the whole run, so the initial spectrum is a property of
+the trained model, not a starting point. `normal(0, 0.02)` is the default. "Power-law tail, alpha" replaces the top 20%
+of a normal matrix's singular values with a tail `s_i ~ i^(-1/(2(alpha-1)))`, attached continuously (the shape
+heavy-tailed self-regularisation, Martin & Mahoney, reports for trained layers; it also adds energy).
+Embedding and head keep `normal(0, 0.02)`. 3000 steps, angle 0.2.
+
+| initial spectrum, seed 0 | val | d vs normal |
+|---|---|---|
+| normal(0, 0.02) | 3.7242 | |
+| tail alpha 2 / 2.5 / **3** / 4 / 5 | 3.7158 / 3.7049 / **3.7020** / 3.7145 / 3.7182 | best -0.022, interior |
+| flat at sqrt(fan_out / fan_in) | 3.7701 | +0.046 |
+| orthogonal, every value 1 | 3.7749 | +0.051 |
+
+Alpha 3 over seeds 0-3: 3.7020 / 3.7071 / 3.7104 / 3.7115 against 3.7242 / 3.7176 / 3.7241 / 3.7205, gain 0.014 on average
+and positive on every seed.
+
+**It helps NGD-Pion and not Pion.** Pion with the same alpha-3 initialisation: 3.8472 at 3000 steps (normal 3.8412) and
+3.7854 at 3840 (normal 3.7804), slightly worse. A candidate reason, not measured: our direction depends on W's spectrum
+through the Fisher operator (`W A W^T`, `W^T D W`), Pion's does not. This answers the objection of HTMuon
+(arXiv:2603.10067) that orthogonalising methods suppress heavy tails: with a frozen spectrum, the tail is set at
+initialisation. 15 000-step and full-length pairs (ours and Pion, both alpha 3) are running.
+
 ---
 
 ## 7. Relation to other work (first pass; recheck arXiv before submission)
@@ -303,7 +327,8 @@ correlation, not a measured cause.
 5. **The spectrum is exactly frozen only in exact arithmetic.** In fp32 it drifts by ~0.2% per 3000 steps,
    with a consistent sign. Whether that costs anything is unmeasured.
 6. **Steps-to-loss is a lower bound** (1.28-1.29x), not a measured ratio.
-7. **Hypothesis, not a result: an advantage in RL.** There each step needs fresh generations, so cost
+7. **Initialisation results are at 3000 steps;** whether the alpha-3 gain survives at length is being measured.
+8. **Hypothesis, not a result: an advantage in RL.** There each step needs fresh generations, so cost
    goes with the number of steps, not the time of one step. Pion's RLVR experiment (its Table 3) is the
    natural test.
 
