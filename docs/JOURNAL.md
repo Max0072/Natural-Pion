@@ -7011,3 +7011,11 @@ Caveat: the tail adds energy as well as shape. One seed. Next, not submitted: al
 
 Muon full length, mid-run (same 73242-step cosine): step 21999 Muon 3.5625, ours 3.6695, Pion 3.7406. Muon ahead of us by 0.107
 there; our lead over Pion went 0.071 at that step -> 0.041 at the end, so gaps compress, but Muon finishing ahead is now likely.
+
+## 2026-11-03, 13:55 -- alpha-3 init: holds on seeds, helps us and not Pion
+
+Ours 3000 @0.2, alpha 3 vs normal, seeds 0-3: 3.7020/3.7071/3.7104/3.7115 vs 3.7242/3.7176/3.7241/3.7205; gains 0.022/0.011/0.014/0.009, mean 0.014.
+alpha at seed 0: 2 3.7158, 2.5 3.7049, 3 3.7020, 4 3.7145, 5 3.7182: interior at 3.
+Pion alpha 3, seed 0: 3000 3.8472 (normal 3.8412, -0.006), 3840 3.7854 (normal 3.7804, -0.005). Gain ours - Pion = 0.028 at 3000:
+by the rule the init gain is ours. Prediction "Pion gains about as much" wrong. A candidate reason, unmeasured: our direction depends
+on W's spectrum through F (W A W^T, W^T D W); Pion's does not. 15000 and full-length pairs running.
