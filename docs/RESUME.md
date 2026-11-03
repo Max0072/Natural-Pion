@@ -37,7 +37,7 @@ Build: spectral norm after F^-1 (shared sigma of both sides), Lie momentum 0.9, 
     Muon (Natural-Muon, same cell, seed 0): 3.6505 at 3000, 0.452 s/step. We are behind Muon at 3000 by steps and by clock; not compared at length.
     rejected: norm before F^-1, Fisher and RMS norms, attention angle multiples, per-side sigma, flat spectrum p=0/0.5, linear schedule, WSD at peak 0.2, early decay isqrt (0.2: 3.4750, 0.1: 3.4818 vs cosine 3.4720), AdamW lr 4e-3/1.6e-2, RProp multiplier, schedule-law fits
 
-Nothing running. Open: Muon at full length; Newton-Schulz; novelty recheck; GitHub clean-up.
+Running: Muon at full length (Natural-Muon, job 397404, ~9 h from 09:25 on 2026-11-03). Open: Newton-Schulz; novelty recheck; GitHub clean-up.
 
 ## As of 2026-10-30, 20:35: what alpha is
 

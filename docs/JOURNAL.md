@@ -6988,3 +6988,11 @@ Table 1, 1.3B, 54B tokens: AdamW 2.7700, Muon 2.7225, Pion 2.7350. POET (2506.08
 HTMuon 2603.10067 T1 ppl 28.80 (3.360); MoLS 2605.05794 T1 28.99 (3.367); Magma 2602.15322 T1 28.93 (3.365, copied);
 Conda 2509.24218 T1 29.89 (3.398). Schedules there: 10% warmup, cosine to 10%. Cross-harness offsets are ~0.02-0.04
 (our Pion vs the paper's), so these are context, not a baseline; a Muon full-length run in our harness is the comparison.
+
+## 2026-11-03, 09:30 -- Muon at full length submitted (Natural-Muon, job 397404)
+
+Muon baseline, unchanged code, cell B: lr 1e-3, AdamW 8e-3, seed 0, batch 512, 73242 steps, eval every 2000, rtx.
+Run dir $DATA_p330/runs-muon/muon-lr0.001-s0-491e524f91. 0.447 s/step, ~9.1 h, about 32 700 s in all.
+Compare against Pion 3.3706 and ours 3.3296 (same steps) / 3.3468 (Pion's clock); for Muon's own clock take ours-56900 at
+~32 700 s (slightly favours Muon: our cosine is set for the longer run). PREDICTION (low confidence): Muon 3.33-3.36;
+we level or ahead by steps, Muon level or ahead by clock.
