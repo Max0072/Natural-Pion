@@ -1,6 +1,6 @@
 # NGD-Pion: spectrum-preserving rotations along the natural gradient
 
-Status: final write-up of the method and its results, 2026-11-03 (updated 14:00 with the initial-spectrum results). It is the basis for the paper.
+Status: final write-up of the method and its results, 2026-11-03 (updated 17:30: initial spectrum at 15 000, figures, NaturalPion classes). It is the basis for the paper.
 The full reasoning is in [`JOURNAL.md`](../history/JOURNAL.md), the current state in [`RESUME.md`](../RESUME.md),
 and every run's manifest and log in [`../runs-record/`](../../runs-record/).
 
@@ -161,6 +161,12 @@ as Algorithm 1, except:
 | Muon, same cell (running, job 397404) | 73 242 | ~32 700 s | *pending* | |
 | *Pion paper, Megatron, bilateral* | 73 242 | | *3.3575* | different code base, context only |
 
+![val against steps](figures/val_vs_steps.png)
+
+![val against wall-clock time](figures/val_vs_time.png)
+
+Figures: `scripts/analysis/figures.py` from `runs-record/` (Muon from the Natural-Muon run, marked while running).
+
 ### 5.2 Same wall time, four seeds
 
 Pion runs as many steps as fit in our wall time. Gap = Pion val - ours (positive: we are ahead).
@@ -289,7 +295,19 @@ and positive on every seed.
 3.7854 at 3840 (normal 3.7804), slightly worse. A candidate reason, not measured: our direction depends on W's spectrum
 through the Fisher operator (`W A W^T`, `W^T D W`), Pion's does not. This answers the objection of HTMuon
 (arXiv:2603.10067) that orthogonalising methods suppress heavy tails: with a frozen spectrum, the tail is set at
-initialisation. 15 000-step and full-length pairs (ours and Pion, both alpha 3) are running.
+initialisation.
+
+At length, seed 0 (gain = val(normal) - val(alpha 3)):
+
+| arm | steps | normal | alpha 3 | gain |
+|---|---|---|---|---|
+| ours | 3 000 | 3.7242 | 3.7020 | +0.022 |
+| Pion | 3 000 / 3 840 | 3.8412 / 3.7804 | 3.8472 / 3.7854 | -0.006 / -0.005 |
+| ours | 15 000 | 3.4720 | 3.4680 | +0.004 |
+| Pion | 15 000 / 19 200 | 3.5254 / 3.4960 | 3.5441 / 3.5108 | -0.019 / -0.015 |
+
+Our gain shrinks with length to a tie at 15 000; the tail hurts Pion at every horizon. With the same alpha-3
+initialisation for both, the 8 900 s gap is 0.043 (3.4680 vs 3.5108). Full-length pair still running.
 
 ---
 
@@ -340,7 +358,9 @@ initialisation. 15 000-step and full-length pairs (ours and Pion, both alpha 3) 
   hooks that feed `A` and `D` (`ngd_pion.hooks.attach`, `ngd_pion.with_s.attach_backward`).
   `NaturalPionFast` is bit-identical to the probe the runs used, `scripts/probes/step_norm.py` with
   `STEP_NORM_FAST=1 STEP_NORM_BATCH=1 STEP_NORM_A_LAST=6 STEP_NORM_D_LAST=6` (`tests/test_natural_pion.py`).
-  `NaturalPion` batches F^-1 and Cayley where the Algorithm-1 runs did not, so it reproduces them to round-off.
+  Checked on GPU through the harness as well (`scripts/paper/natural_pion_check.sbatch`): train loss at all 22
+  logged steps and val at step 499 identical to the probe's run. `NaturalPion` batches F^-1 and Cayley where the
+  Algorithm-1 runs did not, so it reproduces them to round-off.
 * **Run**, in the harness (LLaMA-60M, C4):
 
   ```
