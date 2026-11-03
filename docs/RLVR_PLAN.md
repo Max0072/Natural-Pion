@@ -95,6 +95,35 @@ curves. The Table-3-style final table is secondary.
 
 ### 3.2 Stage 0: infrastructure (do first, cheap)
 
+**Findings, 2026-11-03 (read, not run).** Pion's code is public: https://github.com/Sphere-AI-Lab/pion (MIT;
+linked from https://spherelab.ai/pion/; README still says "coming soon"). It holds a Megatron-LM fork and a VeRL
+fork (`0.8.0.dev`) with `verl/custom_optimizer/{pion,muon}.py`, the scripts
+`examples/grpo_trainer/run_qwen3_1.7b_{pion,adamw,muon}_deepmath.sh` and the DeepMath preprocessing
+(`zwhe99/DeepMath-103K`, 1% held out). As published it will not run without fixes, both checked in the clone:
+
+* `verl/custom_optimizer/__init__.py` imports `pion_ambient` and `pion_ambient_v2`, which are not in the repo;
+* `fsdp_workers.py` lines 629 and 637 use `use_orig_for_fsdp`, never defined.
+
+**Whole matrices are unexplained.** The scripts run FSDP1 with `use_orig_params=True` on 8 GPUs, a 1-D mesh,
+so FULL_SHARD; the optimizer has no gather (`summon_full_params`, `all_gather`, DTensor: none), and under
+FULL_SHARD the original parameters are views into the local shard. Their own guard raises if no 2-D parameter
+is visible. How their runs got whole matrices is not in the code we can see. Upstream VeRL has no
+gather-for-optimizer path for FSDP (Muon issue #3246 closed as not planned); Muon exists only on the
+Megatron backend (PR #7120).
+
+Other details from their script: train and mini-batch 128, prompt 2048 / response 4096, vLLM TP 2, n = 12,
+KL loss 0.001 (`low_var_kl`), entropy 0, `total_epochs=1` (about 800 steps; the paper's 400-step stop is not in
+the script). Their AdamW script also changes the micro-batch (8 vs 4): not a one-variable comparison.
+Evaluation: POLARIS (https://github.com/ChenxinAn-fdu/POLARIS) ships AIME24/25 only; AMC23, Minerva and
+OlympiadBench as run by Pion are not found. Qwen3-1.7B: hidden 2048, FFN 6144, 28 layers, 16 heads, 8 KV
+heads, head_dim 128, vocab 151 936, tied embeddings.
+
+**Decision proposed:** start from their VeRL fork (it has the data, reward and scripts), fix the two defects,
+and give the actor FSDP `NO_SHARD`: 1.7B in fp32 is ~7 GB of weights and as much of gradients, which fits a
+B200, and every rank then holds whole matrices. The optimizer step can run replicated at first, then split by
+matrix across ranks with a broadcast. The same change makes their Pion runnable, so all methods share it.
+Base image: `docker://verlai/verl:vllm017.latest`, their pin.
+
 1. **Is Pion's code with the VeRL integration public** (project page linked from the arXiv abstract)? If
    yes, plug our optimizer into it instead of writing the integration.
 2. **FSDP.** VeRL trains with FSDP, which gives each rank a flat shard. Our method, like Pion, needs the
@@ -103,18 +132,29 @@ curves. The Table-3-style final table is secondary.
    per matrix, as distributed Muon does. Start with (a).
 3. **Memory of the factors.** Qwen3-1.7B: hidden 2048, FFN 6144, 28 layers, GQA. One 6144x6144 fp32 factor is
    ~150 MB; with both sides, bases and Lie momentum it is tens of GB in total. Measure before the first run.
-4. **Time one step** (20 steps of GRPO on 8 B200) to fix the budget in §3.6.
+4. **Container.** Checked 2026-11-03: `ngd-pion.sif` (NGC PyTorch 26.07, torch 2.13, transformers 5.15,
+   flash-attn 2.7.4) has no vLLM, VeRL, Ray, DeepSpeed or Accelerate. RLVR needs a new image built on VeRL's
+   own supported image (versions pinned by VeRL, not by us); building it is the first stage-0 job.
+5. **Time one refactor** (one set of 6144-wide `eigh`), separately from the step; see 3.3.
+6. **Time one step** (20 steps of GRPO on 8 B200) to fix the budget in §3.6.
 
 ### 3.3 Decisions specific to RL
 
-* **Which Fisher.** In pretraining `D` is the covariance of loss gradients (empirical Fisher,
+* **Which Fisher.** (Review note: in pretraining the true and the empirical Fisher did not differ, 3.9091 vs
+  3.9102 at 3000 steps; the extra backward below is a cost. Start with the empirical `D` and keep the
+  `log pi` Fisher as the ablation, unless stage 0 shows the zero-advantage dropout empties `D`.)
+  In pretraining `D` is the covariance of loss gradients (empirical Fisher,
   ADR 0006). The natural policy gradient's Fisher is `E[grad log pi grad log pi^T]` over sampled tokens,
   with no advantage weighting. In GRPO the groups that are all right or all wrong have zero advantage and
   would drop out of the empirical `D`. Proposal: collect `D` from a separate backward of `log pi` on a
   subsample of tokens, only on the statistics steps. Then the method is literally NPG/TRPO on the
   iso-spectral manifold -- the strongest framing for the paper. Record it as an ADR.
-* **Refactor often.** 400 steps at T_fac 25 is 16 refactors. A step takes minutes, so use T_fac 1-5 or the
-  exact form (Algorithm 1); its cost is invisible here.
+* **Refactor often -- but measure what a refactor costs first.** 400 steps at T_fac 25 is 16 refactors, so a
+  shorter cadence is attractive. It is not free at this size: Qwen3-1.7B's FFN is 6144 wide, so the gate/up
+  out-side and the down in-side are 6144x6144 pencils, each a congruence path of three fp32 `eigh` (B^-1/2,
+  C, the pencil), 3 such matrices x 28 layers per refactor. fp32 `eigh` at 6144 is seconds per call on a GPU,
+  so a refactor can be minutes, comparable to a generation step (correction 2026-11-03, review of this plan).
+  Stage 0 times one refactor; then choose T_fac, and spread the `eigh` calls over the 8 GPUs if needed.
 * **The angle.** RL moves weights very little. Centre the theta grid on the angle Pion actually turns per
   step at lr 1e-6 (log the largest rotation-plane angle in a Pion run), 3-4 values around it. RL usually
   runs a constant lr: test constant and cosine (in pretraining constant was worse, 6.3 of `FINAL.md`).
@@ -142,7 +182,20 @@ so 7-20 h per 400-step run, **~55-160 B200-hours per run**. The allocation is 10
 (`CLUSTER.md`): enough for the main comparison (4 methods, 1 seed) and probably seeds for ours and Pion;
 tuning and the second model are in question.
 
-### 3.7 Risks
+Checked 2026-11-03: the `b200` partition is two nodes, `b201` and `b202`, 8 B200 each, 24 h limit per job
+(so a 400-step run needs checkpoint and resume). Both were busy: four 20-hour jobs of another user on `b202`,
+and on `b201` one job holding 1 GPU but all 2015 GB of memory, which blocks the rest of the node. A full
+node may queue for a long time. `sreport`: p330 has used ~811 GPU-hours since 2026-08-01 (RTX and B200
+together); SLURM sets no hard cap.
+
+### 3.7 Initialisation does not transfer
+
+The alpha-3 tail result (`FINAL.md` 6.5) is a pretraining result. In RLVR the model is pretrained: the frozen
+spectrum is Qwen's own, for us and for Pion. That is a positioning point rather than a loss: a
+spectrum-preserving fine-tune cannot change the pretrained model's singular values, a built-in regulariser
+(say it in the paper).
+
+### 3.8 Risks
 
 * RL gradients are very noisy; `F^-1` can amplify noise along low-curvature directions. Momentum and the
   floor `eps` are the levers; the floor may need raising.
