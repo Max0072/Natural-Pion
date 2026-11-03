@@ -347,6 +347,11 @@ put("pion_vs_paper", NUM["pion_full"] - 3.3575, "pion_full - 3.3575 (the Pion pa
 # analytic: the truncated exponential's departure from orthogonality, ||T^T T - I||_2 = (angle)^4 / 4
 for th in (0.05, 0.2):
     put(f"trunc_err_{th}", th ** 4 / 4, f"theta^4/4 at theta = {th} (Proposition 4)")
+rc = json.load(open(R / "probes" / "rl_refactor_cost_b200.json"))
+put("rl_refactor_b200", rc["refactor_total_s"], "runs-record/probes/rl_refactor_cost_b200.json (scripts/probes/rl_refactor_cost.py, job 397885)")
+missing("kfac_vs_exact", "K-FAC curvature along the step over the exact per-token curvature, for Natural Pion: rerun "
+        "scripts/probes/kfac_error.py on a Natural Pion checkpoint with the 1/2 operator and record (the journal's 0.0128 "
+        "is from the earlier method and the earlier factor-2 convention)")
 missing("pion_angle_max", "largest rotation-plane angle per step in a Pion run (lr 1e-3); needs Pion's per-layer "
         "angle logged and a script reading it")
 

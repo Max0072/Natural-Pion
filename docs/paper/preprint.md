@@ -685,10 +685,15 @@ momentum at the same step.
 
 ## 6 Related work
 
+<!-- TODO: every description in this section is to be checked against the papers' method sections
+(literature check in progress, 2026-11-03); nothing here is final until then. -->
+
 **Orthogonal equivalence training.** POET (Qiu et al., 2025) reparameterises $W = R W_0 P$ with
-learned orthogonal factors. Pion (Shi et al., 2026) makes the same principle an optimizer, with
-updates in the Lie algebra. Both use the gradient on the generators directly. Natural Pion keeps
-Pion's manifold and changes the direction to the natural gradient.
+learned orthogonal factors, and POET-X (2026) makes it memory-efficient. Pion (Shi et al., 2026) turns
+the same principle into an optimizer, with updates in the Lie algebra. ISO (Isospectral Optimization,
+2026) keeps the spectra of a pretrained model and changes only its singular frames, for reinforcement
+learning from verifiable rewards. All of them move along the gradient on the generators. Natural Pion
+keeps Pion's manifold and changes the direction to the natural gradient.
 
 **Natural gradient and Kronecker factorisations.** The natural gradient (Amari, 1998) has a long line
 of approximations. K-FAC (Martens & Grosse, 2015) factorises the Fisher of a layer into input and
@@ -697,9 +702,14 @@ rotation generators, where it gives the symmetric two-term operator of Propositi
 Kronecker product. Shampoo (Gupta et al., 2018) and its successors precondition the weight gradient
 with Kronecker factors built from the gradient itself. Natural gradient methods on manifolds have
 been studied in general (e.g. arXiv:2207.07287). We are not aware of a closed form for two-sided
-rotations of weight matrices. Recent work combines K-FAC with a polar (Muon-style) additive update
+rotations of weight matrices. <!-- TODO: claim stands only after the arXiv re-check. --> Recent work combines K-FAC with a polar (Muon-style) additive update
 (FISMO, arXiv:2601.21750; Go-MUON, arXiv:2608.09763). Natural Pion's update is multiplicative and
 keeps the spectrum.
+
+**Orthogonalised additive updates.** Muon (Jordan et al., 2024) replaces the update by its orthogonal
+polar factor, $W \leftarrow W - \eta\, UV^\top$, which equalises the update's singular values but
+leaves the weight's spectrum free. It is additive and does not preserve the spectrum. Pion reports it
+as competitive with Muon at 1.3B parameters.
 
 **Step size from geometry.** Grafting (Agarwal et al., 2020) separates the direction of one optimizer
 from the step size of another. Muon and the modular-norm view (Bernstein & Newhouse, 2024) set the
@@ -720,6 +730,15 @@ preservation of the spectrum.
   harness only.
 * **Exactness in practice.** The spectrum is frozen in exact arithmetic. In fp32 it drifts by {{fp32_drift_3000}}
   over 3 000 steps, with a consistent sign. We have not measured whether this matters.
+* **Only Pion as a baseline.** We compare against the published Pion configuration only, not against
+  AdamW or Muon, and only on validation loss, not on downstream tasks.
+* **The peak angle depends on the horizon.** The best peak falls with the training length (0.2 at 3 000
+  steps, 0.05 from 15 000 on), so it has to be chosen for the budget, as a learning rate is.
+* **The K-FAC assumption.** The independence of $x$ and $\delta$ is not tested here. How far the K-FAC
+  curvature along our step is from the exact per-token curvature is {{kfac_vs_exact}}.
+* **Open checks.** The query projection is rotated whole, while Pion rotates it per head; and the
+  relative floor $\varepsilon = 10^{-4}$ was chosen for an earlier variant. Both are being re-tested.
+  <!-- TODO: close with the results of natural_pion_qhead.sbatch and natural_pion_reg.sbatch. -->
 * **Cost.** $O(n^3)$ eigendecompositions every $T_{\mathrm{fac}}$ steps and a Cayley solve every step.
   At 60M the step is {{cost_ratio:.2f}}x Pion's. For larger matrices the refresh must be amortised or distributed.
 * **Steps-to-loss** (at least {{steps_ratio_min_lo:.2f}}x) is a lower bound from mid-schedule crossings, not a measured ratio with
@@ -727,7 +746,9 @@ preservation of the spectrum.
 
 **Future work.** Reinforcement learning from verifiable rewards, where a step costs minutes of
 generation and the step efficiency of Section 5.3 is the relevant measure. The natural policy gradient
-lineage (Kakade, 2001) makes it the natural test.
+lineage (Kakade, 2001) makes it the natural test. Larger models, where the $O(n^3)$ refresh has to be
+amortised over more steps or distributed across devices; at the shapes of a 1.7B model, one refresh
+of all matrices takes {{rl_refactor_b200:.0f}} s on one B200.
 
 ---
 
@@ -741,10 +762,13 @@ lineage (Kakade, 2001) makes it the natural test.
 - FISMO. arXiv:2601.21750.
 - Go-MUON. arXiv:2608.09763.
 - Gupta, V., Koren, T., Singer, Y. *Shampoo: preconditioned stochastic tensor optimization.* ICML 2018.
+- ISO, Isospectral Optimization. arXiv:2607.19331.
+- Jordan, K., et al. *Muon: an optimizer for hidden layers in neural networks.* 2024.
 - Kakade, S. *A natural policy gradient.* NeurIPS 2001.
 - Li, J., Li, F., Todorovic, S. *Efficient Riemannian optimization on the Stiefel manifold via the Cayley transform.* ICLR 2020, arXiv:2002.01113.
 - Martens, J., Grosse, R. *Optimizing neural networks with Kronecker-factored approximate curvature.* ICML 2015, arXiv:1503.05671.
 - Martin, C. H., Mahoney, M. W. *Implicit self-regularization in deep neural networks.* JMLR, 2021.
+- POET-X. arXiv:2603.05500.
 - Qiu, Z., et al. *Reparameterized LLM training via orthogonal equivalence transformation (POET).* NeurIPS 2025, arXiv:2506.08001.
 - Riemannian natural gradient methods. arXiv:2207.07287.
 - Shi, et al. *Pion: a spectrum-preserving optimizer via orthogonal equivalence transformation.* arXiv:2605.12492, 2026.

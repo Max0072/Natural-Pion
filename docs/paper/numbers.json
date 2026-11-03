@@ -177,6 +177,8 @@
  "pion_vs_paper": 0.013081805706024241,
  "trunc_err_0.05": 1.5625000000000003e-06,
  "trunc_err_0.2": 0.0004000000000000001,
+ "rl_refactor_b200": 58.4,
+ "kfac_vs_exact": null,
  "pion_angle_max": null,
  "mc_err_in": 0.0066190058598746436,
  "mc_err_out": 0.0035533962054316226,
