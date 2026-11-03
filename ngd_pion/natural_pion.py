@@ -12,7 +12,7 @@ For each rotated weight `W` (m x n) with gradient `G`, one step is
 
     G_in  = skew(W^T G),  G_out = skew(G W^T)                 generators (Riemannian gradients)
     M     = beta1 M + (1 - beta1) G                           Lie momentum on each side
-    X     = F^-1(M)                                           K-FAC Fisher on rotations, each side:
+    X     = F^-1(M)                                           F(X) = (B X C + C X B) / 2 on each side:
                                                               in (A, W^T D W), out (D, W A W^T)
     sigma = max(||X_in||_2, ||X_out||_2)                      one scale for both sides
     c     = theta_t / sigma                                   the largest plane turns by theta_t
@@ -250,7 +250,10 @@ class NaturalPion(torch.optim.Optimizer):
         # X = F^-1 G: in the basis F is elementwise division by 2 (lam_i + lam_j)
         for items in by_size.values():
             P = torch.stack([b.P for *_, b in items])
-            den = torch.stack([b.denominator for *_, b in items])
+            # Basis.denominator is 2 (lam_i + lam_j), the reference code's convention; the Fisher derived in the
+            # paper is F(X) = (SXA + AXS)/2, whose eigenvalues are (lam_i + lam_j)/2. The factor 1/4 is a power of
+            # two, so X, sigma and c scale exactly and the step c X is bit-identical either way.
+            den = 0.25 * torch.stack([b.denominator for *_, b in items])
             G = torch.stack([g for _, _, g, _ in items])
             Pt = P.transpose(-1, -2)
             X = skew(P @ ((Pt @ G @ P) / den) @ Pt)

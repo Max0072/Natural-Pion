@@ -341,12 +341,22 @@ for every scale of $\Omega$. Hence $R_{\mathrm{out}} W R_{\mathrm{in}}$ has exac
 of $W$. The degree-2 truncated exponential $T = I + \Omega + \Omega^2/2$ satisfies
 $T^\top T = I + \Omega^4/4$.
 
-*Proof.* $I + \Omega$ and $I - \Omega$ commute, and $(I \pm \Omega)^\top = I \mp \Omega$, so
+*Proof.* The eigenvalues of a real skew $\Omega$ are $\pm i\sigma_k$, so those of $I + \Omega$ are
+$1 \pm i\sigma_k \neq 0$ and $I + \Omega$ is invertible. $I + \Omega$ and $I - \Omega$ commute, and
+$(I \pm \Omega)^\top = I \mp \Omega$, so
 $R^\top R = (I + \Omega)(I - \Omega)^{-1}(I + \Omega)^{-1}(I - \Omega) = I$. For $T$, expand with
 $\Omega^\top = -\Omega$: the odd and quadratic terms cancel, leaving $\Omega^4/4$. $\square$
 
-Pion's RMS scaling keeps $\Omega$ small, which keeps the $\Omega^4/4$ drift small. With Cayley, no such
-constraint is needed for the invariant to hold.
+**Why Cayley here.** The Cayley transform is a standard retraction on the orthogonal group (Wen & Yin,
+2013; Li et al., 2020), and Pion reports having considered it, with modest gains. For Pion the truncated
+exponential is adequate because its steps are small: Pion's largest rotation angle per step is
+**[pion_angle_max?]**, and the departure from orthogonality, $\|T^\top T - I\|_2 = \varphi^4/4$ for a largest
+angle $\varphi$, is negligible there. Natural Pion takes much larger steps: by construction the largest
+plane of every matrix turns by $\theta_t$, with peak angles of 0.05 to 0.2 rad. At $\theta = 0.2$ the
+truncated exponential would inflate the singular values by up to 4e-04 per step (and by
+2e-06 at 0.05), compounding over tens of thousands of steps: the frozen spectrum would
+drift. Cayley removes the error at any angle. It also makes Proposition 3 exact, so the angle we prescribe
+is the angle taken.
 
 **Precision.** In practice the guarantee holds only if the solve runs in true fp32. TF32 matrix
 products, the default on recent GPUs, move the spectrum by a relative **[tf32_drift?]** over 200 steps in our
@@ -358,11 +368,14 @@ measurements. In fp32 the singular values of our trained models drift by about *
 them processed alike). Everything is recomputed at every step; Section 4 makes it fast.
 
 ```
-state:  A, D (EMAs of x x^T and of d d^T, fp32), M_in, M_out (momentum), bases (P, lambda) per side
+state:  A, D (EMAs of x x^T and of d d^T, fp32; initialised by their first observation),
+        M_in, M_out (momentum, initialised at zero), bases (P, lambda) per side
 every step t:
+    theta_t <- theta_min + (theta_0 - theta_min) (1 + cos(pi t / T)) / 2         cosine, theta_min = 1e-5
     forward: A <- beta_A A + (1 - beta_A) mean_tokens(x x^T)
     backward: D <- beta_D D + (1 - beta_D) mean_tokens(d d^T)     d = per-token output gradient
-    (P_in, lambda_in)   <- gen_eig(A, W^T D W)                      the bases (Prop. 2)
+    (P_in, lambda_in)   <- gen_eig(A, W^T D W)                      the bases (Prop. 2); every spectrum
+                                                                    floored at eps * lambda_max
     (P_out, lambda_out) <- gen_eig(D, W A W^T)
     G_in  <- skew(W^T G);   G_out <- skew(G W^T)
     M_in  <- beta1 M_in  + (1 - beta1) G_in
@@ -374,9 +387,18 @@ every step t:
     W     <- Cay(c X_out) W Cay(c X_in),   Cay(Z) = (I + Z/2)^-1 (I - Z/2)
 ```
 
-Embedding, output head and normalization gains use AdamW, as in Pion. Any constant factor in $F$
-cancels in $c$, so the method is invariant to the scale of $A$ and $D$, including the $1/N$ that
-autograd puts on per-token gradients of a mean loss.
+Embedding, output head and normalization gains use AdamW, as in Pion. The rotated matrices get no
+weight decay: a rotation cannot change their norm, and their spectrum is fixed by construction.
+
+$d$ is the gradient of one token's loss at the layer output. Autograd returns the gradient of the
+batch-mean loss, which carries a factor $1/N$; in any case a constant factor in $A$ or $D$ scales $F$ by a
+constant, which scales $X$ and $\sigma$ alike and cancels in $c X$, so the step does not depend on it. The
+implementation (`ngd_pion/natural_pion.py`) uses the operator exactly as derived, with the factor
+$\tfrac12$.
+
+<!-- TODO (user, 2026-11-03): re-examine the regularisation. Why a relative floor at 1e-4 and not a tuned
+floor or Tikhonov damping? The choice predates the final method (journal, damped.py); re-test eps and
+Tikhonov on Natural Pion before submission. -->
 
 ---
 

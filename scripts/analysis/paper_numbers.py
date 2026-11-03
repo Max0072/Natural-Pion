@@ -326,6 +326,12 @@ put("win_maxdev", max(abs(NUM[f"win_{k}"] - NUM["win_ref"]) for k in ("dlast6", 
     "largest |win_* - win_ref|")
 put("pion_vs_paper", NUM["pion_full"] - 3.3575, "pion_full - 3.3575 (the Pion paper's own 60M number, cited)")
 
+# analytic: the truncated exponential's departure from orthogonality, ||T^T T - I||_2 = (angle)^4 / 4
+for th in (0.05, 0.2):
+    put(f"trunc_err_{th}", th ** 4 / 4, f"theta^4/4 at theta = {th} (Proposition 4)")
+missing("pion_angle_max", "largest rotation-plane angle per step in a Pion run (lr 1e-3); needs Pion's per-layer "
+        "angle logged and a script reading it")
+
 # probes and checks that are not in runs-record
 try:
     out = subprocess.run([sys.executable, str(ROOT / "scripts/analysis/check_fisher.py")], capture_output=True, text=True, check=True).stdout
