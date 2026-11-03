@@ -218,13 +218,18 @@ semi-definite on the skew matrices: $\langle Z, SXA + AXS\rangle$ is symmetric i
 $\langle X, F_{\mathrm{in}}(X)\rangle = \mathbb{E}[(u^\top X x)^2] \ge 0$ before the factorisation and
 $\tfrac12\langle X, SXA + AXS\rangle = \|S^{1/2} X A^{1/2}\|_F^2 \ge 0$ after it. $\square$
 
-**A second route to the same operator.** The map from the generator to the change of $W$ is
-$J(\Omega) = W\Omega$, with adjoint $J^*(M) = \operatorname{skew}(W^\top M)$ onto $\mathfrak{so}(n)$.
-Pulling K-FAC's Fisher on $W$ back through it gives
-$J^* F_W J(X) = \operatorname{skew}(W^\top D W X A) = \operatorname{skew}(S X A) = \tfrac12(SXA + AXS)$.
-Proposition 1 is therefore exactly K-FAC's Fisher, expressed on the rotation generators. The derivation
-above shows why it keeps a Kronecker-like form there: each token contributes a bivector of two
-independent vectors.
+**Relation to K-FAC.** The operator we derived turns out to be K-FAC itself, written on the rotation
+generators. The change of $W$ caused by a generator is $J(\Omega) = W\Omega$, whose adjoint onto
+$\mathfrak{so}(n)$ is $J^*(M) = \operatorname{skew}(W^\top M)$. Pulling K-FAC's Fisher on $W$,
+$F_W(V) = DVA$, back through this map gives
+
+$$J^* F_W J(X) = \operatorname{skew}(W^\top D\, W X\, A) = \operatorname{skew}(S X A) = \tfrac12\big(SXA + AXS\big),$$
+
+which is Proposition 1. So nothing beyond K-FAC's own assumption enters. What the derivation adds is
+the form the operator takes on the generators, and the reason it keeps a Kronecker-like structure
+there: each token contributes a bivector of two independent vectors. That form decides how the operator
+is inverted (Section 3.2). It is not a Kronecker product, so K-FAC's inverse
+$D^{-1} V A^{-1}$ does not apply.
 
 **Remarks.**
 
