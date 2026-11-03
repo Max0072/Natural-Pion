@@ -1,5 +1,18 @@
 # What each probe asks
 
+## Behind the final method (docs/paper/FINAL.md)
+
+| probe | role |
+|---|---|
+| `step_norm.py` | where Natural Pion was developed: the reference `NGDPionUnified` with alpha off and the step set by an angle, every variant of FINAL.md section 6 behind a `STEP_NORM_*` flag. `ngd_pion/natural_pion.py` is its `FAST BATCH A_LAST=6 D_LAST=6` configuration, bit for bit |
+| `spectrum_drift.py`, `spectrum_preserved.py` | how far the singular values move in fp32 (FINAL.md section 8, item 5) |
+| `ns_cayley.py`, `ns_law.py` | Newton-Schulz in place of the Cayley solve: error against angle (not adopted) |
+| `rl_refactor_cost.py` | refactor and Cayley cost at Qwen3-1.7B shapes (RLVR_PLAN.md 3.2) |
+| `alpha_*.py` | what the earlier trust ratio `alpha` was (journal 2026-10-29/30), which led to the angle |
+
+## The earlier work
+
+
 Thirty-six one-off scripts, written for a specific question and kept because
 re-deriving the question costs more than the file does. Grouped by what they
 answer. **Twelve of them have no docstring at all** and are listed as such
