@@ -200,19 +200,23 @@ ours_curves = [info(one(p)) for p in ("stepnormcombo/batch/*", "stepnormfinal/tf
 ratios = []
 for steps, pat in ((3840, "stepnormfinal/pion3840/*"), (4500, "stepnormfinal/pion4500/*"), (19200, "stepnormfinal/pion19200/*"), (73242, f"{L}/pion73242-lr1e-3/*")):
     target = val(pat, 0)
-    cross = None
+    cross, bracket = None, None
     for c in ours_curves:
         pts = sorted((s + 1, v) for s, v in c["vals"].items())
         for (s0, v0), (s1, v1) in zip(pts, pts[1:]):
             if v1 <= target < v0:
                 s = s0 + (v0 - target) / (v0 - v1) * (s1 - s0)
-                cross = s if cross is None else min(cross, s)
+                if cross is None or s < cross:
+                    cross, bracket = s, (s0, s1)
                 break
     put(f"steps_pion_{steps}_val", target, pat)
     put(f"steps_cross_{steps}", cross, f"first step any of our seed-0 runs reaches val(Pion {steps}), linear between evaluations")
     put(f"steps_ratio_{steps}", steps / cross, f"{steps} / steps_cross_{steps}")
     ratios.append(steps / cross)
+    put(f"steps_ratio_{steps}_lo", steps / bracket[1], f"{steps} / the evaluation step after the crossing")
+    put(f"steps_ratio_{steps}_hi", steps / bracket[0], f"{steps} / the evaluation step before the crossing")
 put("steps_ratio_min", min(ratios), "min of steps_ratio_*")
+put("steps_ratio_min_lo", min(NUM[f"steps_ratio_{n}_lo"] for n in (3840, 4500, 19200, 73242)), "min of steps_ratio_*_lo: the conservative bound")
 
 # ablations: direction
 for key, pat in (("dir_fisher_nomom", "stepnorm/*"), ("dir_raw_nomom", "stepnormabl/none-cosine/*"),
@@ -367,6 +371,9 @@ for k, need in (("tf32_drift", "scripts/probes/tf32.py output, recorded"),
                 ):
     missing(k, need)
 p0 = [sps_median(d) for d in runs("stepnormpower/p0/*")]
+put("sched_linear_fast", val("stepnormcombo/lin0.2/*"), "stepnormcombo/lin0.2 (Natural Pion Fast, linear decay, peak 0.2)")
+put("clock_pion_sps", sps("stepnormclock/pion-*"), "stepnormclock Pion 5300-step run: the step time measured before the clock runs were planned")
+put("clock_steps_planned", 73242 * NUM["clock_pion_sps"] / NUM["batch_sps"], "73242 x clock_pion_sps / batch_sps; rounded to 56 900 for the run")
 put("svd_sps_lo", min(p0), "stepnormpower/p0 runs, median s/step between logged rows, min over angles")
 put("svd_sps_hi", max(p0), "same, max over angles")
 

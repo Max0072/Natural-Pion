@@ -11,7 +11,7 @@ $W \leftarrow R_{\mathrm{out}} W R_{\mathrm{in}}$, so the singular values of eve
 whole run. We keep this constraint and change the direction of the rotation from the gradient to the
 natural gradient. On LLaMA-60M trained on 9.6B tokens of C4, the resulting optimizer, **Natural Pion**,
 reaches a validation loss of {{np_full_steps:.4f}} in Pion's number of steps, against Pion's {{pion_full:.4f}}. At Pion's
-wall-clock time it reaches {{np_full_clock:.4f}}. It needs at least {{steps_ratio_min:.2f}}x fewer steps to reach Pion's final loss, and it
+wall-clock time it reaches {{np_full_clock:.4f}}. It needs at least {{steps_ratio_min_lo:.2f}}x fewer steps to reach Pion's final loss, and it
 is ahead at equal wall-clock time on every seed and horizon we measured.
 
 The method rests on three results. First, on the rotation generators the Kronecker-factored (K-FAC)
@@ -74,7 +74,7 @@ provides.
    measured separately for time and loss (Section 4).
 6. **Experiments.** On LLaMA-60M / C4 at Pion's full 9.6B-token budget, Natural Pion is ahead of
    Pion at equal steps by {{gap_full_steps:.3f}} and at equal wall-clock time by {{gap_full_clock:.3f}} in validation loss. It is ahead
-   on four of four seeds at two shorter horizons, and needs at least {{steps_ratio_min:.2f}}x fewer steps. Ablations
+   on four of four seeds at two shorter horizons, and needs at least {{steps_ratio_min_lo:.2f}}x fewer steps. Ablations
    isolate each component.
 
 ---
@@ -553,7 +553,16 @@ reported by the Pion paper in Megatron-LM. The difference is a harness offset we
 **Natural Pion.** Natural Pion Fast (Algorithm 2, Section 4): $T_{\mathrm{fac}} = 25$; $A$ and $D$
 accumulated (EMA 0.5) over the 6 steps before each refresh; Lie momentum 0.9; $\varepsilon = 10^{-4}$; cosine schedule on $\theta$ down to
 $10^{-5}$. The peak angle $\theta_0$ is 0.2 at 3 000 steps and 0.05 from 15 000 steps on. The best peak
-falls with the horizon.
+falls with the horizon; 0.05 was chosen on 15 000-step runs and kept for the full length, where the one
+other value we ran, 0.025, is worse ({{np_full_clock_0025:.4f}} against {{np_full_clock:.4f}}).
+
+**Equal wall-clock time.** The step counts compared at equal time were fixed before the runs, from the
+measured step times (Pion {{clock_pion_sps:.3f}} s, Natural Pion Fast {{batch_sps:.3f}} s): Pion's 73 242 steps
+correspond to {{clock_steps_planned:,.0f}} of ours, run as 56 900; 3 840 and 19 200 Pion steps correspond to
+3 000 and 15 000. The measured wall times (Table 4) agree.
+
+Pion's learning rate was checked up to 19 200 steps; at the full length it is the published $10^{-3}$, not
+re-tuned.
 
 *Table 3. Pion learning rate (validation loss, seed 0).*
 
@@ -609,19 +618,24 @@ loss.
 | 19 200 | {{steps_pion_19200_val:.4f}} | {{steps_cross_19200:,.0f}} | {{steps_ratio_19200:.2f}} |
 | 73 242 | {{steps_pion_73242_val:.4f}} | {{steps_cross_73242:,.0f}} | {{steps_ratio_73242:.2f}} |
 
-This is a lower bound on the ratio. The Natural Pion run's cosine has not finished decaying at the
-crossing point, and a schedule fitted to that length would reach the loss earlier. The ratio does not
+The crossing is interpolated linearly between two evaluations (every 500 steps in the short runs, every
+2 000 in the full-length ones), so each ratio is known to an interval: {{steps_ratio_73242_lo:.2f}}–{{steps_ratio_73242_hi:.2f}} at
+73 242 steps and {{steps_ratio_19200_lo:.2f}}–{{steps_ratio_19200_hi:.2f}} at 19 200. The crossing also happens mid-schedule, before the
+Natural Pion run's cosine has decayed; a schedule fitted to that length would likely reach the loss
+earlier, so we read the ratio as a lower bound. It is not a measurement with fitted schedules. The ratio does not
 shrink with length. In settings where a step is expensive for reasons other than the optimizer (large
 distributed batches, reinforcement learning with generation), steps rather than optimizer time are
 the cost that matters.
 
 ### 5.4 Ablations
 
-All ablations are at 3 000 steps, seed 0. Each row reports the best value of its own angle grid, and
-every grid optimum is interior.
+All ablations are at 3 000 steps, seed 0. They were run on the exact form or on the fast form as they
+were developed, so each block states its setting and its reference. Where a row says "best", it is the
+best of an angle grid; every such optimum is interior to its grid except where marked.
 
-**The direction: natural gradient against the raw generator.** Same normalisation, retraction and
-schedule; only $X = F^{-1}G$ against $X = G$ changes ($T_{\mathrm{fac}} = 1$).
+**The direction: natural gradient against the raw generator.** Algorithm 1 ($T_{\mathrm{fac}} = 1$),
+best angle of each grid. Same normalisation, retraction and schedule; only $X = F^{-1}G$ against $X = G$
+changes.
 
 | | no momentum | Lie momentum 0.9 |
 |---|---|---|
@@ -632,7 +646,7 @@ schedule; only $X = F^{-1}G$ against $X = G$ changes ($T_{\mathrm{fac}} = 1$).
 Momentum supplies part of what $F^{-1}$ does, but not all of it. $X = G$ with momentum is close to Pion
 ({{pion3000_s0:.4f}}), as it should be.
 
-**The length.** All rules below use the direction $F^{-1}G$; no momentum, $T_{\mathrm{fac}} = 1$. The
+**The length.** Algorithm 1 without momentum, best of each grid. All rules use the direction $F^{-1}G$. The
 last column is the spread of the realised rotation angle across the 56 matrices (90th over 10th
 percentile, after step 1000).
 
@@ -649,15 +663,23 @@ Across six rules, the more evenly the matrices turn, the lower the loss. The spe
 RMS rule on all four seeds (gaps {{rms_gap_s0:.3f}}, {{rms_gap_s1:.3f}}, {{rms_gap_s2:.3f}}, {{rms_gap_s3:.3f}}). The Fisher-norm row is the best of its
 grid at the edge of the range.
 
-**Other choices** (reference values in brackets).
+**Other choices.** Single runs at the reference's angle unless stated; the reference value is in brackets.
+Rows with reference {{ref_tf25:.4f}} are on the fast form ($T_{\mathrm{fac}} = 25$, momentum, angle 0.2); rows with
+reference {{dir_fisher_nomom:.4f}} on Algorithm 1 without momentum (angle 0.4).
 
 | change | val |
 |---|---|
-| each side normalised by its own $\sigma$ ({{ref_tf25:.4f}}) | {{sides_best:.4f}} |
+| each side normalised by its own $\sigma$, best of angles 0.1 and 0.2 ({{ref_tf25:.4f}}) | {{sides_best:.4f}} |
 | attention matrices at $\times 0.25 / 0.5 / 2 / 4$ the angle ({{dir_fisher_nomom:.4f}}) | {{attn_0.25:.4f}} / {{attn_0.5:.4f}} / {{attn_2:.4f}} / {{attn_4:.4f}} |
-| constant angle; linear decay; warmup + cosine (cosine {{dir_fisher_nomom:.4f}}) | {{sched_constant:.4f}}; {{sched_linear:.4f}}; {{sched_warmcos:.4f}} |
+| constant angle; linear decay; warmup + cosine, best of 3 angles each (cosine {{dir_fisher_nomom:.4f}}) | {{sched_constant:.4f}}; {{sched_linear:.4f}}; {{sched_warmcos:.4f}} |
+| linear decay on the fast form (cosine {{ref_tf25:.4f}}) | {{sched_linear_fast:.4f}} |
 | warmup-stable-decay, decay over the last 20% / 10% ({{ref_tf25:.4f}}) | {{wsd_0.2:.4f}} / {{wsd_0.1:.4f}} |
 | equal angle on every plane of $X$ (polar step), at step 2499 ({{polar_ref_2499:.4f}}) | {{polar_2499:.4f}} |
+
+Linear decay and cosine are within noise of each other on both forms; we keep the cosine. The polar step
+needs an SVD per matrix per step ({{svd_sps_lo:.1f}}–{{svd_sps_hi:.1f}} s per step), and its runs could not finish within the
+time limit, so it is compared at the last evaluation they all reached, step 2499, against Algorithm 1 with
+momentum at the same step.
 
 ---
 
@@ -700,7 +722,7 @@ preservation of the spectrum.
   over 3 000 steps, with a consistent sign. We have not measured whether this matters.
 * **Cost.** $O(n^3)$ eigendecompositions every $T_{\mathrm{fac}}$ steps and a Cayley solve every step.
   At 60M the step is {{cost_ratio:.2f}}x Pion's. For larger matrices the refresh must be amortised or distributed.
-* **Steps-to-loss** ({{steps_ratio_min:.2f}}x) is a lower bound from mid-schedule crossings, not a measured ratio with
+* **Steps-to-loss** (at least {{steps_ratio_min_lo:.2f}}x) is a lower bound from mid-schedule crossings, not a measured ratio with
   fitted schedules.
 
 **Future work.** Reinforcement learning from verifiable rewards, where a step costs minutes of
