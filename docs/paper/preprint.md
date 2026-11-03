@@ -351,11 +351,13 @@ $\Omega^\top = -\Omega$: the odd and quadratic terms cancel, leaving $\Omega^4/4
 **Why Cayley here.** The Cayley transform is a standard retraction on the orthogonal group (Wen & Yin,
 2013; Li et al., 2020), and Pion reports having considered it, with modest gains. The truncated
 exponential departs from orthogonality by $\|T^\top T - I\|_2 = \varphi^4/4$ for a largest angle $\varphi$, and
-the departure compounds over steps. The angles at stake are not small for either method. Pion's largest
-rotation angle per step reaches {{pion_angle_max:.2g}} rad (median over steps {{pion_angle_median:.2g}}; first
-{{pion_angle_steps:,.0f}} steps of a 3 840-step run, measured by `scripts/probes/pion_angles.py`); Natural Pion's peak angle
-is 0.05 to 0.2 rad by construction. At 0.2 the truncated exponential would change the singular values by
-up to {{trunc_err_0.2:.0e}} per step, at 0.05 by {{trunc_err_0.05:.0e}}. Cayley has no such error at any angle. It also
+the departure compounds over steps. The angles at stake differ in kind between the two methods. Pion's angles vary across matrices and steps: its
+typical block turns by {{pion_angle_block_median:.2g}} rad per step (median over blocks; 90th over 10th percentile
+{{pion_angle_spread:.1f}}), and its largest block by up to {{pion_angle_max:.2g}} rad (first {{pion_angle_steps:,.0f}} steps of a
+3 840-step run, `scripts/probes/pion_angles.py`). Natural Pion turns the largest plane of every matrix by
+exactly $\theta_t$, 0.05 to 0.2 rad at the peak, on every matrix and every step. At 0.2 the truncated
+exponential would change the singular values of every matrix by up to {{trunc_err_0.2:.0e}} per step, at 0.05 by
+{{trunc_err_0.05:.0e}}, against about {{trunc_err_pion:.0e}} for Pion's typical block. Cayley has no such error at any angle. It also
 makes Proposition 3 exact, so the angle we prescribe is the angle taken.
 
 **Precision.** In practice the guarantee holds only if the solve runs in true fp32. TF32 matrix

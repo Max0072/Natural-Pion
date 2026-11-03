@@ -388,6 +388,17 @@ if PA.exists():
     per_step = [max(v) for k, v in pa.items() if int(k) > 0]
     put("pion_angle_max", max(per_step), "runs-record/probes/pion_angles.json: largest block angle, first 1058 steps of the 3840-step run (the probe hit its time limit there; the learning rate is still within 15% of its peak)")
     put("pion_angle_steps", max(int(k) for k in pa), "last logged step of the Pion angle probe")
+    meds, sprs = [], []
+    for k, v in pa.items():
+        if int(k) == 0:
+            continue
+        xs = sorted(v)
+        meds.append(xs[len(xs) // 2])
+        sprs.append(xs[int(0.9 * (len(xs) - 1))] / xs[int(0.1 * (len(xs) - 1))])
+    meds.sort(); sprs.sort()
+    put("trunc_err_pion", meds[len(meds) // 2] ** 4 / 4, "(pion_angle_block_median)^4 / 4")
+    put("pion_angle_block_median", meds[len(meds) // 2], "pion_angles.json: median over steps of the median block angle")
+    put("pion_angle_spread", sprs[len(sprs) // 2], "pion_angles.json: median over steps of p90/p10 of the block angles")
     per_step.sort()
     put("pion_angle_median", per_step[len(per_step) // 2], "same, median over logged steps of the largest block angle")
 else:
