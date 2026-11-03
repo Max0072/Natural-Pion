@@ -247,13 +247,10 @@ class NaturalPion(torch.optim.Optimizer):
                 by_size.setdefault(G_in.shape[0], []).append((len(rows) - 1, 2, G_in, b_in))
                 by_size.setdefault(G_out.shape[0], []).append((len(rows) - 1, 3, G_out, b_out))
 
-        # X = F^-1 G: in the basis F is elementwise division by 2 (lam_i + lam_j)
+        # X = F^-1 G: in the basis F is elementwise division by (lam_i + lam_j)/2
         for items in by_size.values():
             P = torch.stack([b.P for *_, b in items])
-            # Basis.denominator is 2 (lam_i + lam_j), the reference code's convention; the Fisher derived in the
-            # paper is F(X) = (SXA + AXS)/2, whose eigenvalues are (lam_i + lam_j)/2. The factor 1/4 is a power of
-            # two, so X, sigma and c scale exactly and the step c X is bit-identical either way.
-            den = 0.25 * torch.stack([b.denominator for *_, b in items])
+            den = torch.stack([b.denominator for *_, b in items])     # (lam_i + lam_j) / 2
             G = torch.stack([g for _, _, g, _ in items])
             Pt = P.transpose(-1, -2)
             X = skew(P @ ((Pt @ G @ P) / den) @ Pt)

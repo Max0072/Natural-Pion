@@ -103,7 +103,9 @@ def exact_curv(
     ys = xs @ W.transpose(-1, -2)                     # (tokens, m)
     us = ds @ W                                       # (tokens, n)
     s = ((ds @ X_out) * ys).sum(-1) + ((us @ X_in) * xs).sum(-1)
-    return 4.0 * (s * s).mean()
+    # <X, F X> = E[s^2] for F(X) = E[<g, X> g]: the operator of the paper, (BXC + CXB)/2 (2026-11-03;
+    # it was 4 E[s^2] while the code's F carried a factor 2 in place of 1/2)
+    return (s * s).mean()
 
 
 class ExactCurvNGDPionS(FastNGDPionS):

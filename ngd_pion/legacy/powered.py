@@ -147,7 +147,7 @@ def signal_to_noise(G_skew: torch.Tensor, basis) -> tuple[float, float, float]:
     factorisation `E[dd^T] (x) E[xx^T]` rather than from `E[(d x^T)^2]`, so any
     overshoot measures how far that factorisation is from the truth.
 
-    Divides by the **raw** `2(lam_i + lam_j)` -- no floor, no exponent. Those
+    Divides by the **raw** `(lam_i + lam_j)/2` -- no floor, no exponent. Those
     are choices about the step; this is a statement about the statistics.
 
     Returns `(median, 99th percentile, max)` over the strictly upper triangle,
@@ -155,7 +155,7 @@ def signal_to_noise(G_skew: torch.Tensor, basis) -> tuple[float, float, float]:
     """
     P = basis.P
     Gb = P.transpose(-1, -2) @ G_skew @ P
-    d = 2.0 * (basis.lam.unsqueeze(-1) + basis.lam.unsqueeze(-2))
+    d = 0.5 * (basis.lam.unsqueeze(-1) + basis.lam.unsqueeze(-2))
     n = d.shape[-1]
     keep = torch.triu(torch.ones(n, n, dtype=torch.bool, device=d.device), diagonal=1)
     keep = keep & (d > 0)

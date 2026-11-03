@@ -65,7 +65,7 @@ def _moments(W, X_in, X_out, A, D):
 def test_matches_the_closed_form_exactly():
     W, X_in, X_out, xs, ds, A, D = _setup()
     ea2, eb2, eab = _moments(W, X_in, X_out, A, D)
-    want = 4.0 * (ea2 + eb2 + 2.0 * eab)
+    want = 1.0 * (ea2 + eb2 + 2.0 * eab)
     got = float(exact_curv(W, X_in, X_out, xs, ds))
     assert got == pytest.approx(want, rel=1e-10)
 
@@ -82,7 +82,7 @@ def test_kfac_curv_is_the_same_thing_without_the_cross_term():
     kfac = float((X_in * fisher_apply(A, W.T @ D @ W, X_in)).sum()) + float(
         (X_out * fisher_apply(D, W @ A @ W.T, X_out)).sum()
     )
-    assert kfac == pytest.approx(4.0 * (ea2 + eb2), rel=1e-10)
+    assert kfac == pytest.approx(1.0 * (ea2 + eb2), rel=1e-10)
 
 
 def test_the_cross_term_is_real_and_bounded():
@@ -98,7 +98,7 @@ def test_the_cross_term_is_real_and_bounded():
     """
     W, X_in, X_out, xs, ds, A, D = _setup()
     ea2, eb2, eab = _moments(W, X_in, X_out, A, D)
-    kfac = 4.0 * (ea2 + eb2)
+    kfac = 1.0 * (ea2 + eb2)
     got = float(exact_curv(W, X_in, X_out, xs, ds))
 
     assert abs(2.0 * eab) > 1e-3 * (ea2 + eb2)          # genuinely non-zero
@@ -126,7 +126,7 @@ def test_pairing_matters():
     assert shuffled != pytest.approx(paired, rel=1e-6)
     # a permutation of an all-pairs list is still all-pairs in distribution,
     # so the shuffled value stays near the closed form rather than wandering
-    assert shuffled == pytest.approx(4.0 * (ea2 + eb2 + 2 * eab), rel=0.5)
+    assert shuffled == pytest.approx(1.0 * (ea2 + eb2 + 2 * eab), rel=0.5)
 
 
 def test_scales_quadratically_with_the_generator():

@@ -188,7 +188,8 @@ def test_the_floor_has_a_lower_bound_set_by_the_working_precision(eps, limit):
     for dt in (DT, torch.float32):
         p = nn.Parameter(W0.clone())
         p.grad = G.clone()
-        opt = NGDPion([p], lr=1e-2, eps=eps, compute_dtype=dt)
+        # lr / 4 since 2026-11-03: F lost a factor 4 (2 -> 1/2), so X grew by 4; same step as before
+        opt = NGDPion([p], lr=2.5e-3, eps=eps, compute_dtype=dt)
         opt.set_covariance(p, A)
         opt.step()
         out[dt] = p.detach().double()

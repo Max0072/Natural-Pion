@@ -45,7 +45,7 @@ def test_denominator_is_the_fisher_spectrum():
     den = b.denominator
     for i in range(6):
         for j in range(6):
-            assert den[i, j] == pytest.approx(2.0 * (b.lam[i] + b.lam[j]).item())
+            assert den[i, j] == pytest.approx(0.5 * (b.lam[i] + b.lam[j]).item())
 
 
 @pytest.mark.parametrize("eps", [0.0, 1e-8, 1e-4])

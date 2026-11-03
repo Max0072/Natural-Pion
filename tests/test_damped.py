@@ -57,7 +57,7 @@ def test_damping_is_exact_in_the_anchor_metric(scale_b, scale_c, frac):
     G = _skew_rhs(seed=3)
 
     lam = frac * float(basis.denominator.max())
-    F = _as_matrix(lambda X: 2 * (B @ X @ C + C @ X @ B))
+    F = _as_matrix(lambda X: 0.5 * (B @ X @ C + C @ X @ B))
     metric = _as_matrix(lambda X: B @ X @ B)
     want = torch.linalg.solve(F + lam * metric, G.reshape(-1)).reshape(N, N)
 
@@ -74,7 +74,7 @@ def test_orthogonal_basis_reduces_to_euclidean_tikhonov(frac):
     G = _skew_rhs(seed=5)
 
     lam = frac * float(basis.denominator.max())
-    F = _as_matrix(lambda X: 2 * (X @ C + C @ X))
+    F = _as_matrix(lambda X: 0.5 * (X @ C + C @ X))
     want = torch.linalg.solve(
         F + lam * torch.eye(N * N, dtype=DT), G.reshape(-1)
     ).reshape(N, N)

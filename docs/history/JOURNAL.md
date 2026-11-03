@@ -7033,3 +7033,16 @@ probe on CPU, tests/test_natural_pion.py), harness names `natural-pion`, `natura
 docs split into `docs/paper/` and `docs/history/` (this journal moved here). `scripts/analysis/final_tables.py` regenerates
 FINAL.md's tables from runs-record; it reproduces every number in 1, 5.1-5.3, 6.5.
 RL refactor cost on one RTX PRO 6000 at Qwen3-1.7B shapes: one refactor 64 s (6144-wide pencils 56 s), one Cayley step 3.8 s.
+
+## 2026-11-03, 20:00 -- the Fisher operator's constant is now the derived 1/2 everywhere (user)
+
+`F(X) = (BXC + CXB)/2` in `direction.fisher_apply`, `Basis.denominator` = `(lam_i + lam_j)/2`, `reference.py`, legacy
+`powered.py`; `exact_curv` returns `E[s^2]` (was `4 E[s^2]`). The code had carried `2(BXC + CXB)` since before the
+generator was halved on 2026-08-28; the derivation in docs/paper/preprint.md gives 1/2. Consequences:
+* every run whose step is set by an angle (step_norm probe, NaturalPion, NaturalPionFast) is unchanged bit for bit:
+  the factor is 1/4, a power of two, so X, sigma and c scale exactly (tests/test_natural_pion.py still passes);
+* `alpha = quad/curv` is unchanged (both scale by 4);
+* runs with a fixed rate and no angle (the reference NGDPion with `trust none`, legacy variants) now take 4x the
+  step for the same `--lr`: to reproduce a run recorded before today, divide its NGD lr by 4. Tikhonov `lam` in
+  `damped.py` is relative to the denominator, unchanged in meaning.
+Tests updated (factorization, damped, exact_curv, optimizer precision test at lr/4); 283 pass.

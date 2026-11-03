@@ -2,6 +2,10 @@
 > `alpha` trust ratio, Shampoo, damping, the early protocols. They are kept because the journal cites them.
 > They ran from `scripts/sbatch/`; paths inside them are as they were. The scripts behind the paper are in
 > [`scripts/paper/`](../../paper/README.md).
+>
+> **Second convention change, 2026-11-03:** the Fisher operator's constant went from 2 to the derived 1/2, so
+> `X = F^-1 G` is 4x larger. Angle-normalised runs are unaffected bit for bit; a fixed-rate NGD run from these
+> scripts reproduces with its NGD `--lr` divided by 4.
 
 # The job scripts
 

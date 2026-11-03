@@ -58,12 +58,12 @@ def generators(W: np.ndarray, G: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 
 def fisher_apply(B: np.ndarray, C: np.ndarray, X: np.ndarray) -> np.ndarray:
-    """`F(X) = 2 (B X C + C X B)`.
+    """`F(X) = (B X C + C X B)/2`.
 
     In-side is called with `B = A`, `C = S' = W^T S W`; out-side mirrors it
     with `B = S`, `C = A' = W A W^T`.
     """
-    return 2.0 * (B @ X @ C + C @ X @ B)
+    return 0.5 * (B @ X @ C + C @ X @ B)
 
 def fisher_matrix(B: np.ndarray, C: np.ndarray) -> np.ndarray:
     """`F` as an explicit `d^2 x d^2` matrix acting on row-major `vec(X)`.
@@ -72,7 +72,7 @@ def fisher_matrix(B: np.ndarray, C: np.ndarray) -> np.ndarray:
     usable for small `d`; it exists so tests can invert `F` by a route that
     shares no code with `congruent_pencil` / `natural_gradient`.
     """
-    return 2.0 * (np.kron(B, C.T) + np.kron(C, B.T))
+    return 0.5 * (np.kron(B, C.T) + np.kron(C, B.T))
 
 
 # --- sec. 4: generalised congruent diagonalisation ---------------------------
@@ -146,14 +146,14 @@ def natural_gradient(
     """Solve `F(X) = G_skew` in the congruent basis of sec. 4.
 
     With `P^T B P = I` and `P^T C P = diag(lam)`, substituting `X = P Y P^T`
-    turns `2(BXC + CXB) = G` into `2 (lam_i + lam_j) Y_ij = (P^T G P)_ij`.
+    turns `(BXC + CXB)/2 = G` into `(lam_i + lam_j)/2 Y_ij = (P^T G P)_ij`.
 
     No damping here. `lam` comes from floored spectra, so the denominators are
     positive by construction, and regularisation lives in exactly one place --
     `floor_spectrum`, applied to the three matrices whose spectra can go
     singular: `A`, `W^T W`, `W A W^T`.
     """
-    den = 2.0 * (lam[:, None] + lam[None, :])
+    den = 0.5 * (lam[:, None] + lam[None, :])
     return skew(P @ ((P.T @ G_skew @ P) / den) @ P.T)
 
 
@@ -233,7 +233,7 @@ class NGDPionReference:
             self.S = self.beta * self.S + (1 - self.beta) * (delta.T @ delta) / delta.shape[0]
 
     def _pairs(self, W: np.ndarray) -> tuple[tuple[np.ndarray, np.ndarray], ...]:
-        """The two `(B, C)` operator pairs of sec. 4, as `F(X) = 2(BXC + CXB)`.
+        """The two `(B, C)` operator pairs of sec. 4, as `F(X) = (BXC + CXB)/2`.
 
         Neither `C` is damped here. The document damps `S` before forming
         `W^T S W`, but that cannot do what it looks like it does: the rank of

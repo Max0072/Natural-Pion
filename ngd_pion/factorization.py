@@ -1,8 +1,8 @@
 """docs/history/ALGORITHM.md §4 -- the bases that diagonalise the Fisher operator.
 
-The operator on each side is `F(X) = 2(B X C + C X B)`, and it is symmetric in
+The operator on each side is `F(X) = (B X C + C X B)/2`, and it is symmetric in
 `B` and `C`. Diagonalising it means finding `P` with `P^T B P = I` and
-`P^T C P = diag(lam)`; then `F` acts elementwise as `2(lam_i + lam_j)`.
+`P^T C P = diag(lam)`; then `F` acts elementwise as `(lam_i + lam_j)/2`.
 
 Two paths, and which one applies is a property of the *shapes*, not a tuning
 choice:
@@ -68,7 +68,7 @@ class Basis:
 
     @property
     def denominator(self) -> torch.Tensor:
-        """`2(lam_i + lam_j)`, the eigenvalues of `F` in this basis.
+        """`(lam_i + lam_j)/2`, the eigenvalues of `F` in this basis.
 
         They are the eigenvalues of `F` as a linear operator, and eigenvalues
         are invariant under any change of basis, so a floor applied *here* is a
@@ -86,7 +86,7 @@ class Basis:
         eigenvalue including the largest, which is what bounds the step at
         `||G|| / lam` whatever the layer's overall curvature.
         """
-        d = 2.0 * (self.lam.unsqueeze(-1) + self.lam.unsqueeze(-2))
+        d = 0.5 * (self.lam.unsqueeze(-1) + self.lam.unsqueeze(-2))
         if self.eps is not None:
             d = torch.maximum(d, self.eps * d.amax(dim=(-2, -1), keepdim=True))
         if self.lam_tikhonov:
@@ -101,7 +101,7 @@ def basis_identity_anchor(C: torch.Tensor, eps: float) -> Basis:
 
 
 def basis_congruence(B: torch.Tensor, C: torch.Tensor, eps: float) -> Basis:
-    """`F(X) = 2(B X C + C X B)` with neither factor the identity.
+    """`F(X) = (B X C + C X B)/2` with neither factor the identity.
 
     Goes through the symmetric root `B^{-1/2}` rather than a Cholesky factor:
     congruence needs only *some* `B = K K^T`, and the symmetric root exposes

@@ -10,7 +10,7 @@ two unrelated jobs at once:
   sample and should not be trusted to set a step size.
 
 Splitting them matters because the second is not basis-independent as written.
-`F` acts on the algebra with eigenvalues `2(lam_i + lam_j)`, and eigenvalues of
+`F` acts on the algebra with eigenvalues `(lam_i + lam_j)/2`, and eigenvalues of
 a linear operator are invariant under *any* change of basis, so a floor applied
 there is a property of `F`. A floor applied to `lam` first is a property of the
 pencil, and which pencil one gets depends on how the pair `(B, C)` was split.
@@ -20,7 +20,7 @@ the *pencil's* spectrum under it, ran at 0.03. Same matrix, same `eps`, an
 order of magnitude apart.
 
 So here `eps_numeric` keeps `B^-1/2` computable and nothing more, and `eps`
-floors `2(lam_i + lam_j)` where it means one thing.
+floors `(lam_i + lam_j)/2` where it means one thing.
 
 Whether this helps the trust region is a separate question and is not assumed:
 a floored pair still gets roughly `4 eps lam_max` under either convention, so
@@ -47,13 +47,13 @@ def basis_identity_anchor_op(C: torch.Tensor, eps: float) -> Basis:
 def basis_congruence_op(
     B: torch.Tensor, C: torch.Tensor, eps: float, eps_numeric: float
 ) -> Basis:
-    """`F(X) = 2(BXC + CXB)` with neither factor the identity.
+    """`F(X) = (BXC + CXB)/2` with neither factor the identity.
 
     `eps_numeric` floors `B` only so that its inverse square root exists; at
     `1e-7` that leaves `B^-1/2` with a condition number of about 3200, which
     fp32 carries comfortably. `C` is not floored at all -- nothing is divided
     by it. The statistical floor is `eps`, and it is applied to
-    `2(lam_i + lam_j)` by `Basis.denominator`.
+    `(lam_i + lam_j)/2` by `Basis.denominator`.
     """
     wb, Ub = safe_eigh(B)
     wb = floor_eigenvalues(wb, eps_numeric)

@@ -48,15 +48,15 @@ def generators(W: torch.Tensor, G: torch.Tensor) -> tuple[torch.Tensor, torch.Te
 
 
 def fisher_apply(B: torch.Tensor, C: torch.Tensor, X: torch.Tensor) -> torch.Tensor:
-    """`F(X) = 2(B X C + C X B)` (§2). Self-adjoint and PSD on skew `X`."""
-    return 2.0 * (B @ X @ C + C @ X @ B)
+    """`F(X) = (B X C + C X B)/2` (§2). Self-adjoint and PSD on skew `X`."""
+    return 0.5 * (B @ X @ C + C @ X @ B)
 
 
 def natural_gradient(G_skew: torch.Tensor, basis: Basis) -> torch.Tensor:
     """Solve `F(X) = G_skew` in the basis of §4.
 
-    `X = P Y P^T` turns `2(BXC + CXB) = G` into an elementwise division by
-    `2(lam_i + lam_j)`. No damping appears here: `basis.lam` is already
+    `X = P Y P^T` turns `(BXC + CXB)/2 = G` into an elementwise division by
+    `(lam_i + lam_j)/2`. No damping appears here: `basis.lam` is already
     floored, so the denominator is positive by construction.
     """
     P = basis.P

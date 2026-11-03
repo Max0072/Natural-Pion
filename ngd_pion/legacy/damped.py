@@ -82,7 +82,7 @@ def _basis_raw_anchor(C: torch.Tensor) -> Basis:
 
 
 def _basis_raw_congruence(B: torch.Tensor, C: torch.Tensor, eps_numeric: float) -> Basis:
-    """`F(X) = 2(BXC + CXB)`, `lam` raw.
+    """`F(X) = (BXC + CXB)/2`, `lam` raw.
 
     `eps_numeric` floors `B` only so that `B^-1/2` exists; it is not a
     modelling choice and should not need tuning. `C` is floored not at all --

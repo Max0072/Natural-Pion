@@ -367,7 +367,7 @@ class NGDPionUnified(NGDPionS):
                 else basis_congruence(A, gram_in, eps)
             )
             # `power` rides on the basis, where `Basis.denominator` raises
-            # `2(lam_i + lam_j)` to it. `1.0` is the natural gradient and is the
+            # `(lam_i + lam_j)/2` to it. `1.0` is the natural gradient and is the
             # default, so this reconstructs exactly what it used to.
             power = group["power"]
             for i, p in enumerate(members):

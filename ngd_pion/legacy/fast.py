@@ -225,7 +225,7 @@ def _floor_share(G_skew: torch.Tensor, basis, eps: float) -> float:
     In the basis, `quad` is `sum_ij Gb_ij^2 / denominator_ij` with
     `Gb = P^T G P`, every term non-negative, so the share is a genuine
     fraction in `[0, 1]`. A pair counts as floored when either of its two
-    eigenvalues was raised, since `denominator_ij = 2(lam_i + lam_j)` is a sum
+    eigenvalues was raised, since `denominator_ij = (lam_i + lam_j)/2` is a sum
     and one raised index is enough to change it.
 
     `basis.lam` is already floored, and every value the floor touched is
