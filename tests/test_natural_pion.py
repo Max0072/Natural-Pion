@@ -125,3 +125,15 @@ def test_one_block_is_the_unsplit_optimizer():
     ob = NaturalPionFast(b, lr=0.2, t_fac=5, stats_window=2, row_blocks={id(b[1]): 1})
     for x, y in zip(_drive(oa, a, 20, 10, _cosine)[-1], _drive(ob, b, 20, 10, _cosine)[-1]):
         assert torch.equal(x, y)
+
+
+def test_newton_schulz_retraction_matches_cayley_at_small_angles():
+    a, b = _weights(11), _weights(11)
+    oa = NaturalPionFast(a, lr=0.2, t_fac=5, stats_window=2)
+    ob = NaturalPionFast(b, lr=0.2, t_fac=5, stats_window=2, retraction="ns", ns_iters=2)
+    ta, tb = _drive(oa, a, 30, 12, _cosine), _drive(ob, b, 30, 12, _cosine)
+    for x, y in zip(ta[-1], tb[-1]):
+        assert torch.allclose(x, y, rtol=1e-4, atol=1e-5), (x - y).abs().max()
+    before = [torch.linalg.svdvals(p.detach().double()) for p in _weights(11)]
+    for p, s0 in zip(b, before):
+        assert torch.allclose(torch.linalg.svdvals(p.detach().double()), s0, rtol=1e-4)

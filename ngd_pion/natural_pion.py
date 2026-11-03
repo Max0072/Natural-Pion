@@ -60,6 +60,9 @@ class NaturalPion(torch.optim.Optimizer):
         damping: Tikhonov-style damping relative to each matrix's largest Fisher eigenvalue: the denominator
             (lam_i + lam_j)/2 becomes (lam_i + lam_j)/2 + damping * max. In the basis this is F + delta B X B,
             damping in the metric of the anchor factor. 0 (default) leaves only the floor `eps`.
+        retraction: "cayley" solves (I + c/2 X) R = (I - c/2 X) exactly; "ns" computes the inverse by
+            `ns_iters` Newton-Schulz iterations (matrix products only), which is exact to fp32 round-off for
+            angles well below 1 and is used only while the scheduled angle is at most `ns_guard`.
         row_blocks: `{id(weight): k}` splits that weight's rows into `k` equal blocks, each rotated as a
             separate matrix with its own Fisher (input moment `A` shared, output moment the block's
             diagonal block of `D`). Pion rotates the query projection per attention head this way.
@@ -80,6 +83,9 @@ class NaturalPion(torch.optim.Optimizer):
         angle_warmup: int = 50,
         row_blocks: dict[int, int] | None = None,
         damping: float = 0.0,
+        retraction: str = "cayley",
+        ns_iters: int = 2,
+        ns_guard: float = 0.5,
     ) -> None:
         if lr <= 0.0:
             raise ValueError(f"lr must be positive, got {lr}")
@@ -90,6 +96,8 @@ class NaturalPion(torch.optim.Optimizer):
                 raise ValueError(f"{name} must lie in [0, 1), got {b}")
         if t_fac < 1:
             raise ValueError(f"t_fac must be at least 1, got {t_fac}")
+        if retraction not in ("cayley", "ns"):
+            raise ValueError(f"retraction must be cayley or ns, got {retraction!r}")
         if stats_window is not None and not 1 <= stats_window <= t_fac:
             raise ValueError(f"stats_window must lie in [1, t_fac], got {stats_window}")
         params = list(params)
@@ -104,7 +112,7 @@ class NaturalPion(torch.optim.Optimizer):
         super().__init__(params, dict(
             lr=lr, beta1=beta1, beta_a=beta_a, beta_d=beta_d, t_fac=t_fac, stats_window=stats_window,
             eps=eps, angle_iters=angle_iters, angle_warmup=angle_warmup, compute_dtype=torch.float32,
-            damping=damping,
+            damping=damping, retraction=retraction, ns_iters=ns_iters, ns_guard=ns_guard,
         ))
 
     # --- statistics, fed by hooks -----------------------------------------------------------------
@@ -278,7 +286,15 @@ class NaturalPion(torch.optim.Optimizer):
             X = torch.stack([x for *_, x in items])
             half = torch.as_tensor([0.5 * c for _, _, c, _ in items], dtype=X.dtype, device=X.device).reshape(-1, 1, 1)
             eye = torch.eye(n, dtype=X.dtype, device=X.device).expand_as(X)
-            R = torch.linalg.solve(eye + half * X, eye - half * X)
+            if group["retraction"] == "ns" and group["lr"] <= group["ns_guard"]:
+                # Cay = 2 (I + A)^-1 - I; Newton-Schulz Z <- Z (2I - M Z) from Z0 = I - A, residual A^2 squaring
+                A = half * X
+                M, Z = eye + A, eye - A
+                for _ in range(group["ns_iters"]):
+                    Z = Z @ (2.0 * eye - M @ Z)
+                R = 2.0 * Z - eye
+            else:
+                R = torch.linalg.solve(eye + half * X, eye - half * X)
             for k, (i, slot, _, _) in enumerate(items):
                 rows[i][slot] = R[k]
 

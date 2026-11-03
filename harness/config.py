@@ -429,6 +429,8 @@ class RunConfig:
     np_split_q_per_head: bool = False
     # Natural Pion: damping of the Fisher relative to its largest eigenvalue (0 = floor only). Out of the hash at 0.
     np_damping: float = 0.0
+    # Natural Pion: "ns" replaces the Cayley solve by Newton-Schulz (ngd_ns_iters, ngd_ns_guard). Out of the hash at cayley.
+    np_retraction: str = "cayley"
 
     # plumbing, deliberately excluded from the hash
     data_path: str = "data/c4_train.bin"
@@ -483,6 +485,8 @@ class RunConfig:
             d.pop("np_split_q_per_head", None)
         if not d.get("np_damping"):
             d.pop("np_damping", None)
+        if d.get("np_retraction") == "cayley":
+            d.pop("np_retraction", None)
         return d
 
     @property

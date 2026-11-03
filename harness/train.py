@@ -135,7 +135,9 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
         blocks = ({id(m.weight): cfg.model.heads for m in model.query_projections()}
                   if cfg.np_split_q_per_head else None)
         rot = NATURAL_PION[cfg.optimizer](weights, lr=cfg.lr, beta1=cfg.ngd_beta1, row_blocks=blocks,
-                                          eps=cfg.ngd_eps, damping=cfg.np_damping)
+                                          eps=cfg.ngd_eps, damping=cfg.np_damping,
+                                          retraction=cfg.np_retraction, ns_iters=cfg.ngd_ns_iters,
+                                          ns_guard=cfg.ngd_ns_guard)
         recorder = attach(linears, rot)
     elif cfg.optimizer in NGD_IMPLEMENTATIONS:
         kw = {}
