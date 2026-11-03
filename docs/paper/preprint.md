@@ -249,9 +249,11 @@ $D^{-1} V A^{-1}$ does not apply.
 
 ### 3.2 Exact inversion
 
-$F_{\mathrm{in}}$ is not the map $X \mapsto SXA$, whose inverse would be $S^{-1} G A^{-1}$. The sum of the
+$F_{\mathrm{in}}$ acts on a space of dimension $n(n-1)/2$. Solving $F_{\mathrm{in}}(X) = G$ as a dense
+linear system costs $O(n^6)$, about $10^{16}$ operations for $n = 512$, at every refresh of every matrix.
+Nor is $F_{\mathrm{in}}$ the map $X \mapsto SXA$, whose inverse would be $S^{-1} G A^{-1}$: the sum of the
 two orderings does not factor unless $S$ and $A$ commute. It is nonetheless diagonalised by a
-congruence.
+congruence, which brings the cost to $O(n^3)$.
 
 **Proposition 2 (Inversion).** Let $A \succ 0$ and $S \succeq 0$, and let $P$ solve the generalized
 eigenproblem $P^\top A P = I$, $P^\top S P = \Lambda = \operatorname{diag}(\lambda)$. For skew $G$, the
@@ -276,15 +278,15 @@ floor leaves every eigenvalue above it exact, which an additive shift does not.
 **Cost.** One generalized eigendecomposition per side, $O(n^3)$, recomputed every $T_{\mathrm{fac}}$
 steps. Each step then costs four matrix products per side.
 
-The same construction applies to the output side with $(B, C) = (D, WAW^\top)$.
+The same construction applies to the output side, with $A$ replaced by $D$ and $S$ by $V = WAW^\top$.
 
 ### 3.3 Step length as a rotation angle
 
 The natural gradient fixes a direction $X = F^{-1}G$. Its length in the Fisher metric,
 $\sqrt{\langle X, F X\rangle}$, is the classical trust-region measure, and it is a poor one here. In
-our model, $F^{-1}$ multiplies the gradient by factors that range over four or more orders of
-magnitude across layers. Single attention matrices would rotate by tens of radians while others
-barely move.
+our model, $F^{-1}$ scales the gradient very unevenly across layers. With a fixed step size, the
+rotation angle actually taken spans {{angle_spread_fixed_c}} across the 56 matrices (90th over 10th
+percentile, Section 5.4): some matrices barely move while others turn by large angles.
 
 We use the geometry of the parameterization instead. The step is a rotation, and a rotation has an
 angle.
@@ -302,7 +304,21 @@ We set
 
 $$c_t = \frac{\theta_t}{\sigma}, \qquad \sigma = \max\big(\|X_{\mathrm{in}}\|_2,\ \|X_{\mathrm{out}}\|_2\big),$$
 
-so the fastest rotation plane of every matrix turns by $\approx \theta_t$ radians at step $t$. The
+so the fastest rotation plane of every matrix turns by $2\arctan(\theta_t/2) \approx \theta_t$ radians
+at step $t$. Because $2\arctan(\cdot/2) < \pi$, no Cayley step turns any plane by $\pi$ or more,
+however large $c$ is: an outsized step saturates instead of overshooting.
+
+**Corollary (the angle bounds the change of $W$).** With $c_t = \theta_t/\sigma$,
+$$\|R_{\mathrm{out}} W R_{\mathrm{in}} - W\|_2 \le 2\,\theta_t\,\|W\|_2 .$$
+
+*Proof.* $R$ is orthogonal with eigenvalues $e^{\pm i\varphi_k}$, so
+$\|R - I\|_2 = \max_k |e^{i\varphi_k} - 1| = 2\sin(\varphi_{\max}/2) \le \varphi_{\max} \le \theta_t$ for both
+sides (both share $c_t$, and each side's largest singular value is at most $\sigma$). Then
+$R_{\mathrm{out}} W R_{\mathrm{in}} - W = (R_{\mathrm{out}} - I)\,W R_{\mathrm{in}} + W\,(R_{\mathrm{in}} - I)$. $\square$
+
+So the angle rule is a bound on the relative change of every weight in spectral norm, the quantity that
+Muon-style methods and the modular-norm view (Bernstein & Newhouse, 2024) control directly. Here it
+follows from the geometry of the rotation. The
 other planes turn in proportion to their singular values, so the natural gradient's own ranking of
 directions within a matrix is kept. $\theta_t$ follows a cosine schedule from a peak $\theta_0$.
 
