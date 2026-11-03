@@ -14,6 +14,10 @@ only ever *now*.
 
 **Rewrite this file rather than appending to it.** It is a snapshot, not a log.
 
+**Next direction (2026-11-03): [`RLVR_PLAN.md`](RLVR_PLAN.md).** How the paper is positioned against
+Pion, the measured steps-to-Pion's-loss ratio (1.45-1.66x, not 1.28x), and the RLVR experiment to set up,
+starting with its stage 0.
+
 Notation, once: **val** is validation loss on held-out C4 (nats per token, lower
 is better); **rot** is the learning rate of the rotational optimizer, **adamw**
 that of AdamW on the embedding, head and norm gains (56.5% of the model);
