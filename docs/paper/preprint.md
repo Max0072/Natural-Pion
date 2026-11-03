@@ -18,7 +18,7 @@ direction and replace the length: every matrix turns its fastest rotation plane 
 scheduled angle. An exact Cayley retraction completes the method, which we call **Natural Pion**.
 It keeps Pion's invariant exactly rather than approximately. On LLaMA-60M trained on 9.6B tokens of
 C4, Natural Pion reaches a validation loss of 3.3296 in Pion's number of steps, against Pion's
-3.3706. At Pion's wall-clock time it reaches 3.3468. It needs at least 1.45x fewer steps to reach
+3.3706. At Pion's wall-clock time it reaches 3.3468, with a fast form whose step costs 1.28x Pion's. It needs at least 1.45x fewer steps to reach
 Pion's final loss, and it is ahead at equal wall-clock time on every seed and horizon we measured.
 Because the spectrum is frozen, the initial spectrum is a design choice: a heavy-tailed initial
 spectrum helps Natural Pion and does not help Pion.
@@ -57,11 +57,14 @@ derives the natural gradient for Pion's parameterization and makes it practical.
 3. **Direction from the Fisher, length from an angle.** $F^{-1}$ amplifies gradients by four or more
    orders of magnitude, unevenly across layers. We take only its direction. The step length is set so
    that the largest rotation plane of every matrix turns by the same scheduled angle $\theta_t$
-   (Proposition 3). This one choice decides whether the natural gradient helps (Section 4.4).
+   (Proposition 3). This one choice decides whether the natural gradient helps (Section 5.4).
 4. **Exact spectrum preservation.** The Cayley retraction is orthogonal at every step size, so the
    invariant Pion is built on holds exactly. Pion's truncated exponential gives
    $R^\top R = I + \Omega^4/4$ (Proposition 4).
-5. **Experiments.** On LLaMA-60M / C4 at Pion's full 9.6B-token budget, Natural Pion is ahead of
+5. **A fast form.** Amortised refreshes, statistics collected only where they are read, a warm power
+   iteration and batching take the step from 1.75 s to 0.596 s (Pion: 0.466 s). Each change is
+   measured separately for time and loss (Section 4).
+6. **Experiments.** On LLaMA-60M / C4 at Pion's full 9.6B-token budget, Natural Pion is ahead of
    Pion at equal steps by 0.041 and at equal wall-clock time by 0.024 in validation loss. It is ahead
    on four of four seeds at two shorter horizons, and needs at least 1.45x fewer steps. Ablations
    isolate each component. Because the spectrum is frozen, we also find that the shape of the
@@ -228,7 +231,7 @@ so the fastest rotation plane of every matrix turns by $\approx \theta_t$ radian
 other planes turn in proportion to their singular values, so the natural gradient's own ranking of
 directions within a matrix is kept. $\theta_t$ follows a cosine schedule from a peak $\theta_0$.
 
-Two design points matter, each tested in Section 4.4:
+Two design points matter, each tested in Section 5.4:
 
 * **The norm is taken after $F^{-1}$, not before.** Normalising the raw gradient and then applying
   $F^{-1}$ lets $F^{-1}$'s uneven scale back into the step.
@@ -260,17 +263,16 @@ measurements. In fp32 the singular values of our trained models drift by about 0
 
 ### 3.5 The algorithm
 
-**Algorithm 1: Natural Pion** (one rotated matrix $W \in \mathbb{R}^{m\times n}$; all of them are
-processed alike).
+**Algorithm 1: Natural Pion** (exact form; one rotated matrix $W \in \mathbb{R}^{m\times n}$, all of
+them processed alike). Everything is recomputed at every step; Section 4 makes it fast.
 
 ```
 state:  A, D (EMAs of x x^T and of d d^T, fp32), M_in, M_out (momentum), bases (P, lambda) per side
 every step t:
     forward: A <- beta_A A + (1 - beta_A) mean_tokens(x x^T)
     backward: D <- beta_D D + (1 - beta_D) mean_tokens(d d^T)     d = per-token output gradient
-    if t mod T_fac == 0:                                            refresh the bases (Prop. 2)
-        (P_in, lambda_in)   <- gen_eig(A, W^T D W)
-        (P_out, lambda_out) <- gen_eig(D, W A W^T)
+    (P_in, lambda_in)   <- gen_eig(A, W^T D W)                      the bases (Prop. 2)
+    (P_out, lambda_out) <- gen_eig(D, W A W^T)
     G_in  <- skew(W^T G);   G_out <- skew(G W^T)
     M_in  <- beta1 M_in  + (1 - beta1) G_in
     M_out <- beta1 M_out + (1 - beta1) G_out
@@ -285,36 +287,134 @@ Embedding, output head and normalization gains use AdamW, as in Pion. Any consta
 cancels in $c$, so the method is invariant to the scale of $A$ and $D$, including the $1/N$ that
 autograd puts on per-token gradients of a mean loss.
 
-### 3.6 Practical cost
-
-Per step, Natural Pion adds three things to Pion's work:
-
-* the products that apply $F^{-1}$ (four per side);
-* a power iteration for $\sigma$, warm-started from the previous step's vector (two iterations);
-* the Cayley solve.
-
-Every $T_{\mathrm{fac}}$ steps it adds one generalized eigendecomposition per side. Nothing but the
-refresh reads $A$ and $D$, so it is enough to accumulate them over the few steps before each
-refresh. Matrices of equal shape
-are processed as one batch.
-
-In our setting ($T_{\mathrm{fac}} = 25$, statistics over the 6 steps before a refresh) a step costs
-**0.596 s against Pion's 0.466 s (1.28x)**. Recomputing everything at every step
-($T_{\mathrm{fac}} = 1$) costs 1.75 s. Table 6 gives the cost of each part.
-
-### 3.7 The initial spectrum is part of the model
+### 3.6 The initial spectrum is part of the model
 
 Under Pion and Natural Pion the singular values of a rotated matrix are those it was initialised with,
 to the end of training. The initial spectrum is therefore a design choice that persists, not a starting
 point. Trained networks have heavy-tailed weight spectra (Martin & Mahoney, 2021), and HTMuon (2026)
 argues that orthogonalising optimizers suppress such tails. With a frozen spectrum the tail cannot
-emerge during training, but it can be set at initialisation. We test this in Section 4.5.
+emerge during training, but it can be set at initialisation. We test this in Section 5.5.
+
+## 4 Making it fast: Natural Pion Fast
+
+Algorithm 1 costs 1.75 s per step in our setting, against Pion's 0.466 s. This section takes it to
+0.596 s, one change at a time, and gives for each change what it saves and what it costs in loss. All
+numbers are at 3 000 steps, seed 0, Lie momentum 0.9. Seconds per step are measured on the training
+runs themselves unless marked as profiled.
+
+### 4.1 Where the time goes
+
+*Table 1. Seconds per step by part, GPU-synchronised timers (profiled; the synchronisation inflates
+the parts slightly).*
+
+| part | Algorithm 1 ($T_{\mathrm{fac}} = 1$) | $T_{\mathrm{fac}} = 25$ |
+|---|---|---|
+| basis refresh (generalized eigendecompositions) | 0.545 | 0.025 |
+| spectral norm (power iteration) | 0.415 | 0.042 |
+| Cayley retraction | 0.163 | 0.157 |
+| $F^{-1}$ and the rest of the step | 0.052 | 0.050 |
+| accumulating $A$ and $D$ | 0.136 | 0.136 |
+| whole step | 1.75 | 0.85 |
+
+Forward, backward and AdamW are common to all methods and are not counted as overhead.
+
+### 4.2 Amortised refresh
+
+The bases $(P, \lambda)$ are recomputed every $T_{\mathrm{fac}}$ steps instead of every step. In
+between, $F^{-1}$ uses the last bases with the current $W$, $G$ and momentum. This is the standard
+amortisation of K-FAC. It also removes most of the power-iteration cost: $X$ jumps at a refresh, so the
+power iteration needs 50 iterations right after one and 2 otherwise.
+
+| refresh | momentum | val | s / step |
+|---|---|---|---|
+| every step | none | 3.7399 | 1.75 |
+| every 25 steps | none | 3.7798 (+0.040) | 0.85 |
+| every step | 0.9 | 3.7032 | 1.75 |
+| every 10 steps | 0.9 | 3.7034 (+0.000) | 0.80 |
+| every 25 steps | 0.9 | 3.7227 (+0.019) | 0.84 |
+
+Each row's angle is tuned separately. Without momentum a stale basis costs 0.040; momentum absorbs
+half of it at $T_{\mathrm{fac}} = 25$ and all of it at $T_{\mathrm{fac}} = 10$. Over four seeds,
+$T_{\mathrm{fac}} = 1$ averages 3.7089, $T_{\mathrm{fac}} = 10$ 3.7032 and $T_{\mathrm{fac}} = 25$ 3.7216.
+At 15 000 steps the difference is gone: 3.4788 for $T_{\mathrm{fac}} = 1$, 3.4720 for 25.
+
+### 4.3 Statistics only where they are read
+
+Nothing but a refresh reads $A$ and $D$. With EMA factor 0.5, an observation more than 6 steps old
+carries less than 2% of the weight. So we accumulate $A$ and $D$ only in the 6 steps before each
+refresh, which is 6 of every 25 steps.
+
+| change ($T_{\mathrm{fac}} = 25$) | val | s / step |
+|---|---|---|
+| both every step (reference) | 3.7227 | 0.843 |
+| $D$ only in the last 6 steps | 3.7272 | 0.788 |
+| $A$ only in the last 6 steps | 3.7205 | 0.806 |
+| **$A$ and $D$ only in the last 6 steps** | **3.7227** | **0.744** |
+| $A$ every second step | 3.7223 | 0.817 |
+| EMA of $D$ at 0.9 / 0.95 instead of 0.5 | 3.7206 / 3.7201 | 0.851 / 0.844 |
+
+Every change is within 0.005 of the reference, inside run-to-run noise. The factor's memory does not
+matter here, so we take the cheapest option.
+
+### 4.4 A warm power iteration for $\sigma$
+
+The exact spectral norm (`matrix_norm(X, 2)`) took 95% of the whole optimizer step on these shapes:
+cuSOLVER falls back to a slow path on $1376 \times 1376$ matrices. Power iteration on $X^\top X$ costs
+matrix-vector products only, 4 800x less. Cold power iteration converges badly on skew matrices,
+whose singular values come in equal pairs: on a random $512 \times 512$ skew matrix its relative error
+is 21% after one iteration, 6% after five and 0.5% after twenty. Warm-started from the previous step's
+vector, one iteration reaches $10^{-4}$. We run 50 iterations after a refresh and 2 otherwise.
+
+### 4.5 Computing only what the step uses
+
+The reference implementation also computed $\langle G, X\rangle$ and $\langle X, FX\rangle$ (four extra
+products per side) for a trust ratio the final method does not use, plus per-layer diagnostics and a
+backward probe for logging. Removing them leaves the trajectory **bit-identical**: training loss at
+every logged step and validation loss over 300 steps match exactly. The step goes from 0.744 s to
+**0.697 s**.
+
+### 4.6 Batching by shape
+
+The 56 rotated matrices come in a few shapes. $F^{-1}$ and the Cayley solves are run as one batched call
+per size instead of one call per matrix. The mathematics is unchanged and only round-off differs:
+3.7242 against 3.7227. The step goes from 0.697 s to **0.596 s**.
+
+### 4.7 Tried and not adopted
+
+* **Newton–Schulz instead of the Cayley solve.** An iterative inverse costs 0.18x the exact solve on
+  these shapes. Its orthogonality error grows with the angle: in fp64, after one step with two
+  iterations it is $4\cdot10^{-8}$ at angle 0.2, $10^{-5}$ at 0.4 and $2\cdot10^{-3}$ at 0.8. In fp32,
+  both methods sit at the round-off floor after one step ($1$–$3\cdot10^{-6}$), but over 3 000 steps on a
+  $256 \times 256$ test matrix the spectrum drifts by +0.5–0.6% with Newton–Schulz against +0.10% with
+  Cayley. Exact preservation of the spectrum is the point of the method, so we keep the solve.
+* **Exact SVD to reshape the step's spectrum** (the polar step in Section 5.4): 7–10 s per step, and no
+  better in loss.
+* **A larger $T_{\mathrm{fac}}$ beyond 25** saves little: the refresh is already 0.025 s per step.
+
+### 4.8 Summary
+
+*Table 2. From Algorithm 1 to Natural Pion Fast.*
+
+| step | s / step | val (3 000 steps, seed 0) |
+|---|---|---|
+| Algorithm 1 | 1.75 | 3.7032 |
+| refresh every 25 steps (4.2) | 0.843 | 3.7227 |
+| + statistics only before a refresh (4.3) | 0.744 | 3.7227 |
+| + compute only what the step uses (4.5) | 0.697 | 3.7227 (bit-identical) |
+| **+ batching by shape (4.6)**: Natural Pion Fast | **0.596** | **3.7242** |
+| Pion | 0.466 | 3.8412 |
+
+**Algorithm 2: Natural Pion Fast.** It is Algorithm 1 with the bases refreshed every 25 steps; $A$ and
+$D$ accumulated (EMA 0.5) only in the 6 steps before a refresh; $\sigma$ by warm power iteration (2
+iterations, 50 after a refresh); $F^{-1}$ and Cayley batched by shape. At 3 000 steps it is 0.013
+behind Algorithm 1 over four seeds. At 15 000 steps it is level or ahead. It is 2.9x faster per step
+and 1.28x slower than Pion. All results in Section 5 use it.
 
 ---
 
-## 4 Experiments
+## 5 Experiments
 
-### 4.1 Setup
+### 5.1 Setup
 
 | | |
 |---|---|
@@ -330,27 +430,27 @@ emerge during training, but it can be set at initialisation. We test this in Sec
 **Baseline.** Pion in its published configuration: Lie momentum 0.9, RMS scale 0.2, truncated
 exponential, query matrix split per head, bilateral update, lr $10^{-3}$ with a cosine schedule. The
 Pion paper chose lr $10^{-3}$ from $\{10^{-4}, 5\cdot10^{-4}, 10^{-3}, 5\cdot10^{-3}, 10^{-2}\}$. We
-checked it in our setting (Table 1). $10^{-3}$ is best at 19 200 steps. At 3 840 steps $2\cdot10^{-3}$
+checked it in our setting (Table 3). $10^{-3}$ is best at 19 200 steps. At 3 840 steps $2\cdot10^{-3}$
 is better by 0.014, and we report that comparison too.
 
 All comparisons are within one code base. Our Pion reaches 3.3706 at full length, against 3.3575
 reported by the Pion paper in Megatron-LM. The difference is a harness offset we do not try to close.
 
-**Natural Pion.** $T_{\mathrm{fac}} = 25$; $A$ and $D$ are accumulated (EMA 0.5) over the 6 steps
-before each refresh; Lie momentum 0.9; $\varepsilon = 10^{-4}$; cosine schedule on $\theta$ down to
+**Natural Pion.** Natural Pion Fast (Algorithm 2, Section 4): $T_{\mathrm{fac}} = 25$; $A$ and $D$
+accumulated (EMA 0.5) over the 6 steps before each refresh; Lie momentum 0.9; $\varepsilon = 10^{-4}$; cosine schedule on $\theta$ down to
 $10^{-5}$. The peak angle $\theta_0$ is 0.2 at 3 000 steps and 0.05 from 15 000 steps on. The best peak
 falls with the horizon.
 
-*Table 1. Pion learning rate (validation loss, seed 0).*
+*Table 3. Pion learning rate (validation loss, seed 0).*
 
 | Pion steps | 5e-4 | 1e-3 | 2e-3 | 4e-3 |
 |---|---|---|---|---|
 | 3 840 | 3.8397 | 3.7804 | **3.7668** | 4.1523 |
 | 19 200 | - | **3.4960** | 3.5138 | 3.8802 |
 
-### 4.2 Main result
+### 5.2 Main result
 
-*Table 2. Full length, seed 0.*
+*Table 4. Full length, seed 0.*
 
 | run | steps | wall-clock | val loss |
 |---|---|---|---|
@@ -362,7 +462,7 @@ falls with the horizon.
 
 ![Validation loss against wall-clock time.](figures/preprint/val_vs_time.png)
 
-*Table 3. Equal wall-clock time, four seeds. Gap = val(Pion) - val(Natural Pion); positive means Natural
+*Table 5. Equal wall-clock time, four seeds. Gap = val(Pion) - val(Natural Pion); positive means Natural
 Pion is ahead. Pion runs as many steps as fit in Natural Pion's time.*
 
 | budget | Pion steps | Natural Pion steps | seed 0 | seed 1 | seed 2 | seed 3 | mean |
@@ -373,7 +473,7 @@ Pion is ahead. Pion runs as many steps as fit in Natural Pion's time.*
 
 Against Pion at its best short-horizon learning rate ($2\cdot10^{-3}$, seed 0), the 1 800 s gap is 0.043.
 
-*Table 4. Equal number of steps.*
+*Table 6. Equal number of steps.*
 
 | steps | Pion | Natural Pion | gap |
 |---|---|---|---|
@@ -381,12 +481,12 @@ Against Pion at its best short-horizon learning rate ($2\cdot10^{-3}$, seed 0), 
 | 15 000 | 3.5254 | 3.4720 | 0.053 |
 | 73 242 | 3.3706 | 3.3296 | 0.041 |
 
-### 4.3 Steps to reach Pion's loss
+### 5.3 Steps to reach Pion's loss
 
 For each Pion run, we find the first step at which a Natural Pion run reaches Pion's final validation
 loss.
 
-*Table 5. Steps to Pion's final loss (seed 0).*
+*Table 7. Steps to Pion's final loss (seed 0).*
 
 | Pion steps | Pion val | Natural Pion reaches it at | ratio |
 |---|---|---|---|
@@ -401,7 +501,7 @@ shrink with length. In settings where a step is expensive for reasons other than
 distributed batches, reinforcement learning with generation), steps rather than optimizer time are
 the cost that matters.
 
-### 4.4 Ablations
+### 5.4 Ablations
 
 All ablations are at 3 000 steps, seed 0. Each row reports the best value of its own angle grid, and
 every grid optimum is interior.
@@ -445,18 +545,7 @@ grid at the edge of the range.
 | warmup-stable-decay, decay over the last 20% / 10% (3.7227) | 3.7578 / 3.7763 |
 | equal angle on every plane of $X$ (polar step), at step 2499 (3.7291) | 3.7404 |
 
-**Refresh cadence.** Lie momentum 0.9.
-
-| | val, 3 000 steps | val, 15 000 steps | s / step |
-|---|---|---|---|
-| $T_{\mathrm{fac}} = 1$, statistics every step | 3.7089 (4 seeds) | 3.4788 | 1.75 |
-| $T_{\mathrm{fac}} = 10$ | 3.7032 (4 seeds) | | 0.71 |
-| $T_{\mathrm{fac}} = 25$, statistics over the last 6 steps | 3.7216 (4 seeds) | 3.4720 | 0.596 |
-
-The angle of each row is tuned separately. Accumulating $A$ and $D$ only before a refresh changes
-nothing measurable (3.7227 against 3.7227).
-
-### 4.5 The initial spectrum
+### 5.5 The initial spectrum
 
 The rotated matrices keep their initial singular values, so we vary them. A *power-law tail* with
 exponent $\alpha$ replaces the largest 20% of the singular values of a $\mathcal N(0, 0.02^2)$ matrix with
@@ -485,26 +574,9 @@ Natural Pion's gain shrinks with length, to a tie at 15 000 steps. The tail hurt
 One reading, which we have not tested: Natural Pion's direction depends on $W$'s spectrum through
 $S = W^\top D W$ and $V = W A W^\top$, while Pion's does not.
 
-### 4.6 Cost
-
-*Table 6. Seconds per step, GPU-synchronised timers, before batching (Section 3.6).*
-
-| part | $T_{\mathrm{fac}} = 1$ | $T_{\mathrm{fac}} = 25$ |
-|---|---|---|
-| basis refresh (eigendecompositions) | 0.545 | 0.025 |
-| Cayley retraction | 0.163 | 0.157 |
-| spectral norm (power iteration) | 0.415 | 0.042 |
-| $F^{-1}$ and the rest of the step | 0.052 | 0.050 |
-| accumulating $A$ and $D$ | 0.136 | 0.136 |
-| whole step | 1.75 | 0.85 |
-
-Accumulating the statistics only before a refresh, dropping diagnostics and batching matrices of equal
-shape bring the $T_{\mathrm{fac}} = 25$ step to 0.596 s (Pion: 0.466 s). Forward, backward and AdamW are
-common to all methods.
-
 ---
 
-## 5 Related work
+## 6 Related work
 
 **Orthogonal equivalence training.** POET (Qiu et al., 2025) reparameterises $W = R W_0 P$ with
 learned orthogonal factors. Pion (Shi et al., 2026) makes the same principle an optimizer, with
@@ -532,12 +604,12 @@ orthogonal and Stiefel manifolds (e.g. Wen & Yin, 2013; Li, Li & Todorovic, 2020
 preservation of the spectrum.
 
 **Weight spectra.** Heavy-tailed spectra of trained layers (Martin & Mahoney, 2021) and their link to
-generalisation motivate the initialisation of Section 4.5. HTMuon (2026) induces heavier tails in
+generalisation motivate the initialisation of Section 5.5. HTMuon (2026) induces heavier tails in
 Muon's updates. Under a frozen spectrum, the initialisation is the only place to set the tail.
 
 ---
 
-## 6 Limitations
+## 7 Limitations
 
 * **Scale.** One model size (60M) and one data set. The full-length comparison is one seed; four seeds
   at shorter horizons agree in sign and size.
@@ -553,7 +625,7 @@ Muon's updates. Under a frozen spectrum, the initialisation is the only place to
   fitted schedules.
 
 **Future work.** Reinforcement learning from verifiable rewards, where a step costs minutes of
-generation and the step efficiency of Section 4.3 is the relevant measure. The natural policy gradient
+generation and the step efficiency of Section 5.3 is the relevant measure. The natural policy gradient
 lineage (Kakade, 2001) makes it the natural test.
 
 ---
@@ -593,7 +665,7 @@ lineage (Kakade, 2001) makes it the natural test.
 * **Floors.** $A$, $S$ (or $D$, $V$) and the pencil eigenvalues are floored at
   $10^{-4}\,\lambda_{\max}$ before any division.
 * **Code.** `ngd_pion/natural_pion.py` (`NaturalPion`); every job and run record is listed in
-  `scripts/paper/README.md` and `runs-record/`. The tables of Section 4 are regenerated from the run
+  `scripts/paper/README.md` and `runs-record/`. The tables of Section 5 are regenerated from the run
   records by `scripts/analysis/final_tables.py`.
 
 ## Appendix B: why the output-gradient statistic is needed
