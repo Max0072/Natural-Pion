@@ -789,16 +789,16 @@ of all matrices takes 58 s on one B200.
 * **Floors.** $A$, $S$ (or $D$, $V$) and the pencil eigenvalues are floored at
   $10^{-4}\,\lambda_{\max}$ before any division.
 * **Code.** `ngd_pion/natural_pion.py` (`NaturalPion`); every job and run record is listed in
-  `scripts/paper/README.md` and `runs-record/`. The tables of Section 5 are regenerated from the run
-  records by `scripts/analysis/final_tables.py`.
+  `scripts/paper/README.md` and `runs-record/`. Every number in this paper is computed from the run
+  records by `scripts/analysis/paper_numbers.py` (the list, with sources, is `docs/paper/numbers.md`).
 
 ## Appendix B: why the output-gradient statistic is needed
 
 If $D$ is taken to be the identity, $S = W^\top W$ and the step's scale per layer goes as
 $\|\delta\| / (\|W\|\,\|x\|)$ instead of $1 / (\|W\|\,\|\delta\|\,\|x\|)$. The step is then largest
 where the backward signal is strongest, the opposite of what curvature prescribes. In an earlier
-variant this produced rotations of a radian on output projections and of $10^{-3}$ on query and key
-matrices within the same step.
+variant that made this simplification, output projections rotated by angles several orders of magnitude
+larger than query and key projections within the same step.
 
 ## Appendix C: hyperparameters
 
@@ -808,6 +808,8 @@ matrices within the same step.
 | momentum | Lie, 0.9 | Lie, 0.9 |
 | curvature | $T_{\mathrm{fac}}$ 25; $A$, $D$ EMA 0.5 over the 6 steps before a refresh; floor $10^{-4}$ | - |
 | retraction | Cayley (exact fp32 solve) | truncated exponential, degree 2 |
+| query projection | rotated whole | rotated per head |
+| update | both sides every step | both sides every step |
 | other parameters | AdamW 8e-3, (0.9, 0.95), wd 0.1, cosine | same |
 | gradient clipping | 1.0 | 1.0 |
 | warmup | none | none |
