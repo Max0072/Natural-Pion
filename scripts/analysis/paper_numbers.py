@@ -367,8 +367,15 @@ for th in (0.05, 0.2):
     put(f"trunc_err_{th}", th ** 4 / 4, f"theta^4/4 at theta = {th} (Proposition 4)")
 rc = json.load(open(R / "probes" / "rl_refactor_cost_b200.json"))
 put("rl_refactor_b200", rc["refactor_total_s"], "runs-record/probes/rl_refactor_cost_b200.json (scripts/probes/rl_refactor_cost.py, job 397885)")
-missing("pion_angle_max", "largest rotation-plane angle per step in a Pion run (lr 1e-3); needs Pion's per-layer "
-        "angle logged and a script reading it")
+PA = R / "probes" / "pion_angles.json"
+if PA.exists():
+    pa = json.load(open(PA))          # {step: [angle of every rotated block]}, from scripts/probes/pion_angles.py
+    per_step = [max(v) for k, v in pa.items() if int(k) > 0]
+    put("pion_angle_max", max(per_step), "runs-record/probes/pion_angles.json: largest block angle over the whole 3840-step run")
+    per_step.sort()
+    put("pion_angle_median", per_step[len(per_step) // 2], "same, median over logged steps of the largest block angle")
+else:
+    missing("pion_angle_max", "run scripts/probes/pion_angles.sbatch and archive its output as runs-record/probes/pion_angles.json")
 
 # probes and checks that are not in runs-record
 try:

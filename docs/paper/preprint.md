@@ -21,7 +21,7 @@ eigendecomposition per side inverts this operator exactly. Second, the natural g
 direction with a bad scale: its magnitude varies over orders of magnitude between layers. We keep the
 direction and set the length so that every matrix turns its fastest rotation plane by the same scheduled
 angle. Third, an exact Cayley retraction keeps Pion's invariant exactly rather than approximately. A fast
-form of the method costs {{cost_ratio:.2f}}x Pion's time per step.
+form of the method costs {{cost_ratio_3000:.2f}}x Pion's time per step.
 
 ---
 
@@ -62,15 +62,15 @@ provides.
 3. **Direction from the Fisher, length from an angle.** $F^{-1}$ amplifies gradients by four or more
    orders of magnitude, unevenly across layers. We take only its direction. The step length is set so
    that the largest rotation plane of every matrix turns by the same scheduled angle $\theta_t$
-   (Proposition 3). With a fixed step size and no momentum the natural gradient is no better than
-   Pion ({{len_fixed:.4f}} at 3 000 steps; Pion, with momentum, {{pion3000_s0:.4f}}). With the angle rule it reaches {{dir_fisher_nomom:.4f}}.
-   The angle rule alone, on Pion's raw generator with momentum, gains only {{gain_angle_on_raw:.3f}} over Pion
-   (Section 5.4): the gain is the natural gradient's, and the angle is what lets it through.
+   (Proposition 3). With the same angle rule and the same momentum, the natural gradient reaches
+   {{dir_fisher_mom:.4f}} at 3 000 steps against {{dir_raw_mom:.4f}} for Pion's raw generator (Pion itself:
+   {{pion3000_s0:.4f}}). The angle rule is what lets the natural gradient through: without momentum and with a
+   fixed step size, $F^{-1}G$ reaches only {{len_fixed:.4f}}, against {{dir_fisher_nomom:.4f}} with the angle (Section 5.4).
 4. **Exact spectrum preservation.** The Cayley retraction is orthogonal at every step size, so the
    invariant Pion is built on holds exactly. Pion's truncated exponential gives
    $R^\top R = I + \Omega^4/4$ (Proposition 4).
 5. **A fast form.** Amortised refreshes, statistics collected only where they are read, a warm power
-   iteration and batching take the step from {{tf1_mom_sps:.2f}} s to {{batch_sps:.3f}} s (Pion: {{pion_sps:.3f}} s). Each change is
+   iteration and batching take the step from {{tf1_mom_sps:.2f}} s to {{batch_sps:.3f}} s (Pion: {{pion3000_sps:.3f}} s). Each change is
    measured separately for time and loss (Section 4).
 6. **Experiments.** On LLaMA-60M / C4 at Pion's full 9.6B-token budget, Natural Pion is ahead of
    Pion at equal steps by {{gap_full_steps:.3f}} and at equal wall-clock time by {{gap_full_clock:.3f}} in validation loss. It is ahead
@@ -350,7 +350,7 @@ $\Omega^\top = -\Omega$: the odd and quadratic terms cancel, leaving $\Omega^4/4
 **Why Cayley here.** The Cayley transform is a standard retraction on the orthogonal group (Wen & Yin,
 2013; Li et al., 2020), and Pion reports having considered it, with modest gains. For Pion the truncated
 exponential is adequate because its steps are small: Pion's largest rotation angle per step is
-{{pion_angle_max}}, and the departure from orthogonality, $\|T^\top T - I\|_2 = \varphi^4/4$ for a largest
+at most {{pion_angle_max:.2g}} rad (median over steps {{pion_angle_median:.2g}}), and the departure from orthogonality, $\|T^\top T - I\|_2 = \varphi^4/4$ for a largest
 angle $\varphi$, is negligible there. Natural Pion takes much larger steps: by construction the largest
 plane of every matrix turns by $\theta_t$, with peak angles of 0.05 to 0.2 rad. At $\theta = 0.2$ the
 truncated exponential would inflate the singular values by up to {{trunc_err_0.2:.0e}} per step (and by
@@ -425,10 +425,11 @@ the parts slightly).*
 | $F^{-1}$ and the rest of the step | {{prof_tfac1_rest:.3f}} | {{prof_tfac25_rest:.3f}} |
 | accumulating $A$ and $D$ | {{prof_tfac1_stats:.3f}} | {{prof_tfac25_stats:.3f}} |
 | forward, backward, AdamW, data (not profiled) | {{prof_tfac1_other:.3f}} | {{prof_tfac25_other:.3f}} |
-| whole step | {{prof_tfac1_step:.2f}} | {{prof_tfac25_step:.2f}} |
+| whole step (profiled run) | {{prof_tfac1_step:.2f}} | {{prof_tfac25_step:.2f}} |
 
-Forward, backward and AdamW are common to all methods. Pion's whole step at the same cadence is
-{{pion3000_sps:.3f}} s.
+Forward, backward and AdamW are common to all methods. The profiled runs are 400 steps long and
+synchronise the GPU around every part, so their whole-step times differ slightly from the training runs
+quoted in the rest of this section.
 
 ### 4.2 Amortised refresh
 
@@ -522,9 +523,14 @@ per size instead of one call per matrix. The mathematics is unchanged and only r
 $D$ accumulated (EMA 0.5) only in the 6 steps before a refresh; $\sigma$ by warm power iteration (2
 iterations, 50 after a refresh); $F^{-1}$ and Cayley batched by shape. At 3 000 steps it is {{exact_vs_fast_3000:.3f}}
 behind Algorithm 1 over four seeds. At 15 000 steps it is level or ahead. It is {{speedup_vs_exact:.1f}}x faster per step
-and {{cost_ratio_3000:.2f}}x slower than Pion at the same evaluation cadence ({{cost_ratio:.2f}}x over the full-length
-runs). Its peak GPU memory is {{peak_np:.1f}} GB against Pion's {{peak_pion:.1f}} GB (+{{peak_d:.1f}} GB for $A$, $D$, the bases
+and {{cost_ratio_3000:.2f}}x slower than Pion.[^cost] Its peak GPU memory is {{peak_np:.1f}} GB against Pion's {{peak_pion:.1f}} GB (+{{peak_d:.1f}} GB for $A$, $D$, the bases
 and the momentum). All results in Section 5 use it.
+
+[^cost]: One number per quantity throughout: seconds per step are wall-clock time over steps of 3 000-
+step runs (Natural Pion Fast, {{batch_sps:.3f}} s) and the 3 840-step Pion run ({{pion3000_sps:.3f}} s), both
+evaluating every 500 steps; Algorithm 1 is the 3 000-step run with momentum ({{tf1_mom_sps:.2f}} s). The
+full-length runs, which evaluate every 2 000 steps, give {{np_sps:.3f}} s and {{pion_sps:.3f}} s, a ratio of
+{{cost_ratio:.2f}}; their wall times are the ones in Table 4.
 
 ---
 
@@ -559,7 +565,7 @@ falls with the horizon; 0.05 was chosen on 15 000-step runs and kept for the ful
 other value we ran, 0.025, is worse ({{np_full_clock_0025:.4f}} against {{np_full_clock:.4f}}).
 
 **Equal wall-clock time.** The step counts compared at equal time were fixed before the runs, from the
-measured step times (Pion {{clock_pion_sps:.3f}} s, Natural Pion Fast {{batch_sps:.3f}} s): Pion's 73 242 steps
+step times measured at the time (Pion {{clock_pion_sps:.3f}} s, Natural Pion Fast {{batch_sps:.3f}} s): Pion's 73 242 steps
 correspond to {{clock_steps_planned:,.0f}} of ours, run as 56 900; 3 840 and 19 200 Pion steps correspond to
 3 000 and 15 000. The measured wall times (Table 4) agree.
 
@@ -753,7 +759,7 @@ preservation of the spectrum.
   relative floor $\varepsilon = 10^{-4}$ was chosen for an earlier variant. Both are being re-tested.
   <!-- TODO: close with the results of natural_pion_qhead.sbatch and natural_pion_reg.sbatch. -->
 * **Cost.** $O(n^3)$ eigendecompositions every $T_{\mathrm{fac}}$ steps and a Cayley solve every step.
-  At 60M the step is {{cost_ratio:.2f}}x Pion's. For larger matrices the refresh must be amortised or distributed.
+  At 60M the step is {{cost_ratio_3000:.2f}}x Pion's. For larger matrices the refresh must be amortised or distributed.
 * **Steps-to-loss** (at least {{steps_ratio_min_lo:.2f}}x) is a lower bound from mid-schedule crossings, not a measured ratio with
   fitted schedules.
 
