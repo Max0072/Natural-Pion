@@ -339,6 +339,21 @@ put("peak_pion", peak("adamw2d/pion-lr0.001-s0-9e6e6d32f6"), "max peak_gb in the
 put("peak_np", peak("stepnormcombo/batch/*"), "max peak_gb in the Natural Pion Fast 3000-step log (micro-batch 256)")
 put("peak_d", NUM["peak_np"] - NUM["peak_pion"], "peak_np - peak_pion")
 
+# open checks: per-head query split; regularisation grid
+put("qhead_val", val("npqhead/*"), "npqhead: natural-pion-fast, query rotated per head, 3000 steps, seed 0")
+put("qhead_d", NUM["qhead_val"] - NUM["batch_val"], "qhead_val - batch_val (query rotated whole)")
+for e in ("1e-6", "1e-5", "1e-3", "1e-2"):
+    put(f"reg_eps_{e}", val(f"npreg/eps{e}-d0/*"), f"npreg/eps{e}-d0: floor eps = {e}, no damping")
+for d in ("1e-4", "1e-3", "1e-2", "1e-1"):
+    put(f"reg_damp_{d}", val(f"npreg/eps1e-6-d{d}/*"), f"npreg/eps1e-6-d{d}: floor 1e-6 plus damping {d} x max eigenvalue")
+put("reg_best_other", min([NUM[f"reg_eps_{e}"] for e in ("1e-6", "1e-5", "1e-3", "1e-2")] + [NUM[f"reg_damp_{d}"] for d in ("1e-4", "1e-3", "1e-2", "1e-1")]),
+    "best of the eight alternatives")
+put("reg_best_other_d", NUM["reg_best_other"] - NUM["batch_val"], "reg_best_other - batch_val (eps 1e-4)")
+put("npcheck2_identical", True if all(a == b for a, b in zip(
+    [r["train_loss"] for r in _rows(one("npcheck2/*")) if "train_loss" in r],
+    [r["train_loss"] for r in _rows(one("stepnormcombo/batch/*")) if "train_loss" in r])) else False,
+    "npcheck2 (natural-pion-fast, operator 1/2) vs stepnormcombo/batch: every logged train loss of the first 500 steps")
+
 # appendix D: initial spectrum
 I, IL = "stepnorminit", "stepnorminitlong"
 put("init_normal", NUM["batch_val"], "= batch_val")
@@ -371,7 +386,8 @@ PA = R / "probes" / "pion_angles.json"
 if PA.exists():
     pa = json.load(open(PA))          # {step: [angle of every rotated block]}, from scripts/probes/pion_angles.py
     per_step = [max(v) for k, v in pa.items() if int(k) > 0]
-    put("pion_angle_max", max(per_step), "runs-record/probes/pion_angles.json: largest block angle over the whole 3840-step run")
+    put("pion_angle_max", max(per_step), "runs-record/probes/pion_angles.json: largest block angle, first 1058 steps of the 3840-step run (the probe hit its time limit there; the learning rate is still within 15% of its peak)")
+    put("pion_angle_steps", max(int(k) for k in pa), "last logged step of the Pion angle probe")
     per_step.sort()
     put("pion_angle_median", per_step[len(per_step) // 2], "same, median over logged steps of the largest block angle")
 else:
@@ -389,7 +405,7 @@ except Exception as e:  # numpy missing, etc.
         missing(k, f"scripts/analysis/check_fisher.py failed: {e}")
 PC = R / "probes" / "paper_checks.json"
 pc = json.load(open(PC)) if PC.exists() else {}
-for k in ("tf32_drift", "fp32_drift_3000", "fp32_drift_3000_max", "fp32_drift_3000_signed_mean", "power_speedup",
+for k in ("tf32_drift", "fp32_drift_200", "fp32_drift_3000", "fp32_drift_3000_max", "fp32_drift_3000_signed_mean", "power_speedup",
           "power_cold_1", "power_cold_5", "power_cold_20", "power_warm_1", "ns_cost", "ns_err_02", "ns_err_04",
           "ns_err_08", "fp32_onestep_cayley", "fp32_onestep_ns", "ns_drift_toy", "cayley_drift_toy", "kfac_vs_exact",
           "svd_exact_s", "svd_power_s"):

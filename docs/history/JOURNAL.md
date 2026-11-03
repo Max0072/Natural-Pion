@@ -7046,3 +7046,22 @@ generator was halved on 2026-08-28; the derivation in docs/paper/preprint.md giv
   step for the same `--lr`: to reproduce a run recorded before today, divide its NGD lr by 4. Tikhonov `lam` in
   `damped.py` is relative to the denominator, unchanged in meaning.
 Tests updated (factorization, damped, exact_curv, optimizer precision test at lr/4); 283 pass.
+
+## 2026-11-03, 22:45 -- open checks closed; probe numbers in; Muon at full length
+
+* Query per head (npqhead): 3.7163 vs 3.7242 whole, -0.008, inside noise. Prediction (|d| < 0.010) right. Kept whole.
+* Regularisation (npreg), floor only: 1e-6 3.8828, 1e-5 3.7804, [1e-4 3.7242], 1e-3 3.7502, 1e-2 3.8853; floor 1e-6 plus
+  damping delta * lam_max: 1e-4 3.7376, 1e-3 3.7352, 1e-2 3.7650, 1e-1 3.7888. 1e-4 is an interior optimum, best
+  alternative +0.011. Prediction (flat 1e-5..1e-3) wrong: the floor matters a lot. Kept.
+* npcheck2: natural-pion-fast with the 1/2 operator bit-identical to the old run on GPU (22 logged steps, val 499).
+* paper_checks: power cold 21% / 6.1% / 0.53% (1, 5, 20 iters), warm 2.3e-5; exact norm 190x slower (journal said
+  4 800x on another setup); NS (2 iters) fp64 error 4.7e-9 / 1.2e-6 / 2.7e-4 at 0.2 / 0.4 / 0.8, cost 0.27x of the solve;
+  toy 3000-step drift NS 0.045% vs Cayley 0.092% -> the earlier reason for rejecting NS does not hold at our angles;
+  NS is now listed as the next speed-up. TF32 0.37% vs fp32 0.012% over 200 steps. Trained Natural Pion (3000 steps)
+  spectrum moved by median 0.039%, worst 0.29%, mean signed +0.035%. K-FAC curvature along our step / exact = 0.034
+  (layers 0.027, 0.061, 0.034).
+* Pion angle probe: timed out at step 1058 (exact norms are slow); val identical to the old run (read-only confirmed).
+  Pion's largest angle per step up to 0.097 rad, median 0.073: as large as ours. The preprint's earlier argument
+  ("Pion's steps are small, ours large") was wrong and is rewritten: both methods turn planes by 0.05-0.2 rad.
+* Muon full length (Natural-Muon, job 397404): 3.2976 at 73242 steps, 32 760 s. Ahead of Natural Pion by steps
+  (3.3296) and by clock (3.3468 at 34 012 s). Not in the preprint (user: Muon not now).

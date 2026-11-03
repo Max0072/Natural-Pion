@@ -288,7 +288,8 @@ our model, $F^{-1}$ scales the gradient very unevenly across layers. With a fixe
 rotation angle actually taken spans 4.2e+06 across the 56 matrices (90th over 10th
 percentile, Section 5.4): some matrices barely move while others turn by large angles.
 
-We use the geometry of the parameterization instead. The step is a rotation, and a rotation has an
+The scale is also where K-FAC is least reliable: along our step, its curvature is 0.034 of the
+exact per-token curvature on a trained model (Section 7). We use the geometry of the parameterization instead. The step is a rotation, and a rotation has an
 angle.
 
 **Proposition 3 (Angle of a Cayley step).** Let $X$ be skew with largest singular value $\sigma$ and
@@ -348,21 +349,20 @@ $R^\top R = (I + \Omega)(I - \Omega)^{-1}(I + \Omega)^{-1}(I - \Omega) = I$. For
 $\Omega^\top = -\Omega$: the odd and quadratic terms cancel, leaving $\Omega^4/4$. $\square$
 
 **Why Cayley here.** The Cayley transform is a standard retraction on the orthogonal group (Wen & Yin,
-2013; Li et al., 2020), and Pion reports having considered it, with modest gains. For Pion the truncated
-exponential is adequate because its steps are small: Pion's largest rotation angle per step is
-at most **[pion_angle_max?]** rad (median over steps **[pion_angle_median: unknown key]**), and the departure from orthogonality, $\|T^\top T - I\|_2 = \varphi^4/4$ for a largest
-angle $\varphi$, is negligible there. Natural Pion takes much larger steps: by construction the largest
-plane of every matrix turns by $\theta_t$, with peak angles of 0.05 to 0.2 rad. At $\theta = 0.2$ the
-truncated exponential would inflate the singular values by up to 4e-04 per step (and by
-2e-06 at 0.05), compounding over tens of thousands of steps: the frozen spectrum would
-drift. Cayley removes the error at any angle. It also makes Proposition 3 exact, so the angle we prescribe
-is the angle taken.
+2013; Li et al., 2020), and Pion reports having considered it, with modest gains. The truncated
+exponential departs from orthogonality by $\|T^\top T - I\|_2 = \varphi^4/4$ for a largest angle $\varphi$, and
+the departure compounds over steps. The angles at stake are not small for either method. Pion's largest
+rotation angle per step reaches 0.097 rad (median over steps 0.073; first
+1 058 steps of a 3 840-step run, measured by `scripts/probes/pion_angles.py`); Natural Pion's peak angle
+is 0.05 to 0.2 rad by construction. At 0.2 the truncated exponential would change the singular values by
+up to 4e-04 per step, at 0.05 by 2e-06. Cayley has no such error at any angle. It also
+makes Proposition 3 exact, so the angle we prescribe is the angle taken.
 
 **Precision.** In practice the guarantee holds only if the solve runs in true fp32. TF32 matrix
-products, the default on recent GPUs, move the spectrum by a relative **[tf32_drift?]** over 200 steps in our
-measurements. In fp32 the singular values of a trained Natural Pion model move from their initial values by at most
-**[fp32_drift_3000?]** per matrix (median over the 56 matrices; worst matrix **[fp32_drift_3000_max?]**, mean signed change
-**[fp32_drift_3000_signed_mean?]**) after 3 000 steps.
+products, the default on recent GPUs, move the spectrum by up to 0.37% over 200 steps at angle $10^{-2}$ in our
+measurements, against 0.012% in true fp32. In fp32 the singular values of a trained Natural Pion model move from their initial values by at most
+0.04% per matrix (median over the 56 matrices; worst matrix 0.29%, mean signed change
++0.03%) after 3 000 steps.
 
 ### 3.5 The algorithm
 
@@ -398,9 +398,8 @@ constant, which scales $X$ and $\sigma$ alike and cancels in $c X$, so the step 
 implementation (`ngd_pion/natural_pion.py`) uses the operator exactly as derived, with the factor
 $\tfrac12$.
 
-<!-- TODO (user, 2026-11-03): re-examine the regularisation. Why a relative floor at 1e-4 and not a tuned
-floor or Tikhonov damping? The choice predates the final method (journal, damped.py); re-test eps and
-Tikhonov on Natural Pion before submission. -->
+The floor $\varepsilon = 10^{-4}$ was re-tested on Natural Pion against other floors and against Tikhonov
+damping (Section 5.4); it is the best of the settings tried.
 
 ---
 
@@ -473,12 +472,12 @@ its time constant.)
 
 ### 4.4 A warm power iteration for $\sigma$
 
-The exact spectral norm (`matrix_norm(X, 2)`) took **[svd_share_of_step?]** of the whole optimizer step on these shapes:
+The exact spectral norm (`matrix_norm(X, 2)`) took 95% of the whole optimizer step on these shapes:
 cuSOLVER falls back to a slow path on $1376 \times 1376$ matrices. Power iteration on $X^\top X$ costs
-matrix-vector products only, **[power_speedup?]**x less. Cold power iteration converges badly on skew matrices,
+matrix-vector products only, 190x less. Cold power iteration converges badly on skew matrices,
 whose singular values come in equal pairs: on a random $512 \times 512$ skew matrix its relative error
-is **[power_cold_1?]** after one iteration, **[power_cold_5?]** after five and **[power_cold_20?]** after twenty. Warm-started from the previous step's
-vector, one iteration reaches **[power_warm_1?]**. We run 50 iterations after a refresh and 2 otherwise.
+is 21.0% after one iteration, 6.1% after five and 0.5% after twenty. Warm-started from the previous step's
+vector, one iteration reaches 2e-05. We run 50 iterations after a refresh and 2 otherwise.
 
 ### 4.5 Computing only what the step uses
 
@@ -496,12 +495,14 @@ per size instead of one call per matrix. The mathematics is unchanged and only r
 
 ### 4.7 Tried and not adopted
 
-* **Newton–Schulz instead of the Cayley solve.** An iterative inverse costs **[ns_cost?]**x the exact solve on
-  these shapes. Its orthogonality error grows with the angle: in fp64, after one step with two
-  iterations it is **[ns_err_02?]** at angle 0.2, **[ns_err_04?]** at 0.4 and **[ns_err_08?]** at 0.8. In fp32,
-  both methods sit at the round-off floor after one step (**[fp32_onestep_cayley?]** for Cayley, **[fp32_onestep_ns?]** for Newton–Schulz), but over 3 000 steps on a
-  $256 \times 256$ test matrix the spectrum drifts by **[ns_drift_toy?]** with Newton–Schulz against **[cayley_drift_toy?]** with
-  Cayley. Exact preservation of the spectrum is the point of the method, so we keep the solve.
+* **Newton–Schulz instead of the Cayley solve: not yet adopted, and a candidate.** Two Newton–Schulz
+  iterations for the inverse cost 0.27x the exact solve on these shapes. Their orthogonality error
+  grows with the angle: in fp64, after one step, 5e-09 at angle 0.2, 1e-06 at 0.4 and
+  3e-04 at 0.8. At our angles ($\le 0.2$) that is below fp32 round-off: after one step both sit at
+  the floor (2e-06 Cayley, 1e-06 Newton–Schulz), and over 3 000 steps on a
+  $256 \times 256$ test matrix the spectrum moves by 0.04% with Newton–Schulz and
+  0.09% with Cayley. Since the retraction is 0.157 s of the step, it is the next
+  speed-up to test in training; it needs a guard that falls back to the exact solve above an angle.
 * **Exact SVD to reshape the step's spectrum** (the polar step in Section 5.4): 6.8–7.8 s per step, and worse in
   loss.
 * **A larger $T_{\mathrm{fac}}$ beyond 25** saves little: the refresh is already 0.025 s per step.
@@ -568,6 +569,11 @@ other value we ran, 0.025, is worse (3.3577 against 3.3468).
 step times measured at the time (Pion 0.466 s, Natural Pion Fast 0.596 s): Pion's 73 242 steps
 correspond to 57 169 of ours, run as 56 900; 3 840 and 19 200 Pion steps correspond to
 3 000 and 15 000. The measured wall times (Table 4) agree.
+
+**The query projection.** Pion rotates the query projection per attention head; all our Natural Pion
+runs rotate it whole. With the per-head split, Natural Pion Fast reaches 3.7163 at 3 000 steps
+against 3.7242 without it (-0.008, inside run-to-run noise), so the difference in
+settings does not favour us.
 
 Pion's learning rate was checked up to 19 200 steps; at the full length it is the published $10^{-3}$, not
 re-tuned.
@@ -671,6 +677,21 @@ Across six rules, the more evenly the matrices turn, the lower the loss. The spe
 RMS rule on all four seeds (gaps 0.014, 0.009, 0.011, 0.006). The Fisher-norm row is the best of its
 grid at the edge of the range.
 
+**Regularisation of the Fisher.** Natural Pion Fast, 3 000 steps, angle 0.2. The default is a relative floor
+$\varepsilon = 10^{-4}$ (3.7242).
+
+| floor $\varepsilon$ (no damping) | $10^{-6}$ | $10^{-5}$ | $10^{-3}$ | $10^{-2}$ |
+|---|---|---|---|---|
+| val | 3.8828 | 3.7804 | 3.7502 | 3.8853 |
+
+| damping $\delta$ (floor $10^{-6}$; $F + \delta\lambda_{\max} BXB$) | $10^{-4}$ | $10^{-3}$ | $10^{-2}$ | $10^{-1}$ |
+|---|---|---|---|---|
+| val | 3.7376 | 3.7352 | 3.7650 | 3.7888 |
+
+The floor at $10^{-4}$ is an interior optimum, and the best alternative is +0.011 worse.
+Too little regularisation is as harmful as too much: at $10^{-6}$ the step follows directions the
+statistics barely determine, and at $10^{-2}$ $F^{-1}$ moves toward the raw generator.
+
 **Other choices.** Single runs at the reference's angle unless stated; the reference value is in brackets.
 Rows with reference 3.7227 are on the fast form ($T_{\mathrm{fac}} = 25$, momentum, angle 0.2); rows with
 reference 3.7399 on Algorithm 1 without momentum (angle 0.4).
@@ -747,17 +768,16 @@ preservation of the spectrum.
   at shorter horizons agree in sign and size.
 * **One code base.** Our Pion is 0.013 above the Pion paper's own number, so we compare within our
   harness only.
-* **Exactness in practice.** The spectrum is frozen in exact arithmetic. In fp32 it drifts by up to **[fp32_drift_3000?]** per matrix (median)
+* **Exactness in practice.** The spectrum is frozen in exact arithmetic. In fp32 it drifts by up to 0.04% per matrix (median)
   over 3 000 steps, with a consistent sign. We have not measured whether this matters.
 * **Only Pion as a baseline.** We compare against the published Pion configuration only, not against
   AdamW or Muon, and only on validation loss, not on downstream tasks.
 * **The peak angle depends on the horizon.** The best peak falls with the training length (0.2 at 3 000
   steps, 0.05 from 15 000 on), so it has to be chosen for the budget, as a learning rate is.
-* **The K-FAC assumption.** The independence of $x$ and $\delta$ is not tested here. How far the K-FAC
-  curvature along our step is from the exact per-token curvature is **[kfac_vs_exact?]** (median of three layers).
-* **Open checks.** The query projection is rotated whole, while Pion rotates it per head; and the
-  relative floor $\varepsilon = 10^{-4}$ was chosen for an earlier variant. Both are being re-tested.
-  <!-- TODO: close with the results of natural_pion_qhead.sbatch and natural_pion_reg.sbatch. -->
+* **The K-FAC assumption.** Along our step, the K-FAC curvature is 0.034 of the exact per-token
+  curvature (median of three layers of a trained model): the independence of $x$ and $\delta$ fails by more
+  than an order of magnitude in scale. This is consistent with Section 3.3: we keep the direction of
+  $F^{-1}G$ but not its length.
 * **Cost.** $O(n^3)$ eigendecompositions every $T_{\mathrm{fac}}$ steps and a Cayley solve every step.
   At 60M the step is 1.28x Pion's. For larger matrices the refresh must be amortised or distributed.
 * **Steps-to-loss** (at least 1.41x) is a lower bound from mid-schedule crossings, not a measured ratio with
@@ -805,7 +825,7 @@ of all matrices takes 58 s on one B200.
   mean loss is undone by scaling $D$ by $N^2$; Algorithm 1 is invariant to it anyway.
 * **Power iteration.** $\|X\|_2$ is estimated by power iteration on $X^\top X$, warm-started from the
   previous step's vector: 2 iterations per step and 50 after a refresh, where $X$ jumps. It is
-  **[power_speedup?]**x cheaper than an exact spectral norm on these shapes.
+  190x cheaper than an exact spectral norm on these shapes.
 * **Floors.** $A$, $S$ (or $D$, $V$) and the pencil eigenvalues are floored at
   $10^{-4}\,\lambda_{\max}$ before any division.
 * **Code.** `ngd_pion/natural_pion.py` (`NaturalPion`); every job and run record is listed in
@@ -828,7 +848,7 @@ larger than query and key projections within the same step.
 | momentum | Lie, 0.9 | Lie, 0.9 |
 | curvature | $T_{\mathrm{fac}}$ 25; $A$, $D$ EMA 0.5 over the 6 steps before a refresh; floor $10^{-4}$ | - |
 | retraction | Cayley (exact fp32 solve) | truncated exponential, degree 2 |
-| query projection | rotated whole | rotated per head |
+| query projection | rotated whole (per head: Section 5.1) | rotated per head |
 | update | both sides every step | both sides every step |
 | other parameters | AdamW 8e-3, (0.9, 0.95), wd 0.1, cosine | same |
 | gradient clipping | 1.0 | 1.0 |
