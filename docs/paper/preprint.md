@@ -100,7 +100,7 @@ G_{\mathrm{in}} = \operatorname{skew}(W^\top G), \qquad G_{\mathrm{out}} = \oper
 are the gradients of the loss with respect to the two generators: the Riemannian gradient on
 $O(m) \times O(n)$ at the identity.
 
-Pion steps along $-G$ with three further ingredients:
+Pion steps along $-G_{\mathrm{in}}$ and $-G_{\mathrm{out}}$ with three further ingredients:
 
 * **Lie-algebra momentum.** An exponential moving average of $G_{\mathrm{in}}$ and $G_{\mathrm{out}}$.
 * **RMS scaling.** The step is scaled so that the RMS of the induced change
@@ -116,7 +116,7 @@ For a model with predictive distribution $p_\phi(y \mid x)$, the Fisher informat
 $F = \mathbb{E}[\nabla_\phi \log p\, \nabla_\phi \log p^\top]$ defines a metric on parameter space. The
 natural gradient $F^{-1}\nabla L$ is the steepest-descent direction in that metric (Amari, 1998):
 
-$$F^{-1}\nabla L \;\propto\; \arg\min_{\Delta}\; \langle \nabla L, \Delta\rangle
+$$-F^{-1}\nabla L \;\propto\; \arg\min_{\Delta}\; \langle \nabla L, \Delta\rangle
 \quad \text{s.t.} \quad \tfrac12 \Delta^\top F \Delta \le \varepsilon .$$
 
 For a linear layer $y = Wx$, a single example contributes the gradient $\delta x^\top$, where
