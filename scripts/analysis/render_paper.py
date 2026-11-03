@@ -31,6 +31,6 @@ def fill(m):
     return out.replace(",", " ")
 
 
-out = re.sub(r"\{\{([A-Za-z0-9_.]+)(?::([^}]*))?\}\}", fill, src)
+out = re.sub(r"\{\{([A-Za-z0-9_.\-]+)(?::([^}]*))?\}\}", fill, src)
 (P / "preprint.filled.md").write_text(out)
 print(f"filled; {len(gaps)} gaps {sorted(set(gaps))}; {len(unknown)} unknown keys {sorted(set(unknown))}")

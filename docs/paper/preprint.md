@@ -545,7 +545,7 @@ and the momentum). All results in Section 5 use it.
 exponential, query matrix split per head, bilateral update, lr $10^{-3}$ with a cosine schedule. The
 Pion paper chose lr $10^{-3}$ from $\{10^{-4}, 5\cdot10^{-4}, 10^{-3}, 5\cdot10^{-3}, 10^{-2}\}$. We
 checked it in our setting (Table 3). $10^{-3}$ is best at 19 200 steps. At 3 840 steps $2\cdot10^{-3}$
-is better by {{pion_lr_3840_better}}, and we report that comparison too.
+is better by {{pion_lr_3840_better:.3f}}, and we report that comparison too.
 
 All comparisons are within one code base. Our Pion reaches {{pion_full:.4f}} at full length, against 3.3575
 reported by the Pion paper in Megatron-LM. The difference is a harness offset we do not try to close.
