@@ -8,20 +8,20 @@ date: "Draft, November 2026"
 
 Pion trains each weight matrix of a language model only by rotating it on both sides,
 $W \leftarrow R_{\mathrm{out}} W R_{\mathrm{in}}$, so the singular values of every matrix stay fixed for the
-whole run. It drives the rotation with the raw gradient. We ask which direction to rotate in. On
-the product of rotation groups that acts on $W$, the Kronecker-factored (K-FAC) Fisher information
-takes a closed form, $F(X) = \tfrac12(SXA + AXS)$. Here $A$ is the second moment of the layer's
-inputs, and $S$ is that of its output gradients pulled back through $W$. A single generalized
-eigendecomposition per side inverts this operator exactly. The natural gradient it gives is a good
-direction, but its scale varies over orders of magnitude between layers. We therefore keep the
-direction and replace the length: every matrix turns its fastest rotation plane by the same
-scheduled angle. An exact Cayley retraction completes the method, which we call **Natural Pion**.
-It keeps Pion's invariant exactly rather than approximately. On LLaMA-60M trained on 9.6B tokens of
-C4, Natural Pion reaches a validation loss of 3.3296 in Pion's number of steps, against Pion's
-3.3706. At Pion's wall-clock time it reaches 3.3468, with a fast form whose step costs 1.28x Pion's. It needs at least 1.45x fewer steps to reach
-Pion's final loss, and it is ahead at equal wall-clock time on every seed and horizon we measured.
-Because the spectrum is frozen, the initial spectrum is a design choice: a heavy-tailed initial
-spectrum helps Natural Pion and does not help Pion.
+whole run. We keep this constraint and change the direction of the rotation from the gradient to the
+natural gradient. On LLaMA-60M trained on 9.6B tokens of C4, the resulting optimizer, **Natural Pion**,
+reaches a validation loss of 3.3296 in Pion's number of steps, against Pion's 3.3706. At Pion's
+wall-clock time it reaches 3.3468. It needs at least 1.45x fewer steps to reach Pion's final loss, and it
+is ahead at equal wall-clock time on every seed and horizon we measured.
+
+The method rests on three results. First, on the rotation generators the Kronecker-factored (K-FAC)
+Fisher information takes a closed form, $F(X) = \tfrac12(SXA + AXS)$. Here $A$ is the second moment of
+the layer's inputs and $S$ that of its output gradients pulled back through $W$. A single generalized
+eigendecomposition per side inverts this operator exactly. Second, the natural gradient is a good
+direction with a bad scale: its magnitude varies over orders of magnitude between layers. We keep the
+direction and set the length so that every matrix turns its fastest rotation plane by the same scheduled
+angle. Third, an exact Cayley retraction keeps Pion's invariant exactly rather than approximately. A fast
+form of the method costs 1.28x Pion's time per step.
 
 ---
 
@@ -38,11 +38,16 @@ so the singular values of $W$ are those it was initialised with, for the whole o
 the singular vectors are learned. Pion reports that this gives spectral control without explicit
 normalization, stable training, and performance competitive with AdamW and Muon.
 
-Pion moves along the raw Riemannian gradient on the rotation group. The geometry that motivates the
-method, rotations of a matrix whose spectrum is fixed, says nothing about which rotation to take. The
-classical answer to that question is the natural gradient (Amari, 1998): steepest descent in the
-metric of the model's output distribution, not in the Euclidean metric of the parameters. This paper
-derives the natural gradient for Pion's parameterization and makes it practical.
+Pion chooses the rotation by steepest descent on the rotation group: it follows the Riemannian
+gradient of the loss with respect to the two generators. Steepest descent depends on the metric, and
+Pion's is the Euclidean one on the generators, which treats every direction of rotation alike. One
+global RMS normalisation then sets the step for each matrix. But the curvature of the loss along
+different rotation directions, and across layers, differs by orders of magnitude. The classical remedy
+is the natural gradient (Amari, 1998): steepest descent in the metric of the model's output
+distribution, the Fisher information. It accounts for these differences and is invariant to how the
+rotation is parameterised. This paper derives the natural gradient for Pion's parameterization, makes
+it exact and cheap, and pairs it with a step-length rule that keeps the stability Pion's normalisation
+provides.
 
 **Contributions.**
 
@@ -57,7 +62,10 @@ derives the natural gradient for Pion's parameterization and makes it practical.
 3. **Direction from the Fisher, length from an angle.** $F^{-1}$ amplifies gradients by four or more
    orders of magnitude, unevenly across layers. We take only its direction. The step length is set so
    that the largest rotation plane of every matrix turns by the same scheduled angle $\theta_t$
-   (Proposition 3). This one choice decides whether the natural gradient helps (Section 5.4).
+   (Proposition 3). With a fixed step size and no momentum the natural gradient is no better than
+   Pion (3.8419 at 3 000 steps; Pion, with momentum, 3.8412). With the angle rule it reaches 3.7399.
+   The angle rule alone, on Pion's raw generator with momentum, gains only 0.017 over Pion
+   (Section 5.4): the gain is the natural gradient's, and the angle is what lets it through.
 4. **Exact spectrum preservation.** The Cayley retraction is orthogonal at every step size, so the
    invariant Pion is built on holds exactly. Pion's truncated exponential gives
    $R^\top R = I + \Omega^4/4$ (Proposition 4).
@@ -67,8 +75,7 @@ derives the natural gradient for Pion's parameterization and makes it practical.
 6. **Experiments.** On LLaMA-60M / C4 at Pion's full 9.6B-token budget, Natural Pion is ahead of
    Pion at equal steps by 0.041 and at equal wall-clock time by 0.024 in validation loss. It is ahead
    on four of four seeds at two shorter horizons, and needs at least 1.45x fewer steps. Ablations
-   isolate each component. Because the spectrum is frozen, we also find that the shape of the
-   initial spectrum matters: a power-law tail helps Natural Pion and hurts Pion.
+   isolate each component.
 
 ---
 
@@ -287,13 +294,7 @@ Embedding, output head and normalization gains use AdamW, as in Pion. Any consta
 cancels in $c$, so the method is invariant to the scale of $A$ and $D$, including the $1/N$ that
 autograd puts on per-token gradients of a mean loss.
 
-### 3.6 The initial spectrum is part of the model
-
-Under Pion and Natural Pion the singular values of a rotated matrix are those it was initialised with,
-to the end of training. The initial spectrum is therefore a design choice that persists, not a starting
-point. Trained networks have heavy-tailed weight spectra (Martin & Mahoney, 2021), and HTMuon (2026)
-argues that orthogonalising optimizers suppress such tails. With a frozen spectrum the tail cannot
-emerge during training, but it can be set at initialisation. We test this in Section 5.5.
+---
 
 ## 4 Making it fast: Natural Pion Fast
 
@@ -545,35 +546,6 @@ grid at the edge of the range.
 | warmup-stable-decay, decay over the last 20% / 10% (3.7227) | 3.7578 / 3.7763 |
 | equal angle on every plane of $X$ (polar step), at step 2499 (3.7291) | 3.7404 |
 
-### 5.5 The initial spectrum
-
-The rotated matrices keep their initial singular values, so we vary them. A *power-law tail* with
-exponent $\alpha$ replaces the largest 20% of the singular values of a $\mathcal N(0, 0.02^2)$ matrix with
-$s_i \propto i^{-1/(2(\alpha-1))}$, joined continuously to the bulk. This is the shape heavy-tailed
-self-regularisation reports for trained layers. It raises the top singular values, so it changes energy
-as well as shape. Embedding and head are unchanged.
-
-| initial spectrum (3 000 steps, seed 0) | val | vs normal |
-|---|---|---|
-| $\mathcal N(0, 0.02^2)$ | 3.7242 | |
-| tail, $\alpha$ = 2 / 2.5 / **3** / 4 / 5 | 3.7158 / 3.7049 / **3.7020** / 3.7145 / 3.7182 | best -0.022 |
-| flat, all singular values $\sqrt{m/n}$ | 3.7701 | +0.046 |
-| orthogonal, all singular values 1 | 3.7749 | +0.051 |
-
-Over seeds 0-3, $\alpha = 3$ gains 0.022 / 0.011 / 0.014 / 0.009 (mean 0.014). The same initialisation
-does not help Pion:
-
-| | steps | $\mathcal N(0, 0.02^2)$ | tail $\alpha = 3$ | gain |
-|---|---|---|---|---|
-| Natural Pion | 3 000 | 3.7242 | 3.7020 | +0.022 |
-| Pion | 3 000 / 3 840 | 3.8412 / 3.7804 | 3.8472 / 3.7854 | -0.006 / -0.005 |
-| Natural Pion | 15 000 | 3.4720 | 3.4680 | +0.004 |
-| Pion | 15 000 / 19 200 | 3.5254 / 3.4960 | 3.5441 / 3.5108 | -0.019 / -0.015 |
-
-Natural Pion's gain shrinks with length, to a tie at 15 000 steps. The tail hurts Pion at every horizon.
-One reading, which we have not tested: Natural Pion's direction depends on $W$'s spectrum through
-$S = W^\top D W$ and $V = W A W^\top$, while Pion's does not.
-
 ---
 
 ## 6 Related work
@@ -603,10 +575,6 @@ generator. Its unit is the rotation angle, which the multiplicative update makes
 orthogonal and Stiefel manifolds (e.g. Wen & Yin, 2013; Li, Li & Todorovic, 2020). We use it for exact
 preservation of the spectrum.
 
-**Weight spectra.** Heavy-tailed spectra of trained layers (Martin & Mahoney, 2021) and their link to
-generalisation motivate the initialisation of Section 5.5. HTMuon (2026) induces heavier tails in
-Muon's updates. Under a frozen spectrum, the initialisation is the only place to set the tail.
-
 ---
 
 ## 7 Limitations
@@ -619,8 +587,6 @@ Muon's updates. Under a frozen spectrum, the initialisation is the only place to
   over 3 000 steps, with a consistent sign. We have not measured whether this matters.
 * **Cost.** $O(n^3)$ eigendecompositions every $T_{\mathrm{fac}}$ steps and a Cayley solve every step.
   At 60M the step is 1.28x Pion's. For larger matrices the refresh must be amortised or distributed.
-* **The initialisation effect** is measured to 15 000 steps, where it is a tie for Natural Pion. The
-  full-length pair is pending.
 * **Steps-to-loss** (1.45x) is a lower bound from mid-schedule crossings, not a measured ratio with
   fitted schedules.
 
@@ -640,7 +606,6 @@ lineage (Kakade, 2001) makes it the natural test.
 - FISMO. arXiv:2601.21750.
 - Go-MUON. arXiv:2608.09763.
 - Gupta, V., Koren, T., Singer, Y. *Shampoo: preconditioned stochastic tensor optimization.* ICML 2018.
-- HTMuon. arXiv:2603.10067.
 - Kakade, S. *A natural policy gradient.* NeurIPS 2001.
 - Li, J., Li, F., Todorovic, S. *Efficient Riemannian optimization on the Stiefel manifold via the Cayley transform.* ICLR 2020, arXiv:2002.01113.
 - Martens, J., Grosse, R. *Optimizing neural networks with Kronecker-factored approximate curvature.* ICML 2015, arXiv:1503.05671.
@@ -687,3 +652,23 @@ matrices within the same step.
 | other parameters | AdamW 8e-3, (0.9, 0.95), wd 0.1, cosine | same |
 | gradient clipping | 1.0 | 1.0 |
 | warmup | none | none |
+
+## Appendix D: remarks
+
+**The initial spectrum.** Under Pion and Natural Pion the singular values of a rotated matrix stay those
+it was initialised with, so the initial spectrum is part of the trained model. We ran a short check with
+a power-law tail in the initial spectrum: the largest 20% of the singular values of a
+$\mathcal N(0, 0.02^2)$ matrix are replaced by $s_i \propto i^{-1/(2(\alpha-1))}$, the shape reported for
+trained layers (Martin & Mahoney, 2021). It changes energy as well as shape.
+
+| initial spectrum (3 000 steps, seed 0) | val | vs normal |
+|---|---|---|
+| $\mathcal N(0, 0.02^2)$ | 3.7242 | |
+| tail, $\alpha$ = 2 / 2.5 / 3 / 4 / 5 | 3.7158 / 3.7049 / 3.7020 / 3.7145 / 3.7182 | best -0.022 |
+| flat, all singular values $\sqrt{m/n}$ | 3.7701 | +0.046 |
+| orthogonal, all singular values 1 | 3.7749 | +0.051 |
+
+With $\alpha = 3$, Natural Pion gains 0.014 at 3 000 steps (mean of 4 seeds) and 0.004 at 15 000 steps (a
+tie). The same initialisation makes Pion worse at every horizon tried (-0.006 at 3 000, -0.019 at 15 000
+steps). Flat spectra are worse for Natural Pion by about 0.05. Every other experiment in the paper uses
+$\mathcal N(0, 0.02^2)$.
