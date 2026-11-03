@@ -7019,3 +7019,17 @@ alpha at seed 0: 2 3.7158, 2.5 3.7049, 3 3.7020, 4 3.7145, 5 3.7182: interior at
 Pion alpha 3, seed 0: 3000 3.8472 (normal 3.8412, -0.006), 3840 3.7854 (normal 3.7804, -0.005). Gain ours - Pion = 0.028 at 3000:
 by the rule the init gain is ours. Prediction "Pion gains about as much" wrong. A candidate reason, unmeasured: our direction depends
 on W's spectrum through F (W A W^T, W^T D W); Pion's does not. 15000 and full-length pairs running.
+
+## 2026-11-03, 17:00 -- alpha-3 init at 15000: our gain shrinks to a tie, Pion is hurt; restructure
+
+15000 steps, seed 0, alpha 3 vs normal: ours (0.05) 3.4680 vs 3.4720, +0.004 (tie by the 0.010 rule); Pion 15000 3.5441 vs 3.5254
+(-0.019), Pion 19200 3.5108 vs 3.4960 (-0.015). Prediction "gain about 0.01 at 15000" about right for us; "Pion gains about as much"
+wrong again: the tail hurts Pion at every horizon tried. Same clock with the same init: ours 3.4680 vs Pion 3.5108, 0.043.
+Full-length alpha-3 pair still running.
+
+Restructure (user, 2026-11-03): `ngd_pion/natural_pion.py` (NaturalPion, NaturalPionFast; Fast bit-identical to the step_norm
+probe on CPU, tests/test_natural_pion.py), harness names `natural-pion`, `natural-pion-fast`; set-aside variants in
+`ngd_pion/legacy/`; `scripts/paper/` (jobs behind FINAL.md, indexed), `scripts/cluster/`, `scripts/rl/`, `scripts/archive/sbatch/`;
+docs split into `docs/paper/` and `docs/history/` (this journal moved here). `scripts/analysis/final_tables.py` regenerates
+FINAL.md's tables from runs-record; it reproduces every number in 1, 5.1-5.3, 6.5.
+RL refactor cost on one RTX PRO 6000 at Qwen3-1.7B shapes: one refactor 64 s (6144-wide pencils 56 s), one Cayley step 3.8 s.
