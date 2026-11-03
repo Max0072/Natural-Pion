@@ -8,7 +8,7 @@
 #SBATCH -t 14:00:00
 #SBATCH -o logs/%x-%A_%a.out
 #SBATCH -e logs/%x-%A_%a.err
-# Does step_norm's lead survive to 15000 steps? (journal 2026-10-30; H4 of docs/PLAN.md)
+# Does step_norm's lead survive to 15000 steps? (journal 2026-10-30; H4 of docs/history/PLAN.md)
 #
 # step_norm (t_fac 1, alpha off, cosine), flags of ladder15k.sbatch otherwise: B 512, adamw 8e-3,
 # seed 0. References at 15000: pion 3.5254, old method (t_fac 25, alpha) 3.5302. About 7.5 h per task.

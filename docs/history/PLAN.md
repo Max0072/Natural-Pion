@@ -1,6 +1,6 @@
 # Plan, from 2026-09-22
 
-Read `docs/VALIDATION.md` first: it says what the numbers below are and are not.
+Read `docs/history/VALIDATION.md` first: it says what the numbers below are and are not.
 Notation (`val`, `rot`, `adamw`, `B`, gap, seed) is defined at the top of that
 file and used the same way here.
 
@@ -173,7 +173,7 @@ it decides whether stages 3-4 are worth 30 GPU-hours.
 * One variable per comparison. Before interpreting any result, diff the two
   manifests and say what differs; the mistakes already made here were all
   explanations built on an unchecked setup.
-* Write the job ids and configurations into `docs/JOURNAL.md` as jobs are
+* Write the job ids and configurations into `docs/history/JOURNAL.md` as jobs are
   submitted, and rewrite `docs/RESUME.md` rather than appending to it.
 
 ## What each outcome means for the paper -- resolved 2026-09-23
@@ -202,7 +202,7 @@ turned out to be load-bearing (ablation B: removing it makes the method 0.356
 (the `t_fac = 1` anomaly -- a *fresher*, more accurate basis makes the loss
 *worse*, unexplained) and whose replacement (candidate C: `trust="exact"`, the
 per-layer real trust region) has been calibrated and run once at 3000 steps
-without yet beating either baseline (`docs/JOURNAL.md`, 2026-09-22/23). **So
+without yet beating either baseline (`docs/history/JOURNAL.md`, 2026-09-22/23). **So
 "the horizon advantage disappears" is a finding about this specific,
 not-fully-understood implementation, not a settled fact about Fisher-
 preconditioned natural gradient on this geometry in general.** If C ever
@@ -230,7 +230,7 @@ arm (job 333959): a fine grid (3e-3 to 1.5e-2 at `adamw=8e-3`) confirms
 `rot=6e-3` as the true interior optimum, val 3.7954 unchanged, neighbours
 worse by only 0.003-0.005. Neither ablation moves the headline number; both
 are recorded as content for the "what does this preconditioner need" section
-of the paper. Details: `docs/JOURNAL.md`, 2026-09-23 04:10/04:15/04:50;
+of the paper. Details: `docs/history/JOURNAL.md`, 2026-09-23 04:10/04:15/04:50;
 `docs/RESUME.md` "As of 04:50".
 
 ## Time

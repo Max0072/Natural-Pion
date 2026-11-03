@@ -6,7 +6,7 @@
 
 ## Context
 
-The comparison design of `ALGORITHM.md` and `README.md` measured NGD-Pion
+The comparison design of `docs/history/ALGORITHM.md` and `README.md` measured NGD-Pion
 against `pion_ablated` (Pion with momentum and RMS scaling switched off and the
 retraction forced to Cayley), so that one variable separated the arms. Stage 2 of
 the plan would have tuned that arm.
@@ -15,7 +15,7 @@ the plan would have tuned that arm.
 
 The baseline is **published Pion, and only that**. NGD-Pion is compared to it as
 a whole method. No claim is made about which component of NGD-Pion is
-responsible for a gain. Hypothesis H3 and stage 2 of `docs/PLAN.md` are
+responsible for a gain. Hypothesis H3 and stage 2 of `docs/history/PLAN.md` are
 withdrawn. User's words: an ablated Pion "should not work, because the algorithm
 only works whole".
 

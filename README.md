@@ -122,16 +122,16 @@ floored at `max(λ, ε·λ_max)`, and nothing else is damped anywhere.
 | | |
 |---|---|
 | **[`docs/RESUME.md`](docs/RESUME.md)** | **start here** — what is running right now, and what to do next |
-| **[`docs/PLAN.md`](docs/PLAN.md)** | the plan: claims stated so they can fail, stages, cost |
-| **[`docs/VALIDATION.md`](docs/VALIDATION.md)** | audit of what the numbers are, and are not |
+| **[`docs/history/PLAN.md`](docs/history/PLAN.md)** | the plan: claims stated so they can fail, stages, cost |
+| **[`docs/history/VALIDATION.md`](docs/history/VALIDATION.md)** | audit of what the numbers are, and are not |
 | **[`docs/LITERATURE.md`](docs/LITERATURE.md)** | the literature check on novelty: what was searched, what is prior art, what the check cannot show |
 | **[`docs/decisions/`](docs/decisions/README.md)** | decision records: what was decided, why, on what evidence |
 | **[`runs-record/`](runs-record/README.md)** | `manifest.json` and `log.jsonl` of every run: the source of every number in `docs/` |
-| **[`ALGORITHM.md`](ALGORITHM.md)** | the specification — every decision with the measurement behind it |
+| **[`docs/history/ALGORITHM.md`](docs/history/ALGORITHM.md)** | the specification — every decision with the measurement behind it |
 | **[`AGENTS.md`](AGENTS.md)** | state of play, decisions not to reopen, traps already hit |
 | **[`docs/CLUSTER.md`](docs/CLUSTER.md)** | the cluster sequence, in order |
 
-Read `ALGORITHM.md` before changing anything. Each module implements one of its
+Read `docs/history/ALGORITHM.md` before changing anything. Each module implements one of its
 sections and names it in the docstring.
 
 ## Layout
@@ -196,7 +196,7 @@ scaling switched off, so that one variable separated the arms). It was dropped,
 and removed from the code, on 2026-09-22: Pion's RMS scaling is what keeps its truncated exponential from
 diverging (`R^T R = I + A^4/4`, so it inflates every step unless the angle stays
 small), so an ablated Pion must borrow Cayley and is no longer Pion. At 150 steps
-it was also worse than freezing the matrices. See `docs/VALIDATION.md` V2.
+it was also worse than freezing the matrices. See `docs/history/VALIDATION.md` V2.
 
 ## Status
 
@@ -209,8 +209,8 @@ system, the descent lemma, the sign, Cayley's exactness, spectrum preservation.
 1e-3, `ngd-pion-s` ends 0.014 behind the like-for-like Pion run (3.3860 against
 3.3719, one run each). At the classical batch with both optimizers tuned it is
 ahead early: 3.7954 against 3.8412 after 3000 steps, one seed, no error bar yet.
-What is known and what is not is in [`docs/VALIDATION.md`](docs/VALIDATION.md);
-what to do next is in [`docs/PLAN.md`](docs/PLAN.md). The toy least-squares
+What is known and what is not is in [`docs/history/VALIDATION.md`](docs/history/VALIDATION.md);
+what to do next is in [`docs/history/PLAN.md`](docs/history/PLAN.md). The toy least-squares
 check that once stood here was a kill criterion, not a result.
 
 ## Tests

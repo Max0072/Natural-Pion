@@ -36,7 +36,7 @@
 #     abandoning the ratio.
 #
 # `eta` IS IN THE POST-2026-08-28 CONVENTION. The incumbent `1e-2` of the
-# earlier sweeps is `2e-2` here; see ALGORITHM.md section 1.
+# earlier sweeps is `2e-2` here; see docs/history/ALGORITHM.md section 1.
 #
 # THROTTLED TO TWO AT A TIME (`%2`). Four full-length runs share `b201` and the
 # `ngd-pion-s` pair projects to 22.7 h against a 24 h wall -- a 1.3 h margin

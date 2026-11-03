@@ -1,7 +1,7 @@
 """The 1.076 s/step of job 246531, decomposed by measurement rather than by
 subtraction.
 
-`docs/JOURNAL.md` split that step into roughly 0.22 s of optimizer, 0.48 s of
+`docs/history/JOURNAL.md` split that step into roughly 0.22 s of optimizer, 0.48 s of
 model and a 0.38 s remainder attributed to `observe`. Only the first of those
 was measured; the second was borrowed from a Pion run at a *different*
 micro-batch, and the third was whatever was left over. That is how a 1.5x

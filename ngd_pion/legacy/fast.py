@@ -1,7 +1,7 @@
 """NGD-Pion with the cost work in it, and nothing else.
 
 `optimizer.py` is the reference. It is a direct transcription of
-`ALGORITHM.md`, deliberately left unoptimised, so that there is something to
+`docs/history/ALGORITHM.md`, deliberately left unoptimised, so that there is something to
 check against -- the same role `reference.py` plays for the mathematics, one
 level up. Nothing in this module may be back-ported into it.
 
@@ -189,7 +189,7 @@ class FastNGDPion(NGDPion):
         # rather than on its self-consistency. The model is a Taylor expansion
         # in the algebra and `Cayley` departs from the exponential at order
         # `||A||^2`, so there is a radius beyond which it means nothing;
-        # ALGORITHM.md puts it at 0.1 rad. Capping there costs the working
+        # docs/history/ALGORITHM.md puts it at 0.1 rad. Capping there costs the working
         # configuration nothing -- its measured `angle_max` is 0.057 -- and cuts
         # that first step by a factor of 57.
         #

@@ -310,7 +310,7 @@ into gaps a 16 h one cannot.
 
 Both `runs/b200/*/manifest.json` record `git_commit: 3bade81715d1-dirty`.
 `config.git_commit()` calls `git status --porcelain`, which lists **untracked**
-files, and the only untracked file in the tree is `docs/JOURNAL.md` — this one.
+files, and the only untracked file in the tree is `docs/history/JOURNAL.md` — this one.
 The code the b200 runs execute is exactly commit `3bade81715d1`, clean. The rtx
 pair, started before this file existed, records `7c9783fefa01` with no marker.
 
@@ -388,7 +388,7 @@ two right now.
 ### `git_commit()` no longer fires on untracked files
 
 `config.git_commit()` decided dirtiness with `git status --porcelain`, which
-includes untracked files, so `docs/JOURNAL.md` — a notes file that no run
+includes untracked files, so `docs/history/JOURNAL.md` — a notes file that no run
 imports — stamped both b200 anchor manifests `-dirty` while the code they ran
 was clean.
 
@@ -433,7 +433,7 @@ from here — the step 5 sweeps and the nine comparison runs of step 6, which ar
 the ones that go in the paper — carries an honest stamp. The two b200 anchors
 keep their footnote in `PROVENANCE.md`.
 
-**A habit this creates.** `docs/JOURNAL.md` is tracked now, so an uncommitted
+**A habit this creates.** `docs/history/JOURNAL.md` is tracked now, so an uncommitted
 journal entry marks the tree dirty — correctly, since the marker no longer
 distinguishes a notes file from a code change once that file is tracked.
 Commit journal entries as they are written, or a run started mid-edit inherits
@@ -5475,7 +5475,7 @@ Nothing was submitted today. Read from disk: the two 2026-08-30/31 sweeps
 (`runs/batchscale`, `runs/adamw2d`), the manifests of every full-length run, the
 optimizer construction and the sampler; ran `pytest -q` in the container on the
 login node (262 passed, 1 skipped, 33.6 s). Full write-up in
-`docs/VALIDATION.md`; the plan that follows from it in `docs/PLAN.md`.
+`docs/history/VALIDATION.md`; the plan that follows from it in `docs/history/PLAN.md`.
 
 ### What was found
 
@@ -5514,7 +5514,7 @@ other hardware, full length) and sd 0.024 at 150 steps.
 
 ### Decisions
 
-* The claim is now stated so that it can fail (`docs/PLAN.md`): four hypotheses,
+* The claim is now stated so that it can fail (`docs/history/PLAN.md`): four hypotheses,
   each with a criterion for holding and for dying, written before any number.
 * **Stage 1 before everything else**: three more seeds per arm at the two
   optima, B = 512, 3000 steps, about 2.5 h, the only thing that can put an error
@@ -5529,7 +5529,7 @@ other hardware, full length) and sd 0.024 at 150 steps.
 
 ### Not submitted, waiting on the user
 
-All of `docs/PLAN.md` stages 1-5. The deadline date decides how far it goes.
+All of `docs/history/PLAN.md` stages 1-5. The deadline date decides how far it goes.
 
 ## 2026-09-22, night -- stage 1 submitted: seeds for the +0.046 (job 332045)
 
@@ -5564,7 +5564,7 @@ counting. Nothing was wrong. Signature checked once it was up, as
 `docs/CLUSTER.md` says to: step counters advancing, GPU utilisation 100% on both
 cards, memory 49-50 GB, two distinct card UUIDs.
 
-Decision rule, fixed before the numbers (`docs/PLAN.md` H1): the four paired
+Decision rule, fixed before the numbers (`docs/history/PLAN.md` H1): the four paired
 gaps (seed 0 plus these three) all positive and mean gap / standard error > 2.35.
 
 Expected finish about 01:45 cluster time. Next: read the six final vals, diff the
@@ -5578,9 +5578,9 @@ because the algorithm only works whole."
 
 **Decision.** The baseline is published Pion and nothing else. NGD-Pion is
 compared to it as a whole method, and the plan makes no claim about which
-component is responsible. Hypothesis H3 and stage 2 of `docs/PLAN.md` are
+component is responsible. Hypothesis H3 and stage 2 of `docs/history/PLAN.md` are
 withdrawn (numbers kept, marked withdrawn, so journal references stay readable).
-`docs/PLAN.md`, `docs/VALIDATION.md`, `docs/RESUME.md`, `AGENTS.md`, `README.md`
+`docs/history/PLAN.md`, `docs/history/VALIDATION.md`, `docs/RESUME.md`, `AGENTS.md`, `README.md`
 and `ngd_pion/README.md` now say so.
 
 **Why the user is right, from what this repository already recorded**, which is
@@ -5696,7 +5696,7 @@ Final val at step 2999, B = 512, 3000 steps, same seed for both arms:
     3      3.8052       3.8417   +0.0365
 
 Mean gap +0.0379, sd 0.0056, SE 0.0028, mean/SE **13.6**. The criterion fixed in
-`docs/PLAN.md` before the numbers (all four positive, mean/SE > 2.35): **met.**
+`docs/history/PLAN.md` before the numbers (all four positive, mean/SE > 2.35): **met.**
 H1 holds.
 
 **Two readings that matter.**
@@ -5739,7 +5739,7 @@ six-run version (adamw neighbours only) would not do. Cost about 30 GPU-hours,
 about 6 h wall. It is more than the plan said, so it is recorded here rather than
 absorbed.
 
-**Rule fixed before any number** (in the sbatch header and in `docs/PLAN.md` H4):
+**Rule fixed before any number** (in the sbatch header and in `docs/history/PLAN.md` H4):
 `gap15` = val(best `pion` cell) - val(best `ngd-pion-s` cell), each best over its
 own five cells. `>= +0.020` persists, full-length pair justified; `+0.010` to
 `+0.020` decaying but present; `< +0.010` inside noise or gone, and the full
@@ -6171,16 +6171,16 @@ interior from wave 1.
 Identical to wave 1's number -- the whole six-run, ~4-hour extension (delayed
 further by tonight's storage trouble) did not move the headline figure at all,
 which is itself the useful confirmation that 3.5302 is close to the true
-optimum. By the rule fixed before wave 1 ran (`docs/PLAN.md` H4): **gone.**
+optimum. By the rule fixed before wave 1 ran (`docs/history/PLAN.md` H4): **gone.**
 The full 73 242-step pair is not justified and is not planned.
 
 **Consequence for the paper.** H1 holds (stage 1, four seeds, +0.035 to
-+0.046) and H4 is negative. The decision table in `docs/PLAN.md` written before
++0.046) and H4 is negative. The decision table in `docs/history/PLAN.md` written before
 any of this ran said exactly what to do here: the regime version -- NGD-Pion
 is more sample-efficient at the classical batch and short horizon, the
 advantage grows with batch, but it is absorbed by length -- reported as a
 step-equivalent speed-up, not a loss-difference win at 15000+ steps.
-`docs/PLAN.md` and `docs/RESUME.md` rewritten to reflect this; `docs/RESUME.md`
+`docs/history/PLAN.md` and `docs/RESUME.md` rewritten to reflect this; `docs/RESUME.md`
 in particular got a fuller rewrite of its "As of" section rather than another
 patch, since the state changed enough to warrant it.
 
@@ -6215,7 +6215,7 @@ geometry -- rather than around "does NGD-Pion beat Pion." The user: "да,
 Recorded as ADR 0016. Updated the `aim-for-a-positive-result-paper` memory
 (2026-08-24, pinned) with a 2026-09-23 note: the bar the user actually wants is
 a real, seed-verified, honestly-scoped effect, not an unconditional win --
-confirmed by asking directly rather than assumed. `docs/PLAN.md`'s "what each
+confirmed by asking directly rather than assumed. `docs/history/PLAN.md`'s "what each
 outcome means" section and `docs/RESUME.md`'s header updated to read through
 this frame.
 
@@ -6307,7 +6307,7 @@ whether `power=0.5` fixes cross-layer calibration the way Shampoo does -- and
 the answer is no), but it was not what was asked for, and is not "the
 ablation" the user meant to close out with a best result.
 
-The actual target: `docs/VALIDATION.md` V3's `rot` grid for `ngd-pion-s` is
+The actual target: `docs/history/VALIDATION.md` V3's `rot` grid for `ngd-pion-s` is
 bracketed only at 3x spacing (2e-3, 6e-3, 2e-2; best 3.7954 at 6e-3) and the
 upper point was never re-checked at the good `adamw=8e-3` -- it was only run
 at `adamw=5e-4`. A finer grid around 6e-3 at the already-good `adamw=8e-3` is
@@ -6316,7 +6316,7 @@ the actual next step; proposed to the user, not yet run.
 ## 2026-09-23, 04:50 -- lr ablation closed: rot=6e-3 confirmed as the true optimum
 
 Job 333959 (`rotfine.sbatch`, 8 cells, one node) finished. Same protocol as
-`docs/VALIDATION.md` V3: `ngd-pion-s`, `power=1`, `trust=quad_curv` (the live
+`docs/history/VALIDATION.md` V3: `ngd-pion-s`, `power=1`, `trust=quad_curv` (the live
 default), `adamw=8e-3` fixed, B=512, 3000 steps, seed 0. This fills the gap V3
 left open -- its `rot` grid was bracketed only at 3x spacing (2e-3, 6e-3, 2e-2)
 and the upper point (2e-2) was never re-checked at the good `adamw=8e-3`.

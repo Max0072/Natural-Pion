@@ -1,9 +1,9 @@
 # Start here
 
 A single page for picking this up cold. `AGENTS.md` is the settled state of
-play, `docs/PLAN.md` is what to do next and why, `docs/VALIDATION.md` is the
-audit of what the numbers are and are not, `docs/JOURNAL.md` is the sequence
-that produced all of it and `docs/JOURNAL_INDEX.md` indexes it, `docs/decisions/` holds one record per
+play, `docs/history/PLAN.md` is what to do next and why, `docs/history/VALIDATION.md` is the
+audit of what the numbers are and are not, `docs/history/JOURNAL.md` is the sequence
+that produced all of it and `docs/history/JOURNAL_INDEX.md` indexes it, `docs/decisions/` holds one record per
 decision with its reason and evidence (ADR 0008 is the baseline, 0009 the
 comparison protocol), `docs/CLUSTER.md`
 is the machine, `$DATA_p330/runs/README.md` says what every run directory
@@ -14,7 +14,7 @@ only ever *now*.
 
 **Rewrite this file rather than appending to it.** It is a snapshot, not a log.
 
-**Next direction (2026-11-03): [`RLVR_PLAN.md`](RLVR_PLAN.md).** How the paper is positioned against
+**Next direction (2026-11-03): [`RLVR_PLAN.md`](paper/RLVR_PLAN.md).** How the paper is positioned against
 Pion, the measured steps-to-Pion's-loss ratio (1.45-1.66x, not 1.28x), and the RLVR experiment to set up,
 starting with its stage 0.
 
@@ -32,7 +32,7 @@ below is seed 0, one run per cell, unless it says otherwise.
 
 `c = rot_t / sigma(X)` after F^-1, alpha off (`scripts/probes/step_norm.py`). Journal 2026-10-31 to 2026-11-03. val, B 512, AdamW 8e-3.
 
-Build: spectral norm after F^-1 (shared sigma of both sides), Lie momentum 0.9, cosine, equal angles, A and D only in the last 6 steps before a refactor, STEP_NORM_FAST (bit-identical), STEP_NORM_BATCH, t_fac 25 (0.60 s/step; Pion 0.466). `scripts/sbatch/step_norm_long.sbatch`.
+Build: spectral norm after F^-1 (shared sigma of both sides), Lie momentum 0.9, cosine, equal angles, A and D only in the last 6 steps before a refactor, STEP_NORM_FAST (bit-identical), STEP_NORM_BATCH, t_fac 25 (0.60 s/step; Pion 0.466). `scripts/paper/step_norm_long.sbatch`.
 
     full length, seed 0: Pion 73242 steps 3.3706 (34063 s); ours 56900 steps (34012 s, same clock) 3.3468 at angle 0.05 (0.025: 3.3577), ahead by 0.024; ours 73242 steps 3.3296, ahead by 0.041 by steps. Paper's Pion (Megatron): 3.3575.
     clock 8900 s, Pion 19200 vs ours 15000 @0.05, seeds 0-3: 0.024 / 0.023 / 0.020 / 0.034
@@ -91,7 +91,7 @@ unambiguous -- monotonic, no crossover, `power=1` best by a wide margin at
 every step count checked; `power=0.5`'s hypothesised cross-layer-calibration
 fix does not show up). (2) The rotational learning rate `rot` for the live
 default arm (`power=1`, `trust=quad_curv`), on a fine grid (job 333959, 3e-3
-to 1.5e-2 at the already-good `adamw=8e-3`, filling in `docs/VALIDATION.md`
+to 1.5e-2 at the already-good `adamw=8e-3`, filling in `docs/history/VALIDATION.md`
 V3's 3x-spaced bracket): confirms `rot=6e-3` as the true, interior optimum
 (3.7954), neighbours worse by only 0.003-0.005 either side. **No number
 changes; 3.7954 (`rot=6e-3`, `adamw=8e-3`) remains the headline result to
@@ -106,7 +106,7 @@ adamw 8e-3), unchanged by wave 2's extension and now interior on `rot`. Best
 
     gap15 = val(pion) - val(ngd-pion-s) = 3.5254 - 3.5302 = -0.0048
 
-By the rule fixed before either wave ran (`docs/PLAN.md` H4: `>= +0.020`
+By the rule fixed before either wave ran (`docs/history/PLAN.md` H4: `>= +0.020`
 persists, `+0.010` to `+0.020` decaying, `< +0.010` gone): **gone.** The full
 73 242-step pair is **not justified** and should not be run as a bid to show
 NGD-Pion beating Pion outright. The paper is the regime version: NGD-Pion is
@@ -128,7 +128,7 @@ method meaningfully, H4 would need re-testing under it, not be assumed closed.
 **Ablation B is done**: without `alpha`, NGD-Pion is 0.356 *worse than Pion
 itself* at its own best rate (not merely level with it) -- `alpha` is
 load-bearing, not a nicety, and it varies by time and by layer at once, which
-argues against "it is just an implicit warmup". Details: `docs/PLAN.md` H5.
+argues against "it is just an implicit warmup". Details: `docs/history/PLAN.md` H5.
 
 **Candidate C (a theoretically-grounded replacement for `alpha`) is in
 progress, not concluded.** `trust="exact"` -- the per-layer real trust region
@@ -154,7 +154,7 @@ The record of 2026-08-29 called the full-length result a tie, "second of nine,
 inside Pion's own spread". **That reading was wrong.** Six of the nine were
 Pion runs from an earlier harness state (AdamW `beta2` 0.999, norm gains
 decayed) that costs about 0.045 by itself, and two were the alternate variant
-of Pion. They are not replicates. Details in `docs/VALIDATION.md` V1.
+of Pion. They are not replicates. Details in `docs/history/VALIDATION.md` V1.
 
 Like-for-like at full length, AdamW pinned at 1e-3 for both:
 
@@ -183,7 +183,7 @@ same seed for both arms, final val at step 2999:
     3      3.8052       3.8417   +0.0365
 
 All four gaps positive; mean +0.0379, standard deviation 0.0056, standard error
-0.0028, mean/SE 13.6 against the threshold 2.35 fixed in advance (`docs/PLAN.md`
+0.0028, mean/SE 13.6 against the threshold 2.35 fixed in advance (`docs/history/PLAN.md`
 H1): **H1 holds.** Seed 0 is the largest gap, as it should be: the optima were
 chosen on seed 0, so its number is selected. Seeds 1-3 alone, which the tuning
 never saw: **+0.0352, sd 0.0020**. The seed-to-seed sd of val itself is 0.002-0.004
@@ -210,9 +210,9 @@ exponential, per-head Q). `ngd-pion-s` differs from it in five things at once,
 so the +0.046 is one whole method against another, and no single component is
 claimed. **The baseline is published Pion and nothing else** (user, 2026-09-22):
 `pion_ablated` is not a baseline, was removed from the code, and its old
-150-step numbers are void. See `docs/VALIDATION.md` V2 and `docs/PLAN.md` (H3 withdrawn).
+150-step numbers are void. See `docs/history/VALIDATION.md` V2 and `docs/history/PLAN.md` (H3 withdrawn).
 
-### What to do next, in order (full reasoning in `docs/PLAN.md`)
+### What to do next, in order (full reasoning in `docs/history/PLAN.md`)
 
 1. ~~Seeds.~~ Done: H1 holds, +0.035 to +0.046.
 2. ~~`pion_ablated`, tuned.~~ Withdrawn: the baseline is published Pion.
@@ -273,7 +273,7 @@ until the advantage has an error bar.
   measured-`S` variant. **Not re-tested**; `scripts/sbatch/powercal.sbatch` was
   written and never run.
 * **The "trust region" is mislabelled and is the least understood part of the
-  method** (journal 2026-09-22, `docs/VALIDATION.md`). `alpha = quad/curv` cannot
+  method** (journal 2026-09-22, `docs/history/VALIDATION.md`). `alpha = quad/curv` cannot
   notice that the model is wrong, only that the eigenbasis is stale; at the tuned
   rate it is below 0.9 on 67% of layer-steps (median 0.64), so it sets the
   effective per-layer step and the tuned `rot` is fitted around it. Removing it
@@ -289,7 +289,7 @@ until the advantage has an error bar.
   1.073e-06.
 * `shampoo-pion` does not approach the inert limit monotonically as `eta -> 0`.
 * the `rho` controller has no dead zone, so the effective rate never settles.
-* `ALGORITHM.md` still says `S = I`, no momentum and `t_fac = 100` in its
+* `history/ALGORITHM.md` still says `S = I`, no momentum and `t_fac = 100` in its
   decision tables; `AGENTS.md` carries the reversals, the specification does not.
 * Five `pion` B = 512 cells in `runs/adamw2d` are empty logs stopped at step 0
   (node hangs). They are not results.

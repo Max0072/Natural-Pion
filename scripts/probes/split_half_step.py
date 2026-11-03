@@ -10,12 +10,12 @@ The distinction is where the memory sits.
     momentum    X = F^-1 EMA(G)      the *direction* is averaged
 
 Averaging the denominator stabilises the geometry; it cannot cancel zero-mean
-noise in the numerator, because it enters multiplicatively. `docs/JOURNAL.md`
+noise in the numerator, because it enters multiplicatively. `docs/history/JOURNAL.md`
 states the same thing from the other side: "switching to the true Fisher
 changes the curvature estimate but does nothing to the numerator, which is
 where the problem lives".
 
-`ALGORITHM.md` already carries a split-half number -- the step disagreeing by
+`docs/history/ALGORITHM.md` already carries a split-half number -- the step disagreeing by
 47% between two independent samples -- but that was measured at `d_out = 256`
 on roughly 80k tokens, and the same section flags the sample-size dependence as
 unverified. The real run accumulates over 131072 tokens a step. So it is
@@ -145,5 +145,5 @@ print(f"    signal fraction of one real step (512 seq):  {mu2 / (mu2 + var_full)
 print(f"    i.e. the step is {100 * var_full / (mu2 + var_full):.1f}% sampling noise")
 print(f"\n  a momentum EMA with beta = {beta_m} averages k = {k:.1f} draws:")
 print(f"    signal fraction would become {mu2 / (mu2 + var_full / k):.4f}")
-print(f"\n  For reference, ALGORITHM.md records 47% noise, measured at d_out = 256")
+print(f"\n  For reference, docs/history/ALGORITHM.md records 47% noise, measured at d_out = 256")
 print(f"  on ~80k tokens, and flags the sample-size dependence as unverified.")

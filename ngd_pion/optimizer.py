@@ -1,4 +1,4 @@
-"""ALGORITHM.md §7 -- the optimizer, which only orchestrates.
+"""docs/history/ALGORITHM.md §7 -- the optimizer, which only orchestrates.
 
 Every piece of mathematics lives in `covariance`, `factorization`, `direction`
 and `linalg`; this module decides *when* each runs and applies the retraction.

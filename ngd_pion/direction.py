@@ -1,4 +1,4 @@
-"""ALGORITHM.md §1, §5, §6 -- from a gradient to a preconditioned rotation.
+"""docs/history/ALGORITHM.md §1, §5, §6 -- from a gradient to a preconditioned rotation.
 
 Sign convention, stated once and relied on everywhere downstream: `X_in` and
 `X_out` come out of `natural_gradient` **unsigned**, and the descent direction

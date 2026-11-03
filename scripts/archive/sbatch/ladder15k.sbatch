@@ -8,7 +8,7 @@
 #SBATCH -t 08:00:00
 #SBATCH -o logs/%x-%A_%a.out
 #SBATCH -e logs/%x-%A_%a.err
-# Stage 3 of docs/PLAN.md, hypothesis H4: does the advantage survive length?
+# Stage 3 of docs/history/PLAN.md, hypothesis H4: does the advantage survive length?
 #
 # WHAT IS KNOWN. At B = 512, both arms tuned, 3000 steps (393M tokens, 4.1% of the
 # budget): NGD-Pion is ahead by +0.035 (seeds 1-3, sd 0.002; seed 0 alone +0.046,

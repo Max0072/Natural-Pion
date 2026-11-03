@@ -1,8 +1,8 @@
 # NGD-Pion: spectrum-preserving rotations along the natural gradient
 
 Status: final write-up of the method and its results, 2026-11-03 (updated 14:00 with the initial-spectrum results). It is the basis for the paper.
-The full reasoning is in [`JOURNAL.md`](JOURNAL.md), the current state in [`RESUME.md`](RESUME.md),
-and every run's manifest and log in [`../runs-record/`](../runs-record/).
+The full reasoning is in [`JOURNAL.md`](../history/JOURNAL.md), the current state in [`RESUME.md`](../RESUME.md),
+and every run's manifest and log in [`../runs-record/`](../../runs-record/).
 
 **One-sentence claim.** Pion (Shi et al., arXiv:2605.12492) changes each weight matrix only by
 rotations, so its singular values never change. Our method keeps exactly that, but turns the matrix
@@ -336,20 +336,19 @@ initialisation. 15 000-step and full-length pairs (ours and Pion, both alpha 3) 
 
 ## 9. Reproduction
 
-* **Algorithm 2** is `scripts/probes/step_norm.py`, a subclass of the reference `NGDPionUnified`, which is
-  left unchanged. Run with:
+* **Code.** `ngd_pion/natural_pion.py`: `NaturalPion` (Algorithm 1) and `NaturalPionFast` (Algorithm 2), with the
+  hooks that feed `A` and `D` (`ngd_pion.hooks.attach`, `ngd_pion.with_s.attach_backward`).
+  `NaturalPionFast` is bit-identical to the probe the runs used, `scripts/probes/step_norm.py` with
+  `STEP_NORM_FAST=1 STEP_NORM_BATCH=1 STEP_NORM_A_LAST=6 STEP_NORM_D_LAST=6` (`tests/test_natural_pion.py`).
+  `NaturalPion` batches F^-1 and Cayley where the Algorithm-1 runs did not, so it reproduces them to round-off.
+* **Run**, in the harness (LLaMA-60M, C4):
 
   ```
-  STEP_NORM_FAST=1 STEP_NORM_BATCH=1 STEP_NORM_A_LAST=6 STEP_NORM_D_LAST=6 \
-  python scripts/probes/step_norm.py --optimizer ngd-pion-m --ngd-momentum lie --ngd-beta1 0.9 \
-      --lr <theta_peak> --ngd-trust none --ngd-beta 0.5 --ngd-beta-backward 0.5 --ngd-t-fac 25 \
-      --batch-sequences 512 --micro-batch 256 --precision bf16 --adamw-lr 8e-3 --train-steps <T> ...
+  python -m harness.run --optimizer natural-pion-fast --lr <theta_peak> --train-steps <T> \
+      --batch-sequences 512 --micro-batch 256 --precision bf16 --adamw-lr 8e-3 --seed 0 ...
+  python -m harness.run --optimizer natural-pion      --lr <theta_peak> ...          # Algorithm 1
+  python -m harness.run --optimizer pion              --lr 1e-3 ...                  # the baseline
   ```
-* **Algorithm 1** is the same command without `FAST`, `BATCH`, `A_LAST`, `D_LAST`, with `--ngd-t-fac 1`
-  and the default factor EMAs.
-* **Jobs.** The exact jobs are in `scripts/sbatch/step_norm_long.sbatch` (full length, seeds, Pion lr) and
-  `step_norm_final.sbatch`.
-* **Run records.** `runs-record/stepnormlong/`, `runs-record/stepnormfinal/` and the other `stepnorm*`
-  directories.
-* **Planned clean-up for publication.** Promote Algorithm 2 from the probe into a named optimizer class
-  with explicit arguments, next to the reference, with a test that it reproduces the probe.
+* **Jobs.** Every job behind this document, indexed by section: [`scripts/paper/README.md`](../../scripts/paper/README.md).
+* **Run records.** `runs-record/stepnorm*/` (manifest and log of every run). The tables of sections 5 and 6
+  are regenerated from them by `scripts/analysis/final_tables.py`.

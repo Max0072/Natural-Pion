@@ -19,7 +19,7 @@
 # shared rate measures which is better at that rate, not which is better. This
 # is the most common way an optimizer comparison goes wrong.
 #
-#   sbatch --array=0-11%8 scripts/sbatch/sweep.sbatch
+#   sbatch --array=0-11%8 scripts/cluster/sweep.sbatch
 #
 # `%4` caps concurrency; raise it to whatever the queue allows.
 

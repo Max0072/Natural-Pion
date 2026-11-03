@@ -1,7 +1,7 @@
 # ADR 0001 -- NGD-Pion retracts with Cayley, not Pion's truncated exponential
 
 - **Status:** Accepted
-- **Date:** 2026-08-24/25 (design entries of the journal). Recorded retroactively on 2026-09-22 from `AGENTS.md`, `ALGORITHM.md` and the journal; the original decision is older, and the journal is the source for what was measured at the time.
+- **Date:** 2026-08-24/25 (design entries of the journal). Recorded retroactively on 2026-09-22 from `AGENTS.md`, `docs/history/ALGORITHM.md` and the journal; the original decision is older, and the journal is the source for what was measured at the time.
 - **Decided by:** project
 
 ## Context
@@ -25,7 +25,7 @@ property the method is built on.
 ## Evidence
 
 Relative singular-value drift over 2000 steps at angle 0.05: **7.1e-15** for
-Cayley, **2.4e-4** for the truncated exponential (`ALGORITHM.md`, "Осознанные
+Cayley, **2.4e-4** for the truncated exponential (`docs/history/ALGORITHM.md`, "Осознанные
 отличия от бейзлайна"). At angle 5 the truncated exponential's spectral norm is
 12.5.
 

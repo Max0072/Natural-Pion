@@ -1,4 +1,4 @@
-"""ALGORITHM.md §8 -- Shampoo's preconditioner, on the skew-symmetric space.
+"""docs/history/ALGORITHM.md §8 -- Shampoo's preconditioner, on the skew-symmetric space.
 
 Shampoo (Gupta, Koren, Singer 2018) preconditions a matrix gradient from both
 sides with running Gram matrices of the gradient itself:
@@ -12,7 +12,7 @@ and invert an approximation to the Fisher. Shampoo never looks at an activation
 and never assumes anything about the model: its factors come from the gradients
 it has already seen. In particular there is no `delta ⊥ x` independence
 assumption, which is the approximation measured on this model to be the whole
-of the missing factor (`kfac/exact = 0.0128`, docs/JOURNAL.md 2026-08-27).
+of the missing factor (`kfac/exact = 0.0128`, docs/history/JOURNAL.md 2026-08-27).
 
 `powered.py` raises the *Fisher's* eigenvalues to a power and its docstring
 calls `power = 1/2` "Adam, Shampoo". That identification is loose and this

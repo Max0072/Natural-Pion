@@ -24,7 +24,7 @@
 # the node saturates at, whatever the number of streams -- and it overlaps the
 # tokenising.
 #
-#   sbatch scripts/sbatch/data.sbatch
+#   sbatch scripts/cluster/data.sbatch
 #
 # Resumable: re-running the same command continues from each shard's marker,
 # re-fetches nothing, and does nothing at all once the corpus is complete.

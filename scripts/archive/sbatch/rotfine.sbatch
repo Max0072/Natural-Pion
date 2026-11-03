@@ -11,9 +11,9 @@
 # LR ablation on the live default arm (ngd-pion-s, power=1, trust=quad_curv):
 # the user's actual request ("абляция на прекондиционер, собрать лучший
 # результат"), clarified after a first pass mistakenly ran an ablation on the
-# Fisher exponent p instead (see docs/JOURNAL.md, 2026-09-23 04:15 entry).
+# Fisher exponent p instead (see docs/history/JOURNAL.md, 2026-09-23 04:15 entry).
 #
-# docs/VALIDATION.md V3's rot grid is bracketed only at 3x spacing: rot=2e-3
+# docs/history/VALIDATION.md V3's rot grid is bracketed only at 3x spacing: rot=2e-3
 # (3.8348) < rot=6e-3 (3.7954, best) but rot=2e-2 (4.0241) was only ever run
 # at adamw=5e-4, not at the good adamw=8e-3 -- so the upper side is not really
 # closed. This grid fills in between 2e-3 and 2e-2 at the already-good

@@ -14,7 +14,7 @@ ADR 0009's protocol) was built to support found a clear, if unwelcome, answer:
   beats published Pion by +0.035 (seeds 1-3, sd 0.0020), a real, seed-verified
   effect, not noise (mean/SE 13.6 against the pre-registered threshold 2.35).
 * **H4 is negative.** The same comparison at 15000 steps: `gap15 = -0.0048`
-  (`docs/PLAN.md`, both waves of the ladder, jobs 332064 and 333609). By the
+  (`docs/history/PLAN.md`, both waves of the ladder, jobs 332064 and 333609). By the
   rule fixed before either wave ran (`< +0.010` means gone), the advantage does
   not survive to this horizon, and the full 73242-step pair is not justified.
 
@@ -70,7 +70,7 @@ rather than around "NGD-Pion beats Pion." Concretely, the spine becomes:
 
 ## Consequences
 
-* The full 73242-step pair (`docs/PLAN.md` stage 4) stays not run and not
+* The full 73242-step pair (`docs/history/PLAN.md` stage 4) stays not run and not
   planned; nothing in this decision reopens it.
 * The remaining open threads (extending `trust="exact"`'s grid below its
   current edge; the pure-K-FAC/`t_fac=1` test discussed the same evening; the
@@ -78,15 +78,15 @@ rather than around "NGD-Pion beats Pion." Concretely, the spine becomes:
   work -- they are additional characterization content for the same paper,
   and can be pursued or dropped on their own merits and cost, without pressure
   to produce a win.
-* `ALGORITHM.md` and the top-level `README.md`, both still written as if the
+* `docs/history/ALGORITHM.md` and the top-level `README.md`, both still written as if the
   goal were a leaner-or-better-than-Pion optimizer, will need a pass once the
   paper's actual structure is drafted -- not done as part of this decision.
 
 ## Evidence
 
-`docs/PLAN.md` (H1, H4, the "What each outcome means for the paper" section,
+`docs/history/PLAN.md` (H1, H4, the "What each outcome means for the paper" section,
 resolved 2026-09-23); `docs/RESUME.md`'s rewritten "As of 2026-09-23" section;
-`docs/JOURNAL.md`, 2026-09-22 (the K-FAC/trust-region theoretical discussion,
+`docs/history/JOURNAL.md`, 2026-09-22 (the K-FAC/trust-region theoretical discussion,
 the exact scale-invariance derivation, the literature check) and
 2026-09-23, 01:20 (H4's resolution). The user's own words, asked directly
 whether this framing still satisfies the original ask for a paper with a

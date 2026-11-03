@@ -8,7 +8,7 @@
 #SBATCH -t 20:00:00
 #SBATCH -o logs/%x-%A_%a.out
 #SBATCH -e logs/%x-%A_%a.err
-# Wave 2 of the H4 horizon ladder (docs/PLAN.md). Wave 1 (job 332064) put both
+# Wave 2 of the H4 horizon ladder (docs/history/PLAN.md). Wave 1 (job 332064) put both
 # gradients for ngd-pion-s pointing down and left off the cross it was given:
 #
 #     rot 3e-3  adamw 8e-3   3.5302   <- best of wave 1, LOWER EDGE of the rot arm
@@ -25,7 +25,7 @@
 # both neighbours on each axis (rot 5e-4: 3.5818, rot 2e-3: 3.5369; adamw 4e-3:
 # 3.5316, adamw 1.6e-2: 3.5360), so it is already interior.
 #
-# THE RULE, unchanged from wave 1 (docs/PLAN.md H4, sbatch header of
+# THE RULE, unchanged from wave 1 (docs/history/PLAN.md H4, sbatch header of
 # ladder15k.sbatch): gap15 = val(best pion, 3.5254, fixed) - val(best ngd-pion-s
 # over wave 1 + wave 2). >= +0.020 persists; +0.010 to +0.020 decaying but
 # present; < +0.010 inside noise or gone. If the new best again sits on an edge

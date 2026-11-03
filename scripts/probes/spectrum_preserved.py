@@ -62,5 +62,5 @@ for rel, n, sh, top, bot in rel_all[-3:]:
 vals = [r[0] for r in rel_all]
 print(f"\n  {len(vals)} Pion-owned weights")
 print(f"  relative spectrum drift:  median {sorted(vals)[len(vals)//2]:.3e}   max {max(vals):.3e}")
-print(f"\n  For reference, from docs/JOURNAL.md: TF32 left on moves the spectrum by")
+print(f"\n  For reference, from docs/history/JOURNAL.md: TF32 left on moves the spectrum by")
 print(f"  a relative 1.0 over 200 steps; the exact-fp32 solve gives 2.6e-04.")

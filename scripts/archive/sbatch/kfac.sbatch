@@ -8,7 +8,7 @@
 #SBATCH -e logs/%x-%j.err
 # How much of the curvature underestimate is the independence assumption?
 #
-# Fitting `rho` against `lr` at step 0 (see docs/JOURNAL.md, 2026-08-27) gives
+# Fitting `rho` against `lr` at step 0 (see docs/history/JOURNAL.md, 2026-08-27) gives
 # `kappa = curv / (4 Q) = 1.8e-3`: the true curvature along our own step is
 # about 140x what `curv` reports. That `kappa` lumps together the K-FAC
 # independence error, the dropped in/out cross term, and the gap between the

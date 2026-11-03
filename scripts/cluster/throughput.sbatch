@@ -11,9 +11,9 @@
 # logits, so memory is not obvious from 58M parameters, and micro_batch decides
 # how many of a step's 131072 tokens the covariance is shown.
 #
-#   sbatch -p rtx  scripts/sbatch/throughput.sbatch
-#   sbatch -p b200 scripts/sbatch/throughput.sbatch
-#   OPT=ngd-pion sbatch -p rtx scripts/sbatch/throughput.sbatch
+#   sbatch -p rtx  scripts/cluster/throughput.sbatch
+#   sbatch -p b200 scripts/cluster/throughput.sbatch
+#   OPT=ngd-pion sbatch -p rtx scripts/cluster/throughput.sbatch
 #
 # Log every 50 steps, as a real run does, not more often. Writing a line costs
 # about 1.5 s against an NFS flush, so at --log-every 4 the window is 2 s of

@@ -12,8 +12,8 @@
 # checkpoint on a card, and that the spectrum of a weight holds still even with
 # TF32 switched on deliberately.
 #
-#   sbatch scripts/sbatch/preflight.sbatch
-#   sbatch -p b200 SIF=/some/other.sif scripts/sbatch/preflight.sbatch
+#   sbatch scripts/cluster/preflight.sbatch
+#   sbatch -p b200 SIF=/some/other.sif scripts/cluster/preflight.sbatch
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"

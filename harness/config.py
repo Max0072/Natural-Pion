@@ -108,7 +108,7 @@ class RunConfig:
     # learning rate requires. Tied together, raising `lr` also raises AdamW's
     # rate on the embedding, the output head, the norm gains and the biases,
     # and AdamW detonates there long before the rotation does anything at all.
-    # The `eta` sweep recorded in docs/JOURNAL.md before 2026-08-26 varied both
+    # The `eta` sweep recorded in docs/history/JOURNAL.md before 2026-08-26 varied both
     # at once and measured AdamW.
     adamw_lr: float = 0.0
     seed: int = 0

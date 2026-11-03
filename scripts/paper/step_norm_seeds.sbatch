@@ -14,7 +14,7 @@
 # `%1`: one seed at a time, concurrent runs on one node share a seed or starve for I/O
 # (memory, ADR 0010 was a one-off waiver).
 #
-# THE RULE, fixed before the numbers, as H1 in docs/PLAN.md. Paired with `pion`, same seed:
+# THE RULE, fixed before the numbers, as H1 in docs/history/PLAN.md. Paired with `pion`, same seed:
 #   seed 0  3.8412   seed 1  3.8377   seed 2  3.8369   seed 3  3.8417
 # The four gaps pion - step_norm must all be positive with mean / standard error > 2.35
 # (one-sided 5%, 3 degrees of freedom). Same test against the with-alpha arm

@@ -24,9 +24,9 @@ not between two branches of it.
    up cold. What is in flight, the criteria already fixed, and the decision
    already taken for the case where the current attempt misses. It is a
    snapshot: rewrite it, do not append to it. Then
-   **[`docs/PLAN.md`](docs/PLAN.md)** -- what to do next and what would kill each
+   **[`docs/history/PLAN.md`](docs/history/PLAN.md)** -- what to do next and what would kill each
    claim, criteria fixed before the numbers -- and
-   **[`docs/VALIDATION.md`](docs/VALIDATION.md)** -- the audit of 2026-09-22:
+   **[`docs/history/VALIDATION.md`](docs/history/VALIDATION.md)** -- the audit of 2026-09-22:
    what each number is and is not, including the correction to the "tie".
    Every run's configuration and loss curve is archived in
    **[`runs-record/`](runs-record/README.md)**; refresh it with
@@ -34,7 +34,7 @@ not between two branches of it.
    **[`docs/decisions/`](docs/decisions/README.md)**, one
    record per decision with its reason and evidence; add one when a decision is
    taken or reversed, and supersede rather than edit.
-1. **[`ALGORITHM.md`](ALGORITHM.md)** — the specification. Every design decision
+1. **[`docs/history/ALGORITHM.md`](docs/history/ALGORITHM.md)** — the specification. Every design decision
    with the measurement that produced it. Each module implements one of its
    sections and says so in its docstring.
 
@@ -47,9 +47,9 @@ not between two branches of it.
 * [`scripts/probes/README.md`](scripts/probes/README.md) — what each of the
   thirty-six probes asks, and the answer where it is settled. Twelve are listed
   as undocumented rather than guessed at.
-* [`scripts/sbatch/README.md`](scripts/sbatch/README.md) — the job scripts, and
+* [`scripts/paper/README.md`](scripts/paper/README.md) — the jobs behind the paper; [`scripts/archive/sbatch/README.md`](scripts/archive/sbatch/README.md) — the earlier job scripts, and
   the two cluster rules learned the hard way.
-* [`docs/JOURNAL_INDEX.md`](docs/JOURNAL_INDEX.md) — dated headings of the
+* [`docs/history/JOURNAL_INDEX.md`](docs/history/JOURNAL_INDEX.md) — dated headings of the
   journal with line numbers. Generated: re-run `scripts/journal_index.py` after
   adding an entry, do not edit it.
 2. This file — the state of play, and the mistakes already made.
@@ -78,7 +78,7 @@ hypothesis -- that `eta* = 2` is derived rather than tuned, so Pion's RMS
 scaling is unnecessary -- was refuted by three independent measurements, and
 the project moved to Shampoo's preconditioner on the same rotational geometry
 (`ngd_pion/shampoo.py`, `shampoo-pion`). The Fisher path is kept, not deleted:
-it is what the negative result is written from. See `ALGORITHM.md` §8 and
+it is what the negative result is written from. See `docs/history/ALGORITHM.md` §8 and
 `docs/RESUME.md`.
 
 **Where the method stands against the idea it started as.** The original thesis
@@ -100,7 +100,7 @@ at scale, and the result is small. Full-length, AdamW pinned: `ngd-pion-s` 3.386
 against 3.3719 for the like-for-like Pion, 0.014 behind, one run each. At the
 classical batch with both optimizers tuned it is ahead after 3000 steps, 3.7954
 against 3.8412, one seed and no error bar yet (three more seeds are running,
-job 332045). `docs/VALIDATION.md` says what each of these numbers is and is not;
+job 332045). `docs/history/VALIDATION.md` says what each of these numbers is and is not;
 the 2026-08-29 "tie, second of nine" reading was wrong. The toy least-squares
 check that stood here was a kill criterion, not a result.
 
@@ -393,7 +393,7 @@ there when it was submitted.
 - **Measure before asserting.** Most of the wrong turns in this project were
   confident interpretations of correct arithmetic. The mathematics held
   throughout; the readings of it did not.
-- **Every claim in `ALGORITHM.md` carries its number.** Keep it that way — a
+- **Every claim in `docs/history/ALGORITHM.md` carries its number.** Keep it that way — a
   decision without a measurement beside it will be reopened by the next reader.
 - **Record every decision as an ADR** in `docs/decisions/` (template there), in
   the same commit that acts on it. The journal tells the story; the ADRs are the

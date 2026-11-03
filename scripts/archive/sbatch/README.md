@@ -17,7 +17,7 @@ and `full.sbatch` have had their NGD rates doubled so they still run the
 experiments they ran. **Every other script in this directory still carries the
 old numbers**, deliberately -- they are the record of what was run, not a menu
 -- so double the NGD rate before re-running one. `pion` with RMS scaling and
-`shampoo-pion` are unaffected; see `ALGORITHM.md` §1 for why.
+`shampoo-pion` are unaffected; see `docs/history/ALGORITHM.md` §1 for why.
 
 **As of 2026-08-28 the account reaches only `b200`.** `rtx` and `genoa` refuse
 with "Invalid account or account/partition combination". The `sbatch -p rtx`

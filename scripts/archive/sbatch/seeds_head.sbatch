@@ -8,7 +8,7 @@
 #SBATCH -t 02:00:00
 #SBATCH -o logs/%x-%A_%a.out
 #SBATCH -e logs/%x-%A_%a.err
-# Stage 1 of docs/PLAN.md, hypothesis H1: is the +0.046 real?
+# Stage 1 of docs/history/PLAN.md, hypothesis H1: is the +0.046 real?
 #
 # The tuned head-to-head at the classical batch (B = 512, 3000 steps, 393M
 # tokens) gave, on seed 0 only:
@@ -36,7 +36,7 @@
 # within a minute. The card UUIDs are logged so a job packed onto a shared card
 # is caught in seconds.
 #
-# Decision rule, fixed before any of these numbers exist (docs/PLAN.md, H1):
+# Decision rule, fixed before any of these numbers exist (docs/history/PLAN.md, H1):
 # the four paired gaps (seed 0 plus these three) must all be positive with
 # mean / standard error > 2.35 (one-sided 5%, 3 degrees of freedom).
 #

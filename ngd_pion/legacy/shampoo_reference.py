@@ -6,7 +6,7 @@ fast. `tests/test_shampoo.py` pins the torch path against it, and where the two
 disagree this file is right until proven otherwise.
 
 It is a separate module rather than a section of `reference.py` because it is a
-different algorithm, not a different section of `ALGORITHM.md`'s NGD-Pion: it
+different algorithm, not a different section of `docs/history/ALGORITHM.md`'s NGD-Pion: it
 never forms a Fisher, never takes a covariance, and its preconditioner is built
 from the gradients themselves.
 """

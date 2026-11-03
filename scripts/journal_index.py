@@ -1,6 +1,6 @@
-"""Regenerate `docs/JOURNAL_INDEX.md` from the journal's own headings.
+"""Regenerate `docs/history/JOURNAL_INDEX.md` from the journal's own headings.
 
-`docs/JOURNAL.md` is append-only and past four thousand lines, so finding the
+`docs/history/JOURNAL.md` is append-only and past four thousand lines, so finding the
 entry that settled a question means grepping for a phrase you have to remember
 first. This turns its `##` headings into a dated index.
 
@@ -17,8 +17,8 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "docs" / "JOURNAL.md"
-DST = ROOT / "docs" / "JOURNAL_INDEX.md"
+SRC = ROOT / "docs" / "history" / "JOURNAL.md"
+DST = ROOT / "docs" / "history" / "JOURNAL_INDEX.md"
 
 HEADING = re.compile(r"^## (.+)$")
 DATE = re.compile(r"^(\d{4}-\d{2}-\d{2})(.*)$")
@@ -42,11 +42,11 @@ def main() -> None:
     out = [
         "# Journal index",
         "",
-        f"Generated from `docs/JOURNAL.md` by `scripts/journal_index.py` --"
+        f"Generated from `docs/history/JOURNAL.md` by `scripts/journal_index.py` --"
         f" {len(rows)} entries, {len(SRC.read_text().splitlines())} lines."
         " Do not edit by hand; re-run the script.",
         "",
-        "Line numbers are for `sed -n 'Np,+40p' docs/JOURNAL.md`.",
+        "Line numbers are for `sed -n 'Np,+40p' docs/history/JOURNAL.md`.",
         "",
         "| date | entry | line |",
         "|---|---|---|",

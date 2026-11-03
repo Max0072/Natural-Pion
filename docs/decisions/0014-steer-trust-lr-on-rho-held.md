@@ -6,7 +6,7 @@
 
 ## Context
 
-`alpha = quad/curv` (§6, `ALGORITHM.md`) is not a trust region: both quantities
+`alpha = quad/curv` (§6, `docs/history/ALGORITHM.md`) is not a trust region: both quantities
 are computed from the model's own internal, possibly stale linear approximation,
 never from the realised loss, so it cannot detect that a step was too long --
 only that the eigenbasis has drifted (journal, 2026-09-22, the `trust_region_alpha`

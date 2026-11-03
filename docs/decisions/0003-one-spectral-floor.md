@@ -1,7 +1,7 @@
 # ADR 0003 -- one spectral floor, max(λ, ε·λ_max), with ε = 1e-4
 
 - **Status:** Accepted
-- **Date:** 2026-08-25. Recorded retroactively on 2026-09-22 from `AGENTS.md`, `ALGORITHM.md` and the journal; the original decision is older, and the journal is the source for what was measured at the time.
+- **Date:** 2026-08-25. Recorded retroactively on 2026-09-22 from `AGENTS.md`, `docs/history/ALGORITHM.md` and the journal; the original decision is older, and the journal is the source for what was measured at the time.
 - **Decided by:** project
 
 ## Context

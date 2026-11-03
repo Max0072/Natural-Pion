@@ -73,7 +73,7 @@ def lr_at(step: int, cfg: RunConfig, base: float | None = None) -> float:
 
 # Two names for NGD-Pion, and the split is about provenance rather than taste.
 #
-# `ngd_pion/optimizer.py` is the reference: a transcription of ALGORITHM.md,
+# `ngd_pion/optimizer.py` is the reference: a transcription of docs/history/ALGORITHM.md,
 # left unoptimised so there is something to check against. `fast.py` is what
 # actually runs. Today they are bit-identical -- `tests/test_fast.py` asserts
 # equal weight trajectories -- but the next items on the cost list (a
@@ -216,7 +216,7 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
             # Per-head Q blocks are their published configuration, and this arm
             # is published Pion. `NGDPion` rotates whole matrices; that is one of
             # the several differences between the two methods and is listed with
-            # the others in docs/VALIDATION.md V2.
+            # the others in docs/history/VALIDATION.md V2.
             row_blocks=(
                 {id(m.weight): cfg.model.heads for m in model.query_projections()}
                 if cfg.pion_split_q_per_head

@@ -1,4 +1,4 @@
-"""ALGORITHM.md §9 -- first-moment averaging, the half of Adam we did not have.
+"""docs/history/ALGORITHM.md §9 -- first-moment averaging, the half of Adam we did not have.
 
 Why this exists
 ---------------
@@ -23,12 +23,12 @@ second-moment memory, no first-moment memory. This class supplies the `m`.
 Three measurements point the same way, which is why the knob is worth adding
 rather than merely available:
 
-* `ALGORITHM.md` records a split-half in which the step disagrees by 47%
+* `docs/history/ALGORITHM.md` records a split-half in which the step disagrees by 47%
   between two independent samples, with the note that the Fisher reweights
   that variance but does not average it. (Measured at `d_out = 256` on ~80k
   tokens; `scripts/probes/split_half_step.py` re-measures it on the real model.)
 * Per-component `|E[g]| / sqrt(E[g^2])` peaks at 0.035 against `1/sqrt(N)` of
-  2.8e-3, so the step is mostly sampling noise, and `docs/JOURNAL.md` derives
+  2.8e-3, so the step is mostly sampling noise, and `docs/history/JOURNAL.md` derives
   `eta* ~ 2 SNR^2` from it.
 * Within our own runs the treatment is asymmetric: AdamW carries `beta1 = 0.9`
   over the embedding, the head and the norm gains -- 56.5% of the model -- while

@@ -14,7 +14,7 @@ approximation and choose the length with matrix-vector products against the
 *exact* curvature, precisely because judging a step with the operator that
 produced it is circular.
 
-Measured on this model (docs/JOURNAL.md, 2026-08-27), the circularity is not
+Measured on this model (docs/history/JOURNAL.md, 2026-08-27), the circularity is not
 harmless. Two independent routes -- a fit of the reduction ratio `rho` against
 `lr` at step 0, and `scripts/probes/kfac_error.py` contracting per-token
 quantities directly -- put the Kronecker form 1e2 to 1e3 times below the true

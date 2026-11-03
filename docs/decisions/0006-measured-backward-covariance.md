@@ -18,8 +18,8 @@ against Pion. `S = I` (`ngd-pion`) is superseded.
 
 ## Consequences
 
-`ALGORITHM.md` still states `S = I` in its decision tables and was not updated;
-recorded as documentation debt in `docs/VALIDATION.md` V6.
+`docs/history/ALGORITHM.md` still states `S = I` in its decision tables and was not updated;
+recorded as documentation debt in `docs/history/VALIDATION.md` V6.
 
 ## Evidence
 

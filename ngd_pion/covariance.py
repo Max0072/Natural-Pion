@@ -1,4 +1,4 @@
-"""ALGORITHM.md §3 -- the input covariance `A = E[x x^T]`.
+"""docs/history/ALGORITHM.md §3 -- the input covariance `A = E[x x^T]`.
 
 The only statistic the method keeps. `S = E[delta delta^T]` is taken to be the
 identity, so no backward signal is needed and no backward hook has to exist.

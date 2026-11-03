@@ -5,7 +5,7 @@ docs/paper/FINAL.md. It is built from the primitives in `covariance`, `direction
 `linalg` and fed by the hooks in `hooks` (forward) and `with_s.attach_backward` (backward).
 
 `optimizer`, `with_s` and `unified` are the reference implementations the work grew from (with the
-`alpha` trust ratio of ALGORITHM.md); `reference` is a numpy oracle for the tests; `pion_baseline` is
+`alpha` trust ratio of docs/history/ALGORITHM.md); `reference` is a numpy oracle for the tests; `pion_baseline` is
 published Pion, the baseline. `legacy/` holds variants that were tried and set aside.
 """
 

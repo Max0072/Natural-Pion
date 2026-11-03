@@ -1,6 +1,6 @@
 """Where an NGD-Pion step actually spends its time.
 
-`docs/JOURNAL.md` records that NGD-Pion runs 158x slower than Pion and names
+`docs/history/JOURNAL.md` records that NGD-Pion runs 158x slower than Pion and names
 `optimizer.py:236` -- two SVDs per weight per step, for a diagnostic logged
 every fiftieth -- as the suspect. That entry says plainly it is "a hypothesis
 with an arithmetic argument behind it, not a measurement". This is the

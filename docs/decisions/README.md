@@ -1,6 +1,6 @@
 # Decision records
 
-One file per decision. `docs/JOURNAL.md` is the chronological story of how the
+One file per decision. `docs/history/JOURNAL.md` is the chronological story of how the
 project got here; this directory is the **list of what was decided**, with the
 reason and the evidence, so that nobody has to read 5500 lines to learn why
 something is the way it is. `AGENTS.md` and `docs/RESUME.md` link here rather than

@@ -30,7 +30,7 @@ and on no third.
 
 The mechanism question about `alpha` is asked on the NGD-Pion side only: does an
 explicit warmup reproduce what `alpha` does when `alpha` is switched off (ablation
-B and its follow-up, `docs/PLAN.md` H5). Pion is not touched. If a reviewer asks for
+B and its follow-up, `docs/history/PLAN.md` H5). Pion is not touched. If a reviewer asks for
 Pion with a warmup, it is a 25-minute run and is made then. The earlier proposal to
 give Pion a tuned warmup, made in this session as a fairness measure, was a guess
 about a gap and not evidence that Pion loses anything early; no run of published

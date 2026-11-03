@@ -22,7 +22,7 @@ horizon does not merely fail to predict the full-length order, it inverts it.
 
 Most "dead end" verdicts in `ngd_pion/README.md` were decided at 150 steps and
 mean "lost a comparison we no longer trust". Hence the horizon ladder in
-`docs/PLAN.md` (H4).
+`docs/history/PLAN.md` (H4).
 
 ## Evidence
 

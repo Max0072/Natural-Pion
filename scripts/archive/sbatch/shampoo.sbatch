@@ -9,7 +9,7 @@
 # First GPU reading of `shampoo-pion`: `eta` swept, bracketed on both sides.
 #
 # The preconditioner is built from the rotation generators themselves rather
-# than from network statistics -- see ALGORITHM.md §8 and the journal entry of
+# than from network statistics -- see docs/history/ALGORITHM.md §8 and the journal entry of
 # 2026-08-27 evening, which carries the pre-registration written before this
 # was submitted.
 #

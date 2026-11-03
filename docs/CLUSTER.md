@@ -26,12 +26,12 @@ The submission scripts, in the order `CLUSTER.md` uses them:
 
 | | |
 |---|---|
-| `scripts/sbatch/preflight.sbatch` | step 0 -- the operations, then resume-on-a-card and spectrum-under-TF32 |
-| `scripts/sbatch/data.sbatch` | step 3 -- the corpus, sharded across cores |
-| `scripts/sbatch/throughput.sbatch` | step 1 -- tokens/s and which micro-batch fits |
-| `scripts/sbatch/resume.sbatch` | what a SIGKILL costs, before spending eighteen hours |
-| `scripts/sbatch/train.sbatch` | one run, including the anchor |
-| `scripts/sbatch/sweep.sbatch` | step 5 -- learning rates, as a job array |
+| `scripts/cluster/preflight.sbatch` | step 0 -- the operations, then resume-on-a-card and spectrum-under-TF32 |
+| `scripts/cluster/data.sbatch` | step 3 -- the corpus, sharded across cores |
+| `scripts/cluster/throughput.sbatch` | step 1 -- tokens/s and which micro-batch fits |
+| `scripts/cluster/resume.sbatch` | what a SIGKILL costs, before spending eighteen hours |
+| `scripts/cluster/train.sbatch` | one run, including the anchor |
+| `scripts/cluster/sweep.sbatch` | step 5 -- learning rates, as a job array |
 
 `scripts/probes/` holds the one-off measurements the documents quote -- the
 TF32 arithmetic and what honest fp32 costs -- so a reader can re-run the number
@@ -294,8 +294,8 @@ weight holds still even with TF32 switched on deliberately.
 Twenty minutes, and it decides how the 3000 hours are spent.
 
 ```bash
-sbatch -p rtx  scripts/sbatch/train.sbatch --optimizer ngd-pion --max-steps 200
-sbatch -p b200 scripts/sbatch/train.sbatch --optimizer ngd-pion --max-steps 200
+sbatch -p rtx  scripts/cluster/train.sbatch --optimizer ngd-pion --max-steps 200
+sbatch -p b200 scripts/cluster/train.sbatch --optimizer ngd-pion --max-steps 200
 ```
 
 Read `tokens_per_sec` from the last line of each run's `log.jsonl`.
@@ -438,8 +438,8 @@ Run this on a login node if compute nodes have no network.
 `AGENTS.md` for why.
 
 ```bash
-sbatch scripts/sbatch/train.sbatch --anchor bilateral    # defaults to b200
-sbatch scripts/sbatch/train.sbatch --anchor alternate
+sbatch scripts/cluster/train.sbatch --anchor bilateral    # defaults to b200
+sbatch scripts/cluster/train.sbatch --anchor alternate
 ```
 
 Each is a full 9.6B run. If one does not fit inside 24 h, resubmit the same
@@ -458,7 +458,7 @@ to 2.2e+1. Comparing at one shared rate measures which is better *at that rate*
 reviewer asks.
 
 ```bash
-sbatch --array=0-11%8 scripts/sbatch/sweep.sbatch        # defaults to rtx
+sbatch --array=0-11%8 scripts/cluster/sweep.sbatch        # defaults to rtx
 ```
 
 Twelve runs at 1x Chinchilla (1.2B tokens, 9155 steps), an eighth of the

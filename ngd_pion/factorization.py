@@ -1,4 +1,4 @@
-"""ALGORITHM.md §4 -- the bases that diagonalise the Fisher operator.
+"""docs/history/ALGORITHM.md §4 -- the bases that diagonalise the Fisher operator.
 
 The operator on each side is `F(X) = 2(B X C + C X B)`, and it is symmetric in
 `B` and `C`. Diagonalising it means finding `P` with `P^T B P = I` and

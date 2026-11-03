@@ -34,5 +34,5 @@ comparison. A set of runs is not a set of replicates until the manifests say so.
 
 ## Evidence
 
-`docs/VALIDATION.md` V1-V4 and `docs/PLAN.md`. At B = 512, 3000 steps, seed 0:
+`docs/history/VALIDATION.md` V1-V4 and `docs/history/PLAN.md`. At B = 512, 3000 steps, seed 0:
 3.7954 against 3.8412, gap +0.046, no error bar yet.

@@ -15,8 +15,8 @@
 # comes back but has lost its optimizer state or replays batches it already saw
 # is worse than one that does not come back, because it looks healthy.
 #
-#   sbatch scripts/sbatch/resume.sbatch
-#   SIDE=alternate KILL_AFTER=900 sbatch scripts/sbatch/resume.sbatch
+#   sbatch scripts/cluster/resume.sbatch
+#   SIDE=alternate KILL_AFTER=900 sbatch scripts/cluster/resume.sbatch
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
 # Set because micro-batch 512 OOMs without it and fits with it -- tested
