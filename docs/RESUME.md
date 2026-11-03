@@ -14,34 +14,37 @@ only ever *now*.
 
 **Rewrite this file rather than appending to it.** It is a snapshot, not a log.
 
-**Next direction (2026-11-03): [`RLVR_PLAN.md`](paper/RLVR_PLAN.md).** How the paper is positioned against
-Pion, the measured steps-to-Pion's-loss ratio (1.45-1.66x, not 1.28x), and the RLVR experiment to set up,
-starting with its stage 0.
+**The method and every result: [`paper/FINAL.md`](paper/FINAL.md).** Next experiment:
+[`paper/RLVR_PLAN.md`](paper/RLVR_PLAN.md). Jobs behind each number: [`../scripts/paper/README.md`](../scripts/paper/README.md).
 
-Notation, once: **val** is validation loss on held-out C4 (nats per token, lower
-is better); **rot** is the learning rate of the rotational optimizer, **adamw**
-that of AdamW on the embedding, head and norm gains (56.5% of the model);
-**B** is the batch in sequences of 256 tokens, and **B = 512 is the classical
-setting** (131 072 tokens per step, 73 242 steps, 9.6B tokens); **gap** is
-val(Pion) minus val(NGD-Pion), positive when NGD-Pion is ahead. Every number
-below is seed 0, one run per cell, unless it says otherwise.
+Notation, once: **val** is validation loss on held-out C4 (nats per token, lower is better); **theta** (`--lr`) is
+the peak rotation angle of Natural Pion, in radians; **adamw** is the lr of AdamW on embedding, head and norms
+(8e-3); B = 512 sequences of 256 tokens, 73 242 steps = 9.6B tokens is the full length; **gap** is val(Pion)
+minus val(ours). Seed 0 unless stated.
 
 ---
 
-## As of 2026-11-03, 09:05: step_norm, what is known
+## As of 2026-11-03, 17:30
 
-`c = rot_t / sigma(X)` after F^-1, alpha off (`scripts/probes/step_norm.py`). Journal 2026-10-31 to 2026-11-03. val, B 512, AdamW 8e-3.
+**The method is `ngd_pion/natural_pion.py`**: `NaturalPion` (exact form, Algorithm 1) and `NaturalPionFast`
+(t_fac 25, A and D in the 6 steps before a rebuild, batched; Algorithm 2), harness names `natural-pion` and
+`natural-pion-fast`. Fast is bit-identical to the `step_norm` probe the runs used (CPU test and a 500-step GPU run).
+The repository was restructured the same day: `ngd_pion/legacy/`, `scripts/paper|cluster|rl|archive`,
+`docs/paper|history` (the journal is now `docs/history/JOURNAL.md`).
 
-Build: spectral norm after F^-1 (shared sigma of both sides), Lie momentum 0.9, cosine, equal angles, A and D only in the last 6 steps before a refactor, STEP_NORM_FAST (bit-identical), STEP_NORM_BATCH, t_fac 25 (0.60 s/step; Pion 0.466). `scripts/paper/step_norm_long.sbatch`.
+    full length: Pion 3.3706 (34063 s); ours 56900 steps, same clock, 3.3468 (gap 0.024); ours 73242 steps 3.3296 (0.041)
+    same clock, seeds 0-3: 1800 s gap mean 0.055, 8900 s gap mean 0.025, every seed positive
+    steps to Pion's final val: >= ~1.45x fewer (scripts/analysis/steps_ratio.py)
+    Pion lr: 1e-3 best at 19200 (2e-3 3.5138, 4e-3 3.8802); 2e-3 best at 3840 (gap there 0.043)
+    init, power-law tail alpha 3: ours +0.022 at 3000 (seeds mean +0.014), +0.004 at 15000; Pion -0.006 / -0.019: helps us, hurts Pion
+    Muon mid-run (step ~50000 of 73242): 3.4112, ahead of ours-73242 at equal steps, behind ours-56900 at equal steps from ~42000
 
-    full length, seed 0: Pion 73242 steps 3.3706 (34063 s); ours 56900 steps (34012 s, same clock) 3.3468 at angle 0.05 (0.025: 3.3577), ahead by 0.024; ours 73242 steps 3.3296, ahead by 0.041 by steps. Paper's Pion (Megatron): 3.3575.
-    clock 8900 s, Pion 19200 vs ours 15000 @0.05, seeds 0-3: 0.024 / 0.023 / 0.020 / 0.034
-    clock 1800 s, Pion 3840 vs ours 3000, seeds 0-3: 0.056 / 0.059 / 0.049 / 0.057 (vs Pion lr 2e-3 on seed 0: 0.043)
-    Pion lr: 3840 steps 5e-4 3.8397, 1e-3 3.7804, 2e-3 3.7668, 4e-3 4.1523; 19200 steps 1e-3 3.4960, 2e-3 3.5138, 4e-3 3.8802 -> 1e-3 at the long horizons
-    Muon (Natural-Muon, same cell, seed 0): 3.6505 at 3000, 0.452 s/step. We are behind Muon at 3000 by steps and by clock; not compared at length.
-    rejected: norm before F^-1, Fisher and RMS norms, attention angle multiples, per-side sigma, flat spectrum p=0/0.5, linear schedule, WSD at peak 0.2, early decay isqrt (0.2: 3.4750, 0.1: 3.4818 vs cosine 3.4720), AdamW lr 4e-3/1.6e-2, RProp multiplier, schedule-law fits
+**Running:** Muon full length (Natural-Muon, job 397404, ends ~18:40); alpha-3 full-length pair (ours 56900, Pion
+73242; job 397614, ~10 h from 14:20); VeRL Apptainer image build on the login node
+(`containers/build-verl-vllm017.log`).
 
-Running: Muon at full length (Natural-Muon, job 397404, ~9 h from 09:25 on 2026-11-03). Open: Newton-Schulz; novelty recheck; GitHub clean-up.
+**Next:** Muon into FINAL.md and the figures (`scripts/analysis/figures.py --muon ...`); RLVR stage 0 (fix Pion's VeRL
+fork, actor without sharding, 20-step timing on a B200); seeds at full length; novelty recheck.
 
 ## As of 2026-10-30, 20:35: what alpha is
 
