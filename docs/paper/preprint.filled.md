@@ -285,7 +285,7 @@ The same construction applies to the output side, with $A$ replaced by $D$ and $
 The natural gradient fixes a direction $X = F^{-1}G$. Its length in the Fisher metric,
 $\sqrt{\langle X, F X\rangle}$, is the classical trust-region measure, and it is a poor one here. In
 our model, $F^{-1}$ scales the gradient very unevenly across layers. With a fixed step size, the
-rotation angle actually taken spans **[angle_spread_fixed_c?]** across the 56 matrices (90th over 10th
+rotation angle actually taken spans 4.2e+06 across the 56 matrices (90th over 10th
 percentile, Section 5.4): some matrices barely move while others turn by large angles.
 
 We use the geometry of the parameterization instead. The step is a rotation, and a rotation has an
@@ -360,7 +360,9 @@ is the angle taken.
 
 **Precision.** In practice the guarantee holds only if the solve runs in true fp32. TF32 matrix
 products, the default on recent GPUs, move the spectrum by a relative **[tf32_drift?]** over 200 steps in our
-measurements. In fp32 the singular values of our trained models drift by about **[fp32_drift_3000?]** over 3000 steps.
+measurements. In fp32 the singular values of a trained Natural Pion model move from their initial values by at most
+**[fp32_drift_3000?]** per matrix (median over the 56 matrices; worst matrix **[fp32_drift_3000_max?]**, mean signed change
+**[fp32_drift_3000_signed_mean?]**) after 3 000 steps.
 
 ### 3.5 The algorithm
 
@@ -496,7 +498,7 @@ per size instead of one call per matrix. The mathematics is unchanged and only r
 * **Newton–Schulz instead of the Cayley solve.** An iterative inverse costs **[ns_cost?]**x the exact solve on
   these shapes. Its orthogonality error grows with the angle: in fp64, after one step with two
   iterations it is **[ns_err_02?]** at angle 0.2, **[ns_err_04?]** at 0.4 and **[ns_err_08?]** at 0.8. In fp32,
-  both methods sit at the round-off floor after one step (**[fp32_onestep_err?]**), but over 3 000 steps on a
+  both methods sit at the round-off floor after one step (**[fp32_onestep_cayley?]** for Cayley, **[fp32_onestep_ns?]** for Newton–Schulz), but over 3 000 steps on a
   $256 \times 256$ test matrix the spectrum drifts by **[ns_drift_toy?]** with Newton–Schulz against **[cayley_drift_toy?]** with
   Cayley. Exact preservation of the spectrum is the point of the method, so we keep the solve.
 * **Exact SVD to reshape the step's spectrum** (the polar step in Section 5.4): 6.8–7.8 s per step, and worse in
@@ -652,12 +654,12 @@ percentile, after step 1000).
 
 | length rule | val | angle spread |
 |---|---|---|
-| **spectral, after $F^{-1}$: $c = \theta/\sigma(F^{-1}G)$** | **3.7399** | **[angle_spread_spectral?]** |
-| RMS of the induced update, as in Pion | 3.7540 | **[angle_spread_rms?]** |
-| quadratic-model ratio $\min(1, \langle G, X\rangle / \langle X, FX\rangle)$ | 3.7843 | **[angle_spread_alpha?]** |
-| Fisher norm, $c = \theta / \sqrt{\langle X, FX\rangle}$ | $\le$ 3.8281 | **[angle_spread_fishernorm?]** |
-| fixed $c$ | 3.8419 | **[angle_spread_fixed?]** |
-| spectral, before $F^{-1}$: $c = \theta/\sigma(G)$ | 3.9952 | **[angle_spread_before?]** |
+| **spectral, after $F^{-1}$: $c = \theta/\sigma(F^{-1}G)$** | **3.7399** | 1 |
+| RMS of the induced update, as in Pion | 3.7540 | 1.7 |
+| quadratic-model ratio $\min(1, \langle G, X\rangle / \langle X, FX\rangle)$ | 3.7843 | 1.4e+02 |
+| Fisher norm, $c = \theta / \sqrt{\langle X, FX\rangle}$ | $\le$ 3.8281 | 4.6e+04 |
+| fixed $c$ | 3.8419 | 4.2e+06 |
+| spectral, before $F^{-1}$: $c = \theta/\sigma(G)$ | 3.9952 | 3.4e+11 |
 
 Across six rules, the more evenly the matrices turn, the lower the loss. The spectral rule beats the
 RMS rule on all four seeds (gaps 0.014, 0.009, 0.011, 0.006). The Fisher-norm row is the best of its
@@ -728,14 +730,14 @@ preservation of the spectrum.
   at shorter horizons agree in sign and size.
 * **One code base.** Our Pion is 0.013 above the Pion paper's own number, so we compare within our
   harness only.
-* **Exactness in practice.** The spectrum is frozen in exact arithmetic. In fp32 it drifts by **[fp32_drift_3000?]**
+* **Exactness in practice.** The spectrum is frozen in exact arithmetic. In fp32 it drifts by up to **[fp32_drift_3000?]** per matrix (median)
   over 3 000 steps, with a consistent sign. We have not measured whether this matters.
 * **Only Pion as a baseline.** We compare against the published Pion configuration only, not against
   AdamW or Muon, and only on validation loss, not on downstream tasks.
 * **The peak angle depends on the horizon.** The best peak falls with the training length (0.2 at 3 000
   steps, 0.05 from 15 000 on), so it has to be chosen for the budget, as a learning rate is.
 * **The K-FAC assumption.** The independence of $x$ and $\delta$ is not tested here. How far the K-FAC
-  curvature along our step is from the exact per-token curvature is **[kfac_vs_exact?]**.
+  curvature along our step is from the exact per-token curvature is **[kfac_vs_exact?]** (median of three layers).
 * **Open checks.** The query projection is rotated whole, while Pion rotates it per head; and the
   relative floor $\varepsilon = 10^{-4}$ was chosen for an earlier variant. Both are being re-tested.
   <!-- TODO: close with the results of natural_pion_qhead.sbatch and natural_pion_reg.sbatch. -->

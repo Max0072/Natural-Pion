@@ -239,11 +239,29 @@ rms_seed = [val("stepnormnorm/rms/*", 0, lr=0.0024)] + [val("stepnormrmsseeds/*"
 spec_seed = [val("stepnorm/*", 0, lr=0.4)] + [val("stepnormseeds/*", s) for s in (1, 2, 3)]
 for s in range(4):
     put(f"rms_gap_s{s}", rms_seed[s] - spec_seed[s], f"RMS (lr 2.4e-3) - spectral (angle 0.4), seed {s}")
-for k in ("spectral", "rms", "alpha", "fishernorm", "fixed", "before"):
-    missing(f"angle_spread_{k}", "p90/p10 of the realised angle across the 56 matrices after step 1000; needs the "
-            "runs' diagnostics.jsonl archived and a script reading it")
-NUM["angle_spread_fixed_c"] = None
-NOTE["angle_spread_fixed_c"] = NOTE["angle_spread_fixed"]
+def spread(rel: str) -> float:
+    """Median over logged steps >= 1000 of p90/p10 of the realised angle across the 56 matrices."""
+    ang = json.load(open(R / rel / "angles.json"))
+    ratios = []
+    for step, xs in ang.items():
+        if int(step) < 1000:
+            continue
+        xs = sorted(abs(x) for x in xs)
+        lo, hi = xs[int(0.1 * (len(xs) - 1))], xs[int(0.9 * (len(xs) - 1))]
+        if lo > 0:
+            ratios.append(hi / lo)
+    ratios.sort()
+    return ratios[len(ratios) // 2]
+
+
+for k, rel in (("spectral", "stepnorm/ngd-pion-s-lr0.4-s0-abc48c0d29"),
+               ("rms", "stepnormnorm/rms/ngd-pion-s-lr0.0024-s0-0e56770015"),
+               ("fishernorm", "stepnormnorm/fisher/ngd-pion-s-lr0.0048-s0-39ae0e1733"),
+               ("alpha", "tfac1alpha/ngd-pion-s-lr0.004-s0-98de9ab11a"),
+               ("fixed", "tfac1/ngd-pion-s-lr0.002-s0-0abdc0de2e"),
+               ("before", "stepnormpre/ngd-pion-s-lr3e-05-s0-72fbe69d19")):
+    put(f"angle_spread_{k}", spread(rel), f"{rel}/angles.json (scripts/analysis/extract_angles.py): median over steps >= 1000 of p90/p10 across matrices")
+put("angle_spread_fixed_c", NUM["angle_spread_fixed"], "= angle_spread_fixed")
 
 # ablations: other choices
 put("ref_tf25", val("stepnormcombo/cos0.2/*"), "stepnormcombo/cos0.2 (t_fac 25, momentum, A and D last 6)")
@@ -349,9 +367,6 @@ for th in (0.05, 0.2):
     put(f"trunc_err_{th}", th ** 4 / 4, f"theta^4/4 at theta = {th} (Proposition 4)")
 rc = json.load(open(R / "probes" / "rl_refactor_cost_b200.json"))
 put("rl_refactor_b200", rc["refactor_total_s"], "runs-record/probes/rl_refactor_cost_b200.json (scripts/probes/rl_refactor_cost.py, job 397885)")
-missing("kfac_vs_exact", "K-FAC curvature along the step over the exact per-token curvature, for Natural Pion: rerun "
-        "scripts/probes/kfac_error.py on a Natural Pion checkpoint with the 1/2 operator and record (the journal's 0.0128 "
-        "is from the earlier method and the earlier factor-2 convention)")
 missing("pion_angle_max", "largest rotation-plane angle per step in a Pion run (lr 1e-3); needs Pion's per-layer "
         "angle logged and a script reading it")
 
@@ -365,16 +380,22 @@ try:
 except Exception as e:  # numpy missing, etc.
     for k in ("mc_err_in", "mc_err_out", "pullback_err"):
         missing(k, f"scripts/analysis/check_fisher.py failed: {e}")
-for k, need in (("tf32_drift", "scripts/probes/tf32.py output, recorded"),
-                ("fp32_drift_3000", "scripts/probes/spectrum_drift.py on archived checkpoints, recorded"),
-                ("svd_share_of_step", "scripts/probes/power_acc.py or step-cost probe output, recorded"),
-                ("power_speedup", "power iteration vs matrix_norm timing, recorded"),
-                ("power_cold_1", "scripts/probes/power_acc.py, recorded"), ("power_cold_5", "same"), ("power_cold_20", "same"),
-                ("power_warm_1", "same"), ("ns_cost", "scripts/probes/ns_cayley.py timing, recorded"),
-                ("ns_err_02", "scripts/probes/ns_law.py, recorded"), ("ns_err_04", "same"), ("ns_err_08", "same"),
-                ("fp32_onestep_err", "same"), ("ns_drift_toy", "same"), ("cayley_drift_toy", "same"),
-                ):
-    missing(k, need)
+PC = R / "probes" / "paper_checks.json"
+pc = json.load(open(PC)) if PC.exists() else {}
+for k in ("tf32_drift", "fp32_drift_3000", "fp32_drift_3000_max", "fp32_drift_3000_signed_mean", "power_speedup",
+          "power_cold_1", "power_cold_5", "power_cold_20", "power_warm_1", "ns_cost", "ns_err_02", "ns_err_04",
+          "ns_err_08", "fp32_onestep_cayley", "fp32_onestep_ns", "ns_drift_toy", "cayley_drift_toy", "kfac_vs_exact",
+          "svd_exact_s", "svd_power_s"):
+    if k in pc:
+        put(k, pc[k], "runs-record/probes/paper_checks.json (scripts/probes/paper_checks.py)")
+    else:
+        missing(k, "run scripts/probes/paper_checks.sbatch (writes runs-record/probes/paper_checks.json)")
+if "svd_exact_s" in pc:
+    rest = NUM["prof_tfac25_refactor"] + NUM["prof_tfac25_retract"] + NUM["prof_tfac25_rest"]
+    put("svd_share_of_step", pc["svd_exact_s"] / (pc["svd_exact_s"] + rest),
+        "exact spectral norms / (that + refresh, retraction and rest of the T_fac 25 optimizer step, profiled)")
+else:
+    missing("svd_share_of_step", "needs paper_checks.json")
 p0 = [sps_median(d) for d in runs("stepnormpower/p0/*")]
 put("sched_linear_fast", val("stepnormcombo/lin0.2/*"), "stepnormcombo/lin0.2 (Natural Pion Fast, linear decay, peak 0.2)")
 put("clock_pion_sps", sps("stepnormclock/pion-*"), "stepnormclock Pion 5300-step run: the step time measured before the clock runs were planned")

@@ -285,7 +285,7 @@ The same construction applies to the output side, with $A$ replaced by $D$ and $
 The natural gradient fixes a direction $X = F^{-1}G$. Its length in the Fisher metric,
 $\sqrt{\langle X, F X\rangle}$, is the classical trust-region measure, and it is a poor one here. In
 our model, $F^{-1}$ scales the gradient very unevenly across layers. With a fixed step size, the
-rotation angle actually taken spans {{angle_spread_fixed_c}} across the 56 matrices (90th over 10th
+rotation angle actually taken spans {{angle_spread_fixed_c:.2g}} across the 56 matrices (90th over 10th
 percentile, Section 5.4): some matrices barely move while others turn by large angles.
 
 We use the geometry of the parameterization instead. The step is a rotation, and a rotation has an
@@ -359,8 +359,10 @@ drift. Cayley removes the error at any angle. It also makes Proposition 3 exact,
 is the angle taken.
 
 **Precision.** In practice the guarantee holds only if the solve runs in true fp32. TF32 matrix
-products, the default on recent GPUs, move the spectrum by a relative {{tf32_drift}} over 200 steps in our
-measurements. In fp32 the singular values of our trained models drift by about {{fp32_drift_3000}} over 3000 steps.
+products, the default on recent GPUs, move the spectrum by a relative {{tf32_drift:.2g}} over 200 steps in our
+measurements. In fp32 the singular values of a trained Natural Pion model move from their initial values by at most
+{{fp32_drift_3000:.2%}} per matrix (median over the 56 matrices; worst matrix {{fp32_drift_3000_max:.2%}}, mean signed change
+{{fp32_drift_3000_signed_mean:+.2%}}) after 3 000 steps.
 
 ### 3.5 The algorithm
 
@@ -470,12 +472,12 @@ its time constant.)
 
 ### 4.4 A warm power iteration for $\sigma$
 
-The exact spectral norm (`matrix_norm(X, 2)`) took {{svd_share_of_step}} of the whole optimizer step on these shapes:
+The exact spectral norm (`matrix_norm(X, 2)`) took {{svd_share_of_step:.0%}} of the whole optimizer step on these shapes:
 cuSOLVER falls back to a slow path on $1376 \times 1376$ matrices. Power iteration on $X^\top X$ costs
-matrix-vector products only, {{power_speedup}}x less. Cold power iteration converges badly on skew matrices,
+matrix-vector products only, {{power_speedup:.0f}}x less. Cold power iteration converges badly on skew matrices,
 whose singular values come in equal pairs: on a random $512 \times 512$ skew matrix its relative error
-is {{power_cold_1}} after one iteration, {{power_cold_5}} after five and {{power_cold_20}} after twenty. Warm-started from the previous step's
-vector, one iteration reaches {{power_warm_1}}. We run 50 iterations after a refresh and 2 otherwise.
+is {{power_cold_1:.1%}} after one iteration, {{power_cold_5:.1%}} after five and {{power_cold_20:.1%}} after twenty. Warm-started from the previous step's
+vector, one iteration reaches {{power_warm_1:.0e}}. We run 50 iterations after a refresh and 2 otherwise.
 
 ### 4.5 Computing only what the step uses
 
@@ -493,11 +495,11 @@ per size instead of one call per matrix. The mathematics is unchanged and only r
 
 ### 4.7 Tried and not adopted
 
-* **Newton–Schulz instead of the Cayley solve.** An iterative inverse costs {{ns_cost}}x the exact solve on
+* **Newton–Schulz instead of the Cayley solve.** An iterative inverse costs {{ns_cost:.2f}}x the exact solve on
   these shapes. Its orthogonality error grows with the angle: in fp64, after one step with two
-  iterations it is {{ns_err_02}} at angle 0.2, {{ns_err_04}} at 0.4 and {{ns_err_08}} at 0.8. In fp32,
-  both methods sit at the round-off floor after one step ({{fp32_onestep_err}}), but over 3 000 steps on a
-  $256 \times 256$ test matrix the spectrum drifts by {{ns_drift_toy}} with Newton–Schulz against {{cayley_drift_toy}} with
+  iterations it is {{ns_err_02:.0e}} at angle 0.2, {{ns_err_04:.0e}} at 0.4 and {{ns_err_08:.0e}} at 0.8. In fp32,
+  both methods sit at the round-off floor after one step ({{fp32_onestep_cayley:.0e}} for Cayley, {{fp32_onestep_ns:.0e}} for Newton–Schulz), but over 3 000 steps on a
+  $256 \times 256$ test matrix the spectrum drifts by {{ns_drift_toy:.2%}} with Newton–Schulz against {{cayley_drift_toy:.2%}} with
   Cayley. Exact preservation of the spectrum is the point of the method, so we keep the solve.
 * **Exact SVD to reshape the step's spectrum** (the polar step in Section 5.4): {{svd_sps_lo:.1f}}–{{svd_sps_hi:.1f}} s per step, and worse in
   loss.
@@ -652,12 +654,12 @@ percentile, after step 1000).
 
 | length rule | val | angle spread |
 |---|---|---|
-| **spectral, after $F^{-1}$: $c = \theta/\sigma(F^{-1}G)$** | **{{dir_fisher_nomom:.4f}}** | {{angle_spread_spectral}} |
-| RMS of the induced update, as in Pion | {{len_rms:.4f}} | {{angle_spread_rms}} |
-| quadratic-model ratio $\min(1, \langle G, X\rangle / \langle X, FX\rangle)$ | {{len_alpha:.4f}} | {{angle_spread_alpha}} |
-| Fisher norm, $c = \theta / \sqrt{\langle X, FX\rangle}$ | $\le$ {{len_fishernorm:.4f}} | {{angle_spread_fishernorm}} |
-| fixed $c$ | {{len_fixed:.4f}} | {{angle_spread_fixed}} |
-| spectral, before $F^{-1}$: $c = \theta/\sigma(G)$ | {{len_before:.4f}} | {{angle_spread_before}} |
+| **spectral, after $F^{-1}$: $c = \theta/\sigma(F^{-1}G)$** | **{{dir_fisher_nomom:.4f}}** | {{angle_spread_spectral:.2g}} |
+| RMS of the induced update, as in Pion | {{len_rms:.4f}} | {{angle_spread_rms:.2g}} |
+| quadratic-model ratio $\min(1, \langle G, X\rangle / \langle X, FX\rangle)$ | {{len_alpha:.4f}} | {{angle_spread_alpha:.2g}} |
+| Fisher norm, $c = \theta / \sqrt{\langle X, FX\rangle}$ | $\le$ {{len_fishernorm:.4f}} | {{angle_spread_fishernorm:.2g}} |
+| fixed $c$ | {{len_fixed:.4f}} | {{angle_spread_fixed:.2g}} |
+| spectral, before $F^{-1}$: $c = \theta/\sigma(G)$ | {{len_before:.4f}} | {{angle_spread_before:.2g}} |
 
 Across six rules, the more evenly the matrices turn, the lower the loss. The spectral rule beats the
 RMS rule on all four seeds (gaps {{rms_gap_s0:.3f}}, {{rms_gap_s1:.3f}}, {{rms_gap_s2:.3f}}, {{rms_gap_s3:.3f}}). The Fisher-norm row is the best of its
@@ -728,14 +730,14 @@ preservation of the spectrum.
   at shorter horizons agree in sign and size.
 * **One code base.** Our Pion is {{pion_vs_paper:.3f}} above the Pion paper's own number, so we compare within our
   harness only.
-* **Exactness in practice.** The spectrum is frozen in exact arithmetic. In fp32 it drifts by {{fp32_drift_3000}}
+* **Exactness in practice.** The spectrum is frozen in exact arithmetic. In fp32 it drifts by up to {{fp32_drift_3000:.2%}} per matrix (median)
   over 3 000 steps, with a consistent sign. We have not measured whether this matters.
 * **Only Pion as a baseline.** We compare against the published Pion configuration only, not against
   AdamW or Muon, and only on validation loss, not on downstream tasks.
 * **The peak angle depends on the horizon.** The best peak falls with the training length (0.2 at 3 000
   steps, 0.05 from 15 000 on), so it has to be chosen for the budget, as a learning rate is.
 * **The K-FAC assumption.** The independence of $x$ and $\delta$ is not tested here. How far the K-FAC
-  curvature along our step is from the exact per-token curvature is {{kfac_vs_exact}}.
+  curvature along our step is from the exact per-token curvature is {{kfac_vs_exact:.2g}} (median of three layers).
 * **Open checks.** The query projection is rotated whole, while Pion rotates it per head; and the
   relative floor $\varepsilon = 10^{-4}$ was chosen for an earlier variant. Both are being re-tested.
   <!-- TODO: close with the results of natural_pion_qhead.sbatch and natural_pion_reg.sbatch. -->
@@ -785,7 +787,7 @@ of all matrices takes {{rl_refactor_b200:.0f}} s on one B200.
   mean loss is undone by scaling $D$ by $N^2$; Algorithm 1 is invariant to it anyway.
 * **Power iteration.** $\|X\|_2$ is estimated by power iteration on $X^\top X$, warm-started from the
   previous step's vector: 2 iterations per step and 50 after a refresh, where $X$ jumps. It is
-  {{power_speedup}}x cheaper than an exact spectral norm on these shapes.
+  {{power_speedup:.0f}}x cheaper than an exact spectral norm on these shapes.
 * **Floors.** $A$, $S$ (or $D$, $V$) and the pencil eigenvalues are floored at
   $10^{-4}\,\lambda_{\max}$ before any division.
 * **Code.** `ngd_pion/natural_pion.py` (`NaturalPion`); every job and run record is listed in
