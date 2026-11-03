@@ -35,6 +35,7 @@ from ngd_pion.unified import NGDPionUnified
 from ngd_pion.damped import DampedNGDPionS
 from ngd_pion.exact_curv import ExactCurvNGDPionS
 from ngd_pion.linalg import EIGH_FALLBACKS
+from ngd_pion.natural_pion import NaturalPion, NaturalPionFast
 
 from .config import RunConfig
 from .data import TokenCorpus
@@ -95,6 +96,9 @@ def lr_at(step: int, cfg: RunConfig, base: float | None = None) -> float:
 # the power iteration moved into `NGDPionS`, so `FastNGDPionS` is bit-identical
 # to it and differs only by recording `quad`, `curv` and `pred_drop`. The
 # 69.5 s of a 73.5 s step this comment used to cite is history, not a live cost.
+# The final method, exact and efficient forms (ngd_pion/natural_pion.py).
+NATURAL_PION = {"natural-pion": NaturalPion, "natural-pion-fast": NaturalPionFast}
+
 NGD_IMPLEMENTATIONS = {
     "ngd-pion": FastNGDPion,
     "ngd-pion-ref": NGDPion,
@@ -124,7 +128,13 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
     if cfg.optimizer == "adamw":
         return None, _adamw(model.parameters(), cfg), None
 
-    if cfg.optimizer in NGD_IMPLEMENTATIONS:
+    if cfg.optimizer in NATURAL_PION:
+        # The final method (docs/paper/FINAL.md). Only the angle and the momentum come from the
+        # configuration; cadence, statistics window and factor EMAs are the class's own, so the legacy
+        # `ngd_*` defaults cannot leak in. `--lr` is the peak rotation angle in radians.
+        rot = NATURAL_PION[cfg.optimizer](weights, lr=cfg.lr, beta1=cfg.ngd_beta1)
+        recorder = attach(linears, rot)
+    elif cfg.optimizer in NGD_IMPLEMENTATIONS:
         kw = {}
         if cfg.optimizer in ("ngd-pion", "ngd-pion-op", "ngd-pion-pow"):
             # the diagnostics and the angle cap live in the fast variant only;
@@ -219,7 +229,7 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
             f"unknown optimizer {cfg.optimizer!r}; expected one of "
             + ", ".join(
                 repr(k) for k in (
-                    *NGD_IMPLEMENTATIONS, "shampoo-pion", "pion", "adamw"
+                    *NATURAL_PION, *NGD_IMPLEMENTATIONS, "shampoo-pion", "pion", "adamw"
                 )
             )
         )
@@ -459,7 +469,8 @@ def train(
     probe = BackwardProbe(model.parameter_split()[0]) if diagnostics is not None else None
     # The S variant needs the backward signal as a statistic, not as a
     # diagnostic, so it gets its own recorder alongside the activation one.
-    backward = attach_backward(model.parameter_split()[0], rot) if isinstance(rot, NGDPionS) else None
+    backward = (attach_backward(model.parameter_split()[0], rot)
+                if isinstance(rot, (NGDPionS, NaturalPion)) else None)
     names = {id(m.weight): n for n, m in model.named_modules() if isinstance(m, nn.Linear)}
 
     # Local disk, not $DATA_p330, if the file is large enough to be worth the
