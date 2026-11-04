@@ -7065,3 +7065,27 @@ Tests updated (factorization, damped, exact_curv, optimizer precision test at lr
   ("Pion's steps are small, ours large") was wrong and is rewritten: both methods turn planes by 0.05-0.2 rad.
 * Muon full length (Natural-Muon, job 397404): 3.2976 at 73242 steps, 32 760 s. Ahead of Natural Pion by steps
   (3.3296) and by clock (3.3468 at 34 012 s). Not in the preprint (user: Muon not now).
+
+## 2026-11-04 — retractions measured; Newton–Schulz rounding bias found and fixed; cheaper statistics
+
+**Retraction runs** (natural-pion-fast, seed 0; `scripts/paper/natural_pion_ns.sbatch`). Val at 3000/15000:
+Cayley 3.7242/3.4720, NS 3.7252/3.4724, trunc 3.7217/3.4733 — all inside the 0.003 RTX-vs-B200 spread of one
+configuration. The loss does not separate them. The spectrum does (paper_checks per checkpoint, median/worst):
+Cayley 0.04%/0.29%, trunc 0.59%/1.49%, NS 1.26%/1.77% with +1.1% signed. Step time RTX: 0.596 / 0.558 / 0.550 s.
+The trunc prediction ("val worse by >= 0.010 at 0.2") was wrong; the spectrum part was right.
+
+**Why NS inflated.** Its truncation error R = Cay - 2(I+A)^-1 A^8 can only shrink the spectrum, so not that.
+`scripts/probes/ns_diag.py` (200 training steps): ||W||_F^2 grows a median 9.5e-6 per step with NS (2.6e-7
+Cayley, 8.7e-7 trunc), never falls; true fp32 at every step; sigma estimate accurate (0.9999). Bare matrices
+(`scripts/probes/ns_rounding.py`): bias grows with size and with smaller angle → rounding, not truncation.
+Hypothesis: the usual iteration rounds entries next to 1. Prediction: carrying it in z = Z - I removes the bias.
+Confirmed on bare matrices (+2.8e-4 → +1.6e-7 at 1376, angle 0.05; Cayley +3.4e-5). Added as retraction
+`ns_delta` (old `ns` kept for reproducibility). Training run npnsdelta_b200 queued.
+
+**Statistics** (user: reuse A where identical; try bf16). One A per input tensor (q,k,v; gate,up), bit-identical,
+default in NaturalPionFast. bf16 *inputs* with fp32 accumulation and result (`stats_dtype="bf16"`) — the gram stays
+PSD, unlike the old failure where the assembled matrix was bf16. B200 3000 steps: fp32 3.7246 / 0.498 s,
+bf16 3.7216 / 0.463 s. Rule: adopt bf16 if also within 0.010 at 15000 steps (not run yet).
+
+Preprint: contribution 4 rewritten from measurements; 3.4 explains the NS bias and the correction form; new 4.7
+"Cheaper statistics". Gaps: ret_nsd_*, stats_bf16_15k.

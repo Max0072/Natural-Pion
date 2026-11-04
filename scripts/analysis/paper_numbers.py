@@ -429,7 +429,74 @@ for ret in ("ns", "trunc"):
     else:
         missing(f"ret_{ret}_drift", f"scripts/probes/paper_checks.py <np{ret}/s3000 checkpoint> {ret}")
         missing(f"ret_{ret}_drift_max", "same")
-missing("trunc_effect", "a phrase from the trunc runs: what the truncated exponential does to val and spectrum")
+for ret in ("ns", "trunc"):
+    put(f"ret_{ret}_sps", sps(f"np{ret}/s3000/*"), f"np{ret}/s3000 (RTX)")
+put("ret_ns_saving", NUM["batch_sps"] - NUM["ret_ns_sps"], "batch_sps - ret_ns_sps (RTX)")
+put("ret_hw_noise", max(abs(val(f"np{r}/s3000/*") - val(f"np{r}_b200/s3000/*")) for r in ("ns", "trunc")),
+    "same configuration on RTX and B200 (np{ns,trunc}/s3000 vs _b200): max |val difference|")
+_m = json.load(open(one("npstats_fp32_b200/s3000/*") / "manifest.json"))
+put("tokens_per_step", _m["tokens_per_step"], "manifest tokens_per_step")
+# ns_delta: Newton-Schulz in the correction form, B200 only so far
+hits = runs("npnsdelta_b200/s3000/*")
+if hits and info(hits[0])["done"]:
+    put("ret_nsd_3000", info(hits[0])["val"], "npnsdelta_b200/s3000")
+    put("ret_nsd_sps_b200", sps("npnsdelta_b200/s3000/*"), "npnsdelta_b200/s3000 (B200)")
+else:
+    missing("ret_nsd_3000", "RET=ns_delta OUTROOT=npnsdelta_b200 sbatch -p b200 --array=0 scripts/paper/natural_pion_ns.sbatch")
+    missing("ret_nsd_sps_b200", "same")
+f = R / "probes" / "paper_checks_ns_delta.json"
+if f.exists():
+    d = json.load(open(f))
+    put("ret_nsd_drift", d["fp32_drift_3000_median"], f.name)
+    put("ret_nsd_drift_max", d["fp32_drift_3000_max"], f.name)
+else:
+    missing("ret_nsd_drift", "scripts/probes/paper_checks.py <npnsdelta_b200/s3000 checkpoint> ns_delta")
+    missing("ret_nsd_drift_max", "same")
+for ret in ("ns", "trunc"):
+    put(f"ret_{ret}_sps_b200", sps(f"np{ret}_b200/s3000/*"), f"np{ret}_b200/s3000 (B200)")
+# per-step change of ||W||_F^2 in training, first 200 steps (scripts/probes/ns_diag.py)
+for ret in ("cayley", "ns", "trunc", "ns_delta"):
+    f = R / "probes" / f"ns_diag_{ret}.json"
+    if f.exists():
+        d = json.load(open(f))
+        ms = sorted(x["mean_signed"] for x in d["steps"])
+        put(f"diag_{ret}_step", ms[len(ms) // 2], f"{f.name}: median over steps of the mean over matrices")
+        put(f"diag_{ret}_neg", sum(m < 0 for m in ms), f"{f.name}: steps where ||W||_F^2 fell")
+        put(f"diag_{ret}_sum", sum(ms), f"{f.name}: summed over the 200 steps")
+        if ret == "ns":
+            put("diag_sigma_ratio", sorted(r[1] for r in d["sigma_ratio"])[len(ms) // 2],
+                f"{f.name}: median sigma_est / ||X||_2")
+            put("diag_precision", d["summary"]["precision_seen"] == ['[false, false, "highest"]'],
+                f"{f.name}: autocast off, tf32 off, highest fp32 precision at every step")
+    else:
+        for k in ("step", "neg", "sum"):
+            missing(f"diag_{ret}_{k}", f"RETS={ret} sbatch scripts/probes/ns_diag.sbatch")
+# rounding of the retractions on bare matrices (scripts/probes/ns_rounding.py)
+f = R / "probes" / "ns_rounding.json"
+if f.exists():
+    d = json.load(open(f))
+    for ret in ("cayley", "ns", "ns_delta"):
+        for th in ("0.2", "0.05"):
+            put(f"rnd_{ret}_{th}", d[f"n1376_th{th}"][ret], f"{f.name}: 1376 x 1376, 200 one-sided steps")
+    put("rnd_delta_vs_cayley", max(r["delta_vs_cayley"] for r in d.values()), f"{f.name}: max over sizes")
+else:
+    missing("rnd_ns_0.2", "python scripts/probes/ns_rounding.py")
+# statistics: one A per input tensor, fp32 or bf16 inputs (scripts/paper/natural_pion_stats.sbatch, B200)
+for st in ("fp32", "bf16"):
+    hits = runs(f"npstats_{st}_b200/s3000/*")
+    if hits and info(hits[0])["done"]:
+        put(f"stats_{st}_val", info(hits[0])["val"], f"npstats_{st}_b200/s3000")
+        put(f"stats_{st}_sps", sps(f"npstats_{st}_b200/s3000/*"), f"npstats_{st}_b200/s3000 (B200)")
+    else:
+        missing(f"stats_{st}_val", f"STATS={st} OUTROOT=npstats_{st}_b200 sbatch -p b200 scripts/paper/natural_pion_stats.sbatch")
+if "stats_bf16_val" in NUM and "stats_fp32_val" in NUM:
+    put("stats_bf16_d", NUM["stats_bf16_val"] - NUM["stats_fp32_val"], "stats_bf16_val - stats_fp32_val")
+    put("stats_bf16_saving", NUM["stats_fp32_sps"] - NUM["stats_bf16_sps"], "stats_fp32_sps - stats_bf16_sps")
+hits = runs("npstats_bf16_b200/s15000/*")
+if hits and info(hits[0])["done"]:
+    put("stats_bf16_15k", info(hits[0])["val"], "npstats_bf16_b200/s15000")
+else:
+    missing("stats_bf16_15k", "STATS=bf16 OUTROOT=npstats_bf16_b200 sbatch -p b200 --array=1 scripts/paper/natural_pion_stats.sbatch")
 
 PC = R / "probes" / "paper_checks.json"
 pc = json.load(open(PC)) if PC.exists() else {}

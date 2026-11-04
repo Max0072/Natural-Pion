@@ -68,9 +68,12 @@ provides.
    fixed step size, $F^{-1}G$ reaches only {{len_fixed:.4f}}, against {{dir_fisher_nomom:.4f}} with the angle (Section 5.4).
 4. **A retraction that is exact at large angles.** Natural Pion turns every matrix by the full scheduled
    angle at every step, so the retraction must stay orthogonal at angles of 0.05 to 0.2 rad. The Cayley
-   transform is orthogonal at any angle; a two-step Newton–Schulz inverse matches it to fp32 round-off up to
-   about 0.4 rad. Pion's truncated exponential is not orthogonal, $T^\top T = I + \Omega^4/4$ (Proposition 4),
-   and in Natural Pion it {{trunc_effect}} (Section 3.4).
+   transform is orthogonal at any angle and keeps the trained spectrum to {{fp32_drift_3000:.2%}} (median matrix,
+   3 000 steps). Pion's truncated exponential is not orthogonal, $T^\top T = I + \Omega^4/4$ (Proposition 4),
+   and moves it by {{ret_trunc_drift:.2%}}. A two-step Newton–Schulz inverse is exact enough in arithmetic but, in
+   its usual form, rounds next to the identity with a positive bias in fp32 and inflates the spectrum by
+   {{ret_ns_drift:.2%}}; carried in the correction $Z - I$ it keeps $\|W\|_F$ on bare matrices better than the Cayley solve,
+   at the cost of matrix products only; its trained spectrum is {{ret_nsd_drift:.2%}} (Section 3.4). On these horizons none of the three drifts changes the loss.
 5. **A fast form.** Amortised refreshes, statistics collected only where they are read, a warm power
    iteration and batching take the step from {{tf1_mom_sps:.2f}} s to {{batch_sps:.3f}} s (Pion: {{pion3000_sps:.3f}} s). Each change is
    measured separately for time and loss (Section 4).
@@ -355,7 +358,8 @@ takes, not the Cayley transform as such. The Cayley transform is a standard retr
 group (Wen & Yin, 2013; Li et al., 2020), orthogonal at any angle, and it makes Proposition 3 exact; Pion
 reports having considered it, with modest gains. A Newton–Schulz inverse with two iterations is orthogonal
 to {{ns_err_02:.0e}} at angle 0.2 and {{ns_err_04:.0e}} at 0.4 (fp64, one step), so below fp32 round-off at our angles,
-though not beyond (at 0.8, {{ns_err_08:.0e}}). The truncated exponential departs from orthogonality by
+though not beyond (at 0.8, {{ns_err_08:.0e}}); this is the error of the iteration, and it can only shrink the
+spectrum, since $R = \mathrm{Cay} - 2(I + A)^{-1}A^{8}$ for two iterations. The truncated exponential departs from orthogonality by
 $\varphi^4/4$ for a largest angle $\varphi$, and the departure only inflates the spectrum and compounds over steps.
 
 The angles at stake differ in kind between the two methods. Pion's angles vary across matrices and steps: its
@@ -375,7 +379,26 @@ Fast, seed 0):
 |---|---|---|---|
 | Cayley | {{batch_val:.4f}} | {{np15k:.4f}} | {{fp32_drift_3000:.2%}} / {{fp32_drift_3000_max:.2%}} |
 | Newton–Schulz, 2 iterations | {{ret_ns_3000:.4f}} | {{ret_ns_15000:.4f}} | {{ret_ns_drift:.2%}} / {{ret_ns_drift_max:.2%}} |
+| Newton–Schulz in correction form | {{ret_nsd_3000:.4f}} (B200) | — | {{ret_nsd_drift:.2%}} / {{ret_nsd_drift_max:.2%}} |
 | truncated exponential (Pion's) | {{ret_trunc_3000:.4f}} | {{ret_trunc_15000:.4f}} | {{ret_trunc_drift:.2%}} / {{ret_trunc_drift_max:.2%}} |
+
+The loss does not separate the retractions at these horizons: all lie within the {{ret_hw_noise:.3f}} that separates
+the same run on two GPU types. The spectrum does. Only Cayley keeps it, and the truncated exponential moves it
+as Proposition 4 predicts. Newton–Schulz moves it more, which its truncation error cannot do (the error
+shrinks the spectrum, see above). The cause is rounding. Over the first 200 training steps $\|W\|_F^2$,
+which a rotation keeps exactly, grows by a median {{diag_ns_step:.1e}} per step with Newton–Schulz against
+{{diag_cayley_step:.1e}} with Cayley and {{diag_trunc_step:.1e}} with the truncated exponential, and falls on
+{{diag_ns_neg}} of 200 steps; the matrix products run in true fp32 throughout and the power iteration is
+accurate (median $\hat\sigma / \|X\|_2 = {{diag_sigma_ratio:.4f}}$), so neither precision nor the angle explains
+it (`scripts/probes/ns_diag.py`). On bare matrices the same bias appears: 200 applications of a $1376 \times
+1376$ retraction at angle 0.05 change $\|W\|_F^2$ by {{rnd_ns_0.05:+.1e}} with Newton–Schulz and
+{{rnd_cayley_0.05:+.1e}} with Cayley (`scripts/probes/ns_rounding.py`). The iteration
+$Z \leftarrow Z(2I - MZ)$ works with matrices close to the identity, whose entries next to 1 fp32 rounds
+coarsely. Carrying the same iteration in the correction $z = Z - I$, with residual
+$r = MZ - I = A + z + Az$ and update $z \leftarrow z - r - zr$, $R = I + 2z$, keeps nothing next to 1, and the
+bias goes: the same test gives {{rnd_ns_delta_0.05:+.1e}}, and $R$ agrees with the Cayley solve to
+{{rnd_delta_vs_cayley:.0e}}. It costs the
+same four products per side as the usual form.
 
 **Precision.** In practice the guarantee holds only if the solve runs in true fp32. TF32 matrix
 products, the default on recent GPUs, move the spectrum by up to {{tf32_drift:.2%}} over 200 steps at angle $10^{-2}$ in our
@@ -512,21 +535,51 @@ The 56 rotated matrices come in a few shapes. $F^{-1}$ and the Cayley solves are
 per size instead of one call per matrix. The mathematics is unchanged and only round-off differs:
 {{batch_val:.4f}} against {{ref_tf25:.4f}}. The step goes from {{fast_sps:.3f}} s to **{{batch_sps:.3f}} s**.
 
-### 4.7 Tried and not adopted
+### 4.7 Cheaper statistics
 
-* **Newton–Schulz instead of the Cayley solve: not yet adopted, and a candidate.** Two Newton–Schulz
+In the 6 steps before a refresh every rotated matrix forms two grams, $A$ over its inputs and $D$ over
+its output gradients, each over all {{tokens_per_step:,}} tokens of the step and in true fp32, so without tensor
+cores.
+
+**One $A$ per input.** The query, key and value projections read the same normalised input, and so do the
+gate and up projections; their $A$ is one matrix, formed five times. Natural Pion Fast forms it once per
+input tensor. The trajectory is bit-identical (`tests/test_natural_pion.py`).
+
+**bf16 inputs.** Rounding the *assembled* $A$ to bf16 is not usable: on a trained model it pushes the
+smallest eigenvalues through zero (Appendix A). Rounding the *inputs* is different: the gram of bf16
+vectors is still a gram, so $A$ stays positive semidefinite, and the rounding adds a noise covariance of
+relative size about $(2^{-9})^2 \approx 4 \cdot 10^{-6}$, far below the floor $10^{-4} \lambda_{\max}$. We round
+activations and output gradients to bf16 and multiply them with fp32 accumulation and an fp32 result.
+
+*On B200, 3 000 steps, seed 0, both with one $A$ per input:*
+
+| statistics | val | s / step |
+|---|---|---|
+| fp32 inputs | {{stats_fp32_val:.4f}} | {{stats_fp32_sps:.3f}} |
+| bf16 inputs | {{stats_bf16_val:.4f}} ({{stats_bf16_d:+.3f}}) | {{stats_bf16_sps:.3f}} |
+
+bf16 inputs save {{stats_bf16_saving:.3f}} s per step at no measurable cost at 3 000 steps; at 15 000 steps
+(angle 0.05) the run gives {{stats_bf16_15k:.4f}} against {{np15k:.4f}} for fp32.
+
+### 4.8 Tried and not adopted
+
+* **Newton–Schulz instead of the Cayley solve, usual form: not adopted.** In training it inflates the
+  spectrum by {{ret_ns_drift:.2%}} over 3 000 steps through fp32 rounding (Section 3.4) while saving
+  {{ret_ns_saving:.3f}} s per step ({{ret_ns_sps:.3f}} s against {{batch_sps:.3f}} s on RTX; the truncated exponential
+  {{ret_trunc_sps:.3f}} s). The correction form removes the bias at the same cost; its training run is
+  pending. Two Newton–Schulz
   iterations for the inverse cost {{ns_cost:.2f}}x the exact solve on these shapes. Their orthogonality error
   grows with the angle: in fp64, after one step, {{ns_err_02:.0e}} at angle 0.2, {{ns_err_04:.0e}} at 0.4 and
   {{ns_err_08:.0e}} at 0.8. At our angles ($\le 0.2$) that is below fp32 round-off: after one step both sit at
   the floor ({{fp32_onestep_cayley:.0e}} Cayley, {{fp32_onestep_ns:.0e}} Newton–Schulz), and over 3 000 steps on a
   $256 \times 256$ test matrix the spectrum moves by {{ns_drift_toy:.2%}} with Newton–Schulz and
-  {{cayley_drift_toy:.2%}} with Cayley. Since the retraction is {{prof_tfac25_retract:.3f}} s of the step, it is the next
-  speed-up to test in training; it needs a guard that falls back to the exact solve above an angle.
+  {{cayley_drift_toy:.2%}} with Cayley: the test matrix is small and the bias, which grows with size and
+  shrinking angle, hides in it. Above an angle it needs a guard that falls back to the exact solve.
 * **Exact SVD to reshape the step's spectrum** (the polar step in Section 5.4): {{svd_sps_lo:.1f}}–{{svd_sps_hi:.1f}} s per step, and worse in
   loss.
 * **A larger $T_{\mathrm{fac}}$ beyond 25** saves little: the refresh is already {{prof_tfac25_refactor:.3f}} s per step.
 
-### 4.8 Summary
+### 4.9 Summary
 
 *Table 2. From Algorithm 1 to Natural Pion Fast.*
 
@@ -840,7 +893,9 @@ of all matrices takes {{rl_refactor_b200:.0f}} s on one B200.
 
 * **Statistics.** $A$ is fed by a forward pre-hook on each rotated linear layer and $D$ by a hook on its
   output gradient, from one micro-batch per step. Both accumulate in fp32 with autocast disabled: a
-  bf16 product pushes the near-zero eigenvalues of $A$ below zero. The $1/N$ that autograd puts on a
+  bf16 product that returns a bf16 matrix pushes the near-zero eigenvalues of $A$ below zero (measured
+  at step 499: thousands of negative eigenvalues across the 56 layers). Rounding only the inputs and
+  keeping fp32 accumulation and result (Section 4.7) does not, since the result is still a gram. The $1/N$ that autograd puts on a
   mean loss is undone by scaling $D$ by $N^2$; Algorithm 1 is invariant to it anyway.
 * **Power iteration.** $\|X\|_2$ is estimated by power iteration on $X^\top X$, warm-started from the
   previous step's vector: 2 iterations per step and 50 after a refresh, where $X$ jumps. It is
