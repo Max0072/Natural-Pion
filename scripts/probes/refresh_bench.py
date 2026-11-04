@@ -6,6 +6,7 @@ and builds the bases the way `NaturalPion._refactor` does (R0), then with varian
   R2  no `is_identity` checks (D is never the identity here; each check is a host sync)   exact
   R3  R1 + R2 with the MAGMA eigensolver instead of cuSOLVER                             exact
   R4  R1 + R2 without the eigendecomposition of C: C is used unfloored, only lam floored approximate
+  R4b R1 + R2 with C + eps*lmax(C) I (power iteration) instead of floored C            approximate
   R6  R1 + R2 with A^-1/2 by coupled Newton-Schulz on A + eps*lmax*I (no eigh(A))         approximate
 For each: seconds per refresh (GPU-synchronised, median of 5), and the error of the natural-gradient direction
 X = F^-1 M on the checkpoint's own momenta, ||X/||X|| - X0/||X0|| ||_F per side, median and max over matrices.
@@ -63,8 +64,21 @@ def inv_half_ns(B, iters=12):
     return Z / s.sqrt()
 
 
+def lmax_power(C, iters=30):
+    """Largest eigenvalue of PSD C by power iteration (batched)."""
+    v = torch.ones(*C.shape[:-1], 1, dtype=C.dtype, device=C.device)
+    for _ in range(iters):
+        v = C @ v
+        v = v / v.norm(dim=-2, keepdim=True).clamp_min(1e-30)
+    return (v.transpose(-1, -2) @ C @ v).squeeze(-1)          # (..., 1)
+
+
 def congruence(Bih, C, floor_c=True):
-    if floor_c:
+    if floor_c == "shift":
+        # C + eps * lmax(C) I instead of flooring C's eigenvalues: no eigendecomposition of C
+        eye = torch.eye(C.shape[-1], dtype=C.dtype, device=C.device)
+        C = C + EPS * lmax_power(C).unsqueeze(-1) * eye
+    elif floor_c:
         wc, Uc = safe_eigh(C)
         C = (Uc * floor_eigenvalues(wc, EPS).unsqueeze(-2)) @ Uc.transpose(-1, -2)
     M = Bih @ C @ Bih
@@ -134,6 +148,7 @@ def main():
         "R1+R2": dict(share=True, checks=False),
         "R4 R1+R2, C unfloored": dict(share=True, checks=False, floor_c=False),
         "R6 R1+R2, A^-1/2 by Newton-Schulz": dict(share=True, checks=False, inv_half=inv_half_ns),
+        "R4b R1+R2, C shifted by eps*lmax": dict(share=True, checks=False, floor_c="shift"),
     }
     res = {"gpu": torch.cuda.get_device_name(0), "checkpoint": sys.argv[1]}
     with exact_fp32():
