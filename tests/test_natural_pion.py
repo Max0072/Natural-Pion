@@ -70,7 +70,7 @@ def test_fast_is_the_probe_bit_for_bit(t_fac, window):
     a, b = _weights(0), _weights(0)
     probe = StepNorm(a, lr=0.2, beta=0.5, eps=1e-4, alpha_max=1.0, t_fac=t_fac, use_s=True,
                      momentum="lie", beta1=0.9, trust="none", beta_backward=0.5)
-    ours = NaturalPionFast(b, lr=0.2, t_fac=t_fac, stats_window=window, retraction="cayley", batch_sigma=False)
+    ours = NaturalPionFast(b, lr=0.2, t_fac=t_fac, stats_window=window, retraction="cayley", batch_sigma=False, share_root=False)
     ta = _drive(probe, a, 60, 1, _cosine)
     tb = _drive(ours, b, 60, 1, _cosine)
     for t, (wa, wb) in enumerate(zip(ta, tb)):

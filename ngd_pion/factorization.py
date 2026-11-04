@@ -100,6 +100,22 @@ def basis_identity_anchor(C: torch.Tensor, eps: float) -> Basis:
     return Basis(P=Q, lam=floor_eigenvalues(lam, eps), orthogonal=True)
 
 
+def floored_inverse_root(B: torch.Tensor, eps: float) -> torch.Tensor:
+    """`B^{-1/2}` with B's eigenvalues floored at `eps * max`, the first factor of `basis_congruence`."""
+    wb, Ub = safe_eigh(B)
+    wb = floor_eigenvalues(wb, eps)
+    return (Ub * wb.rsqrt().unsqueeze(-2)) @ Ub.transpose(-1, -2)
+
+
+def basis_congruence_from_root(B_inv_half: torch.Tensor, C: torch.Tensor, eps: float) -> Basis:
+    """`basis_congruence` given `B^{-1/2}` already, so one root can serve every matrix that shares `B`."""
+    wc, Uc = safe_eigh(C)
+    C_floored = (Uc * floor_eigenvalues(wc, eps).unsqueeze(-2)) @ Uc.transpose(-1, -2)
+    M = B_inv_half @ C_floored @ B_inv_half
+    lam, Q = safe_eigh(0.5 * (M + M.transpose(-1, -2)))
+    return Basis(P=B_inv_half @ Q, lam=floor_eigenvalues(lam, eps), orthogonal=False)
+
+
 def basis_congruence(B: torch.Tensor, C: torch.Tensor, eps: float) -> Basis:
     """`F(X) = (B X C + C X B)/2` with neither factor the identity.
 

@@ -36,7 +36,8 @@ import torch
 
 from .covariance import CovarianceAccumulator
 from .direction import generators
-from .factorization import basis_congruence, basis_identity_anchor
+from .factorization import (basis_congruence, basis_congruence_from_root, basis_identity_anchor,
+                            floored_inverse_root)
 from .linalg import exact_fp32, is_identity, skew, spectral_norm
 
 __all__ = ["NaturalPion", "NaturalPionFast", "NaturalPionTurbo"]
@@ -222,14 +223,19 @@ class NaturalPion(torch.optim.Optimizer):
             Wt = W.transpose(-1, -2)
             gram_out = W @ A @ Wt
             gram_in = Wt @ D @ W
-            basis_out = basis_identity_anchor(gram_out, eps) if is_identity(D) else basis_congruence(D, gram_out, eps)
-            basis_in = basis_identity_anchor(A, eps) if is_identity(gram_in) else basis_congruence(A, gram_in, eps)
+            # D is never the identity for a trained layer, so no cheap-path check (each was a host sync)
+            basis_out = basis_congruence(D, gram_out, eps)
+            basis_in = self._basis_in(A, gram_in, eps, members)
             for j, (p, i, _, _) in enumerate(members):
                 self._unit_state(self.state[p], i)["bases"] = (
                     type(basis_in)(basis_in.P[j], basis_in.lam[j], basis_in.orthogonal, None, 1.0),
                     type(basis_out)(basis_out.P[j], basis_out.lam[j], basis_out.orthogonal, None, 1.0),
                 )
                 self.state[p]["since_refactor"] = 0
+
+    def _basis_in(self, A: torch.Tensor, gram_in: torch.Tensor, eps: float, members: list):
+        """In-side basis of the pencil (A, W^T D W) for a batch of matrices of one shape."""
+        return basis_congruence(A, gram_in, eps)
 
     # --- optional per-part timing (off by default; one attribute check when off) ---------------------
 
@@ -415,10 +421,25 @@ class NaturalPionFast(NaturalPion):
 
     def __init__(self, params, lr: float = 0.05, *, t_fac: int = 25, stats_window: int | None = 6,
                  beta_a: float = 0.5, beta_d: float = 0.5, share_inputs: bool = True,
-                 retraction: str = "ns_delta", batch_sigma: bool = True, **kwargs) -> None:
+                 retraction: str = "ns_delta", batch_sigma: bool = True, share_root: bool = True, **kwargs) -> None:
         super().__init__(params, lr, t_fac=t_fac, stats_window=stats_window, beta_a=beta_a, beta_d=beta_d,
                          share_inputs=share_inputs, retraction=retraction, **kwargs)
         self.batch_sigma = batch_sigma
+        self.share_root = share_root
+
+    def _basis_in(self, A: torch.Tensor, gram_in: torch.Tensor, eps: float, members: list):
+        """`A^{-1/2}` once per distinct input moment (q, k, v and gate, up share one), then the rest per matrix."""
+        if not self.share_root:
+            return super()._basis_in(A, gram_in, eps, members)
+        slot: dict[int, int] = {}
+        order = []
+        for j, (p, *_) in enumerate(members):
+            key = id(self.state[p]["cov"])
+            if key not in slot:
+                slot[key] = len(order); order.append(j)
+        roots = floored_inverse_root(A[order], eps)
+        root = roots[[slot[id(self.state[p]["cov"])] for p, *_ in members]]
+        return basis_congruence_from_root(root, gram_in, eps)
 
     def _scales(self, rows: list, group: dict) -> list:
         """The power iteration batched by (side size, iterations); `c` stays on the device, so the step makes no
