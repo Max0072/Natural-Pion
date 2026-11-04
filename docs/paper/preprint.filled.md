@@ -40,8 +40,7 @@ normalization, stable training, and performance competitive with AdamW and Muon.
 
 Pion chooses the rotation by steepest descent on the rotation group: it follows the Riemannian
 gradient of the loss with respect to the two generators. Steepest descent depends on the metric, and
-Pion's is the Euclidean one on the generators, which treats every direction of rotation alike. One
-global RMS normalisation then sets the step for each matrix. But the curvature of the loss along
+Pion's is the Euclidean one on the generators, which treats every direction of rotation alike. But the curvature of the loss along
 different rotation directions, and across layers, differs by orders of magnitude. The classical remedy
 is the natural gradient (Amari, 1998): steepest descent in the metric of the model's output
 distribution, the Fisher information. It accounts for these differences and is invariant to how the
@@ -66,14 +65,10 @@ provides.
    3.7032 at 3 000 steps against 3.8248 for Pion's raw generator (Pion itself:
    3.8412). The angle rule is what lets the natural gradient through: without momentum and with a
    fixed step size, $F^{-1}G$ reaches only 3.8419, against 3.7399 with the angle (Section 5.4).
-4. **A retraction that is exact at large angles.** Natural Pion turns every matrix by the full scheduled
-   angle at every step, so the retraction must stay orthogonal at angles of 0.05 to 0.2 rad. The Cayley
-   transform is orthogonal at any angle and keeps the trained spectrum to 0.04% (median matrix,
-   3 000 steps). Pion's truncated exponential is not orthogonal, $T^\top T = I + \Omega^4/4$ (Proposition 4),
-   and moves it by 0.59%. A two-step Newton–Schulz inverse is exact enough in arithmetic but, in
-   its usual form, rounds next to the identity with a positive bias in fp32 and inflates the spectrum by
-   1.26%; carried in the correction $Z - I$ it keeps $\|W\|_F$ on bare matrices better than the Cayley solve,
-   at the cost of matrix products only; its trained spectrum is **[ret_nsd_drift?]** (Section 3.4). On these horizons none of the three drifts changes the loss.
+4. **A retraction that is exact at large angles.** Natural Pion turns every matrix by 0.05–0.2 rad per step.
+   The Cayley transform keeps the trained spectrum to 0.04%; Pion's truncated exponential moves
+   it by 0.59% and a standard Newton–Schulz inverse by 1.26% (fp32 rounding). Newton–Schulz
+   carried in $Z - I$ removes the bias (Section 3.4).
 5. **A fast form.** Amortised refreshes, statistics collected only where they are read, a warm power
    iteration and batching take the step from 1.77 s to 0.596 s (Pion: 0.468 s). Each change is
    measured separately for time and loss (Section 4).
@@ -250,7 +245,7 @@ $D^{-1} V A^{-1}$ does not apply.
   $\Omega_{\mathrm{out}}$ and between layers. K-FAC drops the coupling between layers in the same way.
 * **Numerical check.** We checked Proposition 1 against a Monte Carlo estimate with independent $x$
   and $\delta$: relative error 0.7% (in) and 0.4% (out) at $4 \times 10^5$ samples, which is
-  sampling noise. The pull-back identity holds to 4e-15 (`scripts/analysis/check_fisher.py`).
+  sampling noise. The pull-back identity holds to $4 \cdot 10^{-15}$ (`scripts/analysis/check_fisher.py`).
 
 ### 3.2 Exact inversion
 
@@ -290,7 +285,7 @@ The same construction applies to the output side, with $A$ replaced by $D$ and $
 The natural gradient fixes a direction $X = F^{-1}G$. Its length in the Fisher metric,
 $\sqrt{\langle X, F X\rangle}$, is the classical trust-region measure, and it is a poor one here. In
 our model, $F^{-1}$ scales the gradient very unevenly across layers. With a fixed step size, the
-rotation angle actually taken spans 4.2e+06 across the 56 matrices (90th over 10th
+rotation angle actually taken spans $4.2 \cdot 10^{6}$ across the 56 matrices (90th over 10th
 percentile, Section 5.4): some matrices barely move while others turn by large angles.
 
 The scale is also where K-FAC is least reliable: along our step, its curvature is 0.034 of the
@@ -353,58 +348,34 @@ $(I \pm \Omega)^\top = I \mp \Omega$, so
 $R^\top R = (I + \Omega)(I - \Omega)^{-1}(I + \Omega)^{-1}(I - \Omega) = I$. For $T$, expand with
 $\Omega^\top = -\Omega$: the odd and quadratic terms cancel, leaving $\Omega^4/4$. $\square$
 
-**What the retraction must do.** The requirement is orthogonality to round-off at the angles the method
-takes, not the Cayley transform as such. The Cayley transform is a standard retraction on the orthogonal
-group (Wen & Yin, 2013; Li et al., 2020), orthogonal at any angle, and it makes Proposition 3 exact; Pion
-reports having considered it, with modest gains. A Newton–Schulz inverse with two iterations is orthogonal
-to 5e-09 at angle 0.2 and 1e-06 at 0.4 (fp64, one step), so below fp32 round-off at our angles,
-though not beyond (at 0.8, 3e-04); this is the error of the iteration, and it can only shrink the
-spectrum, since $R = \mathrm{Cay} - 2(I + A)^{-1}A^{8}$ for two iterations. The truncated exponential departs from orthogonality by
-$\varphi^4/4$ for a largest angle $\varphi$, and the departure only inflates the spectrum and compounds over steps.
+**What the retraction must do.** Stay orthogonal to round-off at 0.05–0.2 rad, on every matrix and every
+step. Pion's angles are smaller and uneven: typical block 0.026 rad per step (p90/p10
+2.0), largest 0.097 (`scripts/probes/pion_angles.py`, first 1 058
+steps). Per step, the truncated exponential changes singular values by up to $4 \cdot 10^{-4}$ at 0.2,
+$2 \cdot 10^{-6}$ at 0.05, and about $10^{-7}$ at Pion's typical angle. Two Newton–Schulz
+iterations for $(I + A)^{-1}$ have truncation error $R = \mathrm{Cay} - 2(I+A)^{-1}A^8$: $5 \cdot 10^{-9}$ at 0.2,
+$10^{-6}$ at 0.4, $3 \cdot 10^{-4}$ at 0.8 (fp64), and it can only shrink the spectrum.
 
-The angles at stake differ in kind between the two methods. Pion's angles vary across matrices and steps: its
-typical block turns by 0.026 rad per step (median over blocks; 90th over 10th percentile
-2.0), and its largest block by up to 0.097 rad (first 1 058 steps of a
-3 840-step run, `scripts/probes/pion_angles.py`). Natural Pion turns the largest plane of every matrix by
-exactly $\theta_t$, 0.05 to 0.2 rad at the peak, on every matrix and every step. At 0.2 the truncated
-exponential would change the singular values of every matrix by up to 4e-04 per step, at 0.05 by
-2e-06, against about 1e-07 for Pion's typical block.
+*Retractions in training (Natural Pion Fast, seed 0). Last column: relative change of singular values from
+initialisation after 3 000 steps, median / worst of 56 matrices.*
 
-Measured, over 3 000 two-sided steps on a $256 \times 256$ test matrix at a cosine angle from 0.2, the largest
-relative change of a singular value is 0.09% with Cayley, 0.04% with Newton–Schulz
-(both fp32 round-off) and 4.50% with the truncated exponential. In training (Natural Pion
-Fast, seed 0):
-
-| retraction | val, 3 000 steps ($\theta_0$ 0.2) | val, 15 000 steps ($\theta_0$ 0.05) | spectrum moved after 3 000 steps (median / worst matrix) |
+| retraction | val, 3 000 steps ($\theta_0$ 0.2) | val, 15 000 steps ($\theta_0$ 0.05) | spectrum drift |
 |---|---|---|---|
 | Cayley | 3.7242 | 3.4720 | 0.04% / 0.29% |
-| Newton–Schulz, 2 iterations | 3.7252 | 3.4724 | 1.26% / 1.77% |
-| Newton–Schulz in correction form | **[ret_nsd_3000?]** (B200) | — | **[ret_nsd_drift?]** / **[ret_nsd_drift_max?]** |
 | truncated exponential (Pion's) | 3.7217 | 3.4733 | 0.59% / 1.49% |
+| Newton–Schulz, 2 iterations | 3.7252 | 3.4724 | 1.26% / 1.77% |
+| Newton–Schulz in $Z - I$ | **[ret_nsd_3000?]** (B200) | — | **[ret_nsd_drift?]** / **[ret_nsd_drift_max?]** |
 
-The loss does not separate the retractions at these horizons: all lie within the 0.003 that separates
-the same run on two GPU types. The spectrum does. Only Cayley keeps it, and the truncated exponential moves it
-as Proposition 4 predicts. Newton–Schulz moves it more, which its truncation error cannot do (the error
-shrinks the spectrum, see above). The cause is rounding. Over the first 200 training steps $\|W\|_F^2$,
-which a rotation keeps exactly, grows by a median 9.5e-06 per step with Newton–Schulz against
-2.6e-07 with Cayley and 8.7e-07 with the truncated exponential, and falls on
-0 of 200 steps; the matrix products run in true fp32 throughout and the power iteration is
-accurate (median $\hat\sigma / \|X\|_2 = 0.9999$), so neither precision nor the angle explains
-it (`scripts/probes/ns_diag.py`). On bare matrices the same bias appears: 200 applications of a $1376 \times
-1376$ retraction at angle 0.05 change $\|W\|_F^2$ by +2.8e-04 with Newton–Schulz and
-+3.4e-05 with Cayley (`scripts/probes/ns_rounding.py`). The iteration
-$Z \leftarrow Z(2I - MZ)$ works with matrices close to the identity, whose entries next to 1 fp32 rounds
-coarsely. Carrying the same iteration in the correction $z = Z - I$, with residual
-$r = MZ - I = A + z + Az$ and update $z \leftarrow z - r - zr$, $R = I + 2z$, keeps nothing next to 1, and the
-bias goes: the same test gives +1.6e-07, and $R$ agrees with the Cayley solve to
-9e-07. It costs the
-same four products per side as the usual form.
+The loss does not separate them (same run on RTX and B200: 0.003); the spectrum does.
+Newton–Schulz inflates it, which its truncation error cannot do: $\|W\|_F^2$ grows by a median
+$9.5 \cdot 10^{-6}$ per step (Cayley $2.6 \cdot 10^{-7}$) and never falls, in true fp32
+(`scripts/probes/ns_diag.py`). The iteration $Z \leftarrow Z(2I - MZ)$ rounds entries next to 1. Carried in
+$z = Z - I$ ($r = A + z + Az$, $z \leftarrow z - r - zr$, $R = I + 2z$), at the same cost, the bias goes: 200 steps
+of a $1376 \times 1376$ retraction at 0.05 change $\|W\|_F^2$ by $+2.8 \cdot 10^{-4}$ (standard),
+$+1.6 \cdot 10^{-7}$ ($Z - I$), $+3.4 \cdot 10^{-5}$ (Cayley) (`scripts/probes/ns_rounding.py`).
 
-**Precision.** In practice the guarantee holds only if the solve runs in true fp32. TF32 matrix
-products, the default on recent GPUs, move the spectrum by up to 0.37% over 200 steps at angle $10^{-2}$ in our
-measurements, against 0.012% in true fp32. In fp32 the singular values of a trained Natural Pion model move from their initial values by at most
-0.04% per matrix (median over the 56 matrices; worst matrix 0.29%, mean signed change
-+0.03%) after 3 000 steps.
+**Precision.** The solve must run in true fp32: TF32 moves the spectrum by 0.37% in 200 steps at angle
+$10^{-2}$, fp32 by 0.012%.
 
 ### 3.5 The algorithm
 
@@ -519,7 +490,7 @@ cuSOLVER falls back to a slow path on $1376 \times 1376$ matrices. Power iterati
 matrix-vector products only, 189x less. Cold power iteration converges badly on skew matrices,
 whose singular values come in equal pairs: on a random $512 \times 512$ skew matrix its relative error
 is 21.0% after one iteration, 6.1% after five and 0.5% after twenty. Warm-started from the previous step's
-vector, one iteration reaches 2e-05. We run 50 iterations after a refresh and 2 otherwise.
+vector, one iteration reaches $2 \cdot 10^{-5}$. We run 50 iterations after a refresh and 2 otherwise.
 
 ### 4.5 Computing only what the step uses
 
@@ -563,18 +534,8 @@ bf16 inputs save 0.035 s per step at no measurable cost at 3 000 steps; at 15 00
 
 ### 4.8 Tried and not adopted
 
-* **Newton–Schulz instead of the Cayley solve, usual form: not adopted.** In training it inflates the
-  spectrum by 1.26% over 3 000 steps through fp32 rounding (Section 3.4) while saving
-  0.038 s per step (0.558 s against 0.596 s on RTX; the truncated exponential
-  0.550 s). The correction form removes the bias at the same cost; its training run is
-  pending. Two Newton–Schulz
-  iterations for the inverse cost 0.27x the exact solve on these shapes. Their orthogonality error
-  grows with the angle: in fp64, after one step, 5e-09 at angle 0.2, 1e-06 at 0.4 and
-  3e-04 at 0.8. At our angles ($\le 0.2$) that is below fp32 round-off: after one step both sit at
-  the floor (2e-06 Cayley, 1e-06 Newton–Schulz), and over 3 000 steps on a
-  $256 \times 256$ test matrix the spectrum moves by 0.04% with Newton–Schulz and
-  0.09% with Cayley: the test matrix is small and the bias, which grows with size and
-  shrinking angle, hides in it. Above an angle it needs a guard that falls back to the exact solve.
+* **Newton–Schulz, standard form:** 0.558 s per step against 0.596 s (RTX; truncated
+  exponential 0.550 s), but it inflates the spectrum (Section 3.4). The $Z - I$ form: pending.
 * **Exact SVD to reshape the step's spectrum** (the polar step in Section 5.4): 6.8–7.8 s per step, and worse in
   loss.
 * **A larger $T_{\mathrm{fac}}$ beyond 25** saves little: the refresh is already 0.025 s per step.
@@ -620,7 +581,7 @@ full-length runs, which evaluate every 2 000 steps, give 0.598 s and 0.465 s, a 
 | the rest | AdamW, lr 8e-3, betas (0.9, 0.95), weight decay 0.1, cosine; the same for every method |
 | precision | bf16 model; statistics, eigendecompositions and retractions in exact fp32 |
 | metric | validation loss: token cross-entropy on held-out C4, in nats |
-| hardware | one NVIDIA RTX PRO 6000 Blackwell per run; wall-clock time measured on the same node type for all |
+| hardware | one NVIDIA RTX PRO 6000 Blackwell per run; B200 where marked |
 
 **Baseline.** Pion in its published configuration: Lie momentum 0.9, RMS scale 0.2, truncated
 exponential, query matrix split per head, bilateral update, lr $10^{-3}$ with a cosine schedule. The
@@ -740,10 +701,10 @@ percentile, after step 1000).
 |---|---|---|
 | **spectral, after $F^{-1}$: $c = \theta/\sigma(F^{-1}G)$** | **3.7399** | 1 |
 | RMS of the induced update, as in Pion | 3.7540 | 1.7 |
-| quadratic-model ratio $\min(1, \langle G, X\rangle / \langle X, FX\rangle)$ | 3.7843 | 1.4e+02 |
-| Fisher norm, $c = \theta / \sqrt{\langle X, FX\rangle}$ | $\le$ 3.8281 | 4.6e+04 |
-| fixed $c$ | 3.8419 | 4.2e+06 |
-| spectral, before $F^{-1}$: $c = \theta/\sigma(G)$ | 3.9952 | 3.4e+11 |
+| quadratic-model ratio $\min(1, \langle G, X\rangle / \langle X, FX\rangle)$ | 3.7843 | $1.4 \cdot 10^{2}$ |
+| Fisher norm, $c = \theta / \sqrt{\langle X, FX\rangle}$ | $\le$ 3.8281 | $4.6 \cdot 10^{4}$ |
+| fixed $c$ | 3.8419 | $4.2 \cdot 10^{6}$ |
+| spectral, before $F^{-1}$: $c = \theta/\sigma(G)$ | 3.9952 | $3.4 \cdot 10^{11}$ |
 
 Across six rules, the more evenly the matrices turn, the lower the loss. The spectral rule beats the
 RMS rule on all four seeds (gaps 0.014, 0.009, 0.011, 0.006). The Fisher-norm row is the best of its
@@ -840,8 +801,7 @@ preservation of the spectrum.
   at shorter horizons agree in sign and size.
 * **One code base.** Our Pion is 0.013 above the Pion paper's own number, so we compare within our
   harness only.
-* **Exactness in practice.** The spectrum is frozen in exact arithmetic. In fp32 it drifts by up to 0.04% per matrix (median)
-  over 3 000 steps, with a consistent sign. We have not measured whether this matters.
+* **Exactness in practice.** In fp32 the spectrum drifts by 0.04% (median matrix) over 3 000 steps.
 * **Only Pion as a baseline.** We compare against the published Pion configuration only, not against
   AdamW or Muon, and only on validation loss, not on downstream tasks.
 * **The peak angle depends on the horizon.** The best peak falls with the training length (0.2 at 3 000

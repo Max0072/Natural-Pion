@@ -28,6 +28,10 @@ def fill(m):
     if isinstance(v, bool):
         return "yes" if v else "no"
     out = format(v, fmt) if fmt else (f"{v:.4g}" if isinstance(v, float) else str(v))
+    m = re.fullmatch(r"([+-]?[0-9.]+)e([+-])0*([0-9]+)", out)
+    if m and "%" not in out:                                  # 4.2e+06 -> $4.2 \cdot 10^{6}$
+        exp = ("-" if m.group(2) == "-" else "") + m.group(3)
+        out = f"${m.group(1)} \\cdot 10^{{{exp}}}$" if m.group(1).lstrip("+-") not in ("1", "1.0") else f"$10^{{{exp}}}$"
     return out.replace(",", " ")
 
 
