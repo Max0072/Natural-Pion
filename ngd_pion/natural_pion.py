@@ -68,6 +68,11 @@ class NaturalPion(torch.optim.Optimizer):
         row_blocks: `{id(weight): k}` splits that weight's rows into `k` equal blocks, each rotated as a
             separate matrix with its own Fisher (input moment `A` shared, output moment the block's
             diagonal block of `D`). Pion rotates the query projection per attention head this way.
+        share_inputs: weights fed the very same input tensor (q, k, v; gate, up) share one accumulator
+            for `A` instead of computing the identical gram once each. Bit-identical to not sharing.
+        stats_dtype: "fp32" forms the grams of `A` and `D` from fp32 inputs; "bf16" rounds the inputs
+            (activations, output gradients) to bf16 and still accumulates and returns the gram in fp32, so
+            it stays a PSD gram (see `CovarianceAccumulator.observe`).
     """
 
     def __init__(
@@ -88,6 +93,8 @@ class NaturalPion(torch.optim.Optimizer):
         retraction: str = "cayley",
         ns_iters: int = 2,
         ns_guard: float = 0.5,
+        share_inputs: bool = False,
+        stats_dtype: str = "fp32",
     ) -> None:
         if lr <= 0.0:
             raise ValueError(f"lr must be positive, got {lr}")
@@ -100,6 +107,8 @@ class NaturalPion(torch.optim.Optimizer):
             raise ValueError(f"t_fac must be at least 1, got {t_fac}")
         if retraction not in ("cayley", "ns", "trunc"):
             raise ValueError(f"retraction must be cayley, ns or trunc, got {retraction!r}")
+        if stats_dtype not in ("fp32", "bf16"):
+            raise ValueError(f"stats_dtype must be fp32 or bf16, got {stats_dtype!r}")
         if stats_window is not None and not 1 <= stats_window <= t_fac:
             raise ValueError(f"stats_window must lie in [1, t_fac], got {stats_window}")
         params = list(params)
@@ -111,6 +120,9 @@ class NaturalPion(torch.optim.Optimizer):
             k = self.row_blocks.get(id(p), 1)
             if k < 1 or p.shape[0] % k:
                 raise ValueError(f"row_blocks {k} does not divide {p.shape[0]} rows")
+        self.share_inputs = share_inputs
+        self._input_dtype = torch.bfloat16 if stats_dtype == "bf16" else None
+        self._last_input = None                    # (input tensor, its accumulator) for share_inputs
         super().__init__(params, dict(
             lr=lr, beta1=beta1, beta_a=beta_a, beta_d=beta_d, t_fac=t_fac, stats_window=stats_window,
             eps=eps, angle_iters=angle_iters, angle_warmup=angle_warmup, compute_dtype=torch.float32,
@@ -137,15 +149,26 @@ class NaturalPion(torch.optim.Optimizer):
     def _stat(self, param: torch.Tensor, key: str, beta: float) -> CovarianceAccumulator:
         state = self.state[param]
         if key not in state:
-            state[key] = CovarianceAccumulator(beta=beta, dtype=torch.float32)
+            state[key] = CovarianceAccumulator(beta=beta, dtype=torch.float32, input_dtype=self._input_dtype)
             state.setdefault("step", 0)
             state.setdefault("since_refactor", 0)
         return state[key]
 
     def observe(self, param: torch.Tensor, x: torch.Tensor) -> None:
         """Activations entering the layer that owns `param` (forward pre-hook)."""
-        if self._collecting(param):
-            self._stat(param, "cov", self._group_of(param)["beta_a"]).observe(x)
+        if not self._collecting(param):
+            return
+        beta = self._group_of(param)["beta_a"]
+        last = self._last_input
+        if self.share_inputs and last is not None and last[0] is x and last[1].beta == beta:
+            self.state[param]["cov"] = last[1]     # same tensor, already folded in: same gram, computed once
+            self.state[param].setdefault("step", 0)
+            self.state[param].setdefault("since_refactor", 0)
+            return
+        acc = self._stat(param, "cov", beta)
+        acc.observe(x)
+        if self.share_inputs:
+            self._last_input = (x, acc)
 
     def observe_backward(self, param: torch.Tensor, delta: torch.Tensor) -> None:
         """Gradient at the layer's output (backward hook). Scaled by the token count squared: the loss is a
@@ -223,6 +246,7 @@ class NaturalPion(torch.optim.Optimizer):
                     self._refactor(stale, group)
                 self._rotate(active, group)
                 due = [p for p in active if self.state[p]["since_refactor"] >= group["t_fac"]]
+                self._last_input = None
                 if due:
                     self._refactor(due, group)
         return loss
@@ -338,8 +362,9 @@ class NaturalPion(torch.optim.Optimizer):
 
 class NaturalPionFast(NaturalPion):
     """Natural Pion, efficient form: basis every 25 steps, statistics in the 6 steps before each rebuild,
-    EMA 0.5 on both factors. Everything else as `NaturalPion`."""
+    EMA 0.5 on both factors, one `A` per distinct input tensor. Everything else as `NaturalPion`."""
 
     def __init__(self, params, lr: float = 0.05, *, t_fac: int = 25, stats_window: int | None = 6,
-                 beta_a: float = 0.5, beta_d: float = 0.5, **kwargs) -> None:
-        super().__init__(params, lr, t_fac=t_fac, stats_window=stats_window, beta_a=beta_a, beta_d=beta_d, **kwargs)
+                 beta_a: float = 0.5, beta_d: float = 0.5, share_inputs: bool = True, **kwargs) -> None:
+        super().__init__(params, lr, t_fac=t_fac, stats_window=stats_window, beta_a=beta_a, beta_d=beta_d,
+                         share_inputs=share_inputs, **kwargs)

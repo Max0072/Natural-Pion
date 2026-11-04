@@ -149,3 +149,57 @@ def test_truncated_exponential_is_close_to_cayley_and_inflates_the_spectrum():
         assert (x - y).abs().max() < 5e-2 * (x - z).abs().max()       # third-order differences, 30 steps at 0.2
         s0 = torch.linalg.svdvals(z.detach().double())
         assert (torch.linalg.svdvals(y.double()) >= s0 * (1 - 1e-6)).all()  # T^T T = I + A^4/4 >= I: never shrinks
+
+
+def _drive_shared(opt, params, steps, seed, share):
+    """q, k, v-like: params 1 and 2 (both 8 x 8) read the same input tensor, as a fused pre-norm does."""
+    g = torch.Generator().manual_seed(seed)
+    for t in range(steps):
+        for group in opt.param_groups:
+            group["lr"] = _cosine(t)
+        xs = {}
+        for i, p in enumerate(params):
+            m, n = p.shape
+            if i == 2:
+                x = xs[1] if share else xs[1].clone()
+                torch.randn(64, n, generator=g)            # keep the generator in step with the other branch
+            else:
+                x = torch.randn(64, n, generator=g)
+            xs[i] = x
+            opt.observe(p, x)
+            opt.observe_backward(p, torch.randn(64, m, generator=g) / 64.0)
+            p.grad = torch.randn(m, n, generator=g)
+        opt.step()
+    return [p.detach().clone() for p in params]
+
+
+def test_shared_input_moment_is_bit_identical():
+    a, b = _weights(15), _weights(15)
+    oa = NaturalPionFast(a, lr=0.2, t_fac=5, stats_window=2, share_inputs=False)
+    ob = NaturalPionFast(b, lr=0.2, t_fac=5, stats_window=2)           # shares by default
+    wa, wb = _drive_shared(oa, a, 30, 16, share=False), _drive_shared(ob, b, 30, 16, share=True)
+    for x, y in zip(wa, wb):
+        assert torch.equal(x, y)
+    assert ob.state[b[1]]["cov"] is ob.state[b[2]]["cov"]
+    assert oa.state[a[1]]["cov"] is not oa.state[a[2]]["cov"]
+
+
+def test_bf16_statistics_are_the_gram_of_rounded_inputs():
+    from ngd_pion.covariance import CovarianceAccumulator
+    x = torch.randn(512, 16, generator=torch.Generator().manual_seed(17)) * 3
+    acc = CovarianceAccumulator(beta=0.5, input_dtype=torch.bfloat16)
+    acc.observe(x)
+    q = x.to(torch.bfloat16).float()
+    assert acc.matrix.dtype == torch.float32
+    assert torch.allclose(acc.matrix, q.T @ q / 512, rtol=1e-6, atol=1e-6)
+    assert torch.linalg.eigvalsh(acc.matrix.double()).min() > 0
+
+
+def test_bf16_statistics_keep_the_spectrum_and_track_fp32():
+    a, b = _weights(19), _weights(19)
+    s0 = [torch.linalg.svdvals(p.detach().double()) for p in a]
+    wa = _drive(NaturalPionFast(a, lr=0.2, t_fac=5, stats_window=2), a, 30, 20, _cosine)[-1]
+    wb = _drive(NaturalPionFast(b, lr=0.2, t_fac=5, stats_window=2, stats_dtype="bf16"), b, 30, 20, _cosine)[-1]
+    for x, y, z, s in zip(wa, wb, _weights(19), s0):
+        assert (x - y).abs().max() < 0.1 * (x - z).abs().max()
+        assert torch.allclose(torch.linalg.svdvals(y.double()), s, rtol=1e-4)

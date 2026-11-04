@@ -137,7 +137,7 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
         rot = NATURAL_PION[cfg.optimizer](weights, lr=cfg.lr, beta1=cfg.ngd_beta1, row_blocks=blocks,
                                           eps=cfg.ngd_eps, damping=cfg.np_damping,
                                           retraction=cfg.np_retraction, ns_iters=cfg.ngd_ns_iters,
-                                          ns_guard=cfg.ngd_ns_guard)
+                                          ns_guard=cfg.ngd_ns_guard, stats_dtype=cfg.np_stats_dtype)
         recorder = attach(linears, rot)
     elif cfg.optimizer in NGD_IMPLEMENTATIONS:
         kw = {}

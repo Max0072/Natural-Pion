@@ -31,7 +31,8 @@ class CovarianceAccumulator:
     a valid covariance from the very first refactor.
     """
 
-    def __init__(self, beta: float = 0.95, dtype: torch.dtype = torch.float32) -> None:
+    def __init__(self, beta: float = 0.95, dtype: torch.dtype = torch.float32,
+                 input_dtype: torch.dtype | None = None) -> None:
         if not 0.0 <= beta < 1.0:
             raise ValueError(f"beta must lie in [0, 1), got {beta}")
         if dtype not in _ALLOWED:
@@ -39,8 +40,14 @@ class CovarianceAccumulator:
                 f"covariance must be accumulated in fp32 or fp64, got {dtype}; "
                 "lower precision corrupts the small eigenvalues the method divides by"
             )
+        if input_dtype not in (None, torch.bfloat16):
+            raise ValueError(f"input_dtype must be None or bfloat16, got {input_dtype}")
         self.beta = beta
         self.dtype = dtype
+        # `input_dtype=bfloat16` rounds the *inputs* to bf16 and multiplies them with fp32 accumulation and
+        # an fp32 result: the gram of bf16 vectors, still PSD (the safe case described in `observe`), at
+        # tensor-core speed. The assembled matrix is never rounded.
+        self.input_dtype = input_dtype
         self._matrix: torch.Tensor | None = None
         self.count = 0
 
@@ -65,7 +72,8 @@ class CovarianceAccumulator:
         this model that is 721 MB per wide layer per step, on a card close
         enough to full that the allocator was already failing to map 20 MB.
         """
-        flat = x.detach().reshape(-1, x.shape[-1]).to(self.dtype)
+        input_dtype = getattr(self, "input_dtype", None)   # checkpoints from before the option lack it
+        flat = x.detach().reshape(-1, x.shape[-1]).to(input_dtype or self.dtype)
         if flat.shape[0] == 0:
             return
         # Two separate ways this matmul stops being fp32, and both have to be
@@ -101,7 +109,16 @@ class CovarianceAccumulator:
         # matmul is executed, not whether one happens at all. What was never
         # checked is the only thing that mattered: the dtype that came back.
         with torch.autocast(flat.device.type, enabled=False), exact_fp32():
-            gram = (flat.transpose(0, 1) @ flat) * (scale / flat.shape[0])
+            if input_dtype is None:
+                gram = (flat.transpose(0, 1) @ flat) * (scale / flat.shape[0])
+            else:
+                q = flat
+                if q.is_cuda:
+                    gram = torch.mm(q.transpose(0, 1), q, out_dtype=self.dtype)
+                else:                                       # same gram, exact products of bf16 values
+                    q = q.to(self.dtype)
+                    gram = q.transpose(0, 1) @ q
+                gram = gram * (scale / flat.shape[0])
         if gram.dtype != self.dtype:
             raise RuntimeError(
                 f"covariance gram came back {gram.dtype}, expected {self.dtype}; "

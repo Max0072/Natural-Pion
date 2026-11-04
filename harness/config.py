@@ -431,6 +431,9 @@ class RunConfig:
     np_damping: float = 0.0
     # Natural Pion: "ns" replaces the Cayley solve by Newton-Schulz (ngd_ns_iters, ngd_ns_guard). Out of the hash at cayley.
     np_retraction: str = "cayley"
+    # Natural Pion: "bf16" forms the grams of A and D from bf16-rounded inputs with fp32 accumulation and result
+    # (tensor cores); "fp32" from fp32 inputs. Out of the hash at fp32.
+    np_stats_dtype: str = "fp32"
 
     # plumbing, deliberately excluded from the hash
     data_path: str = "data/c4_train.bin"
@@ -487,6 +490,8 @@ class RunConfig:
             d.pop("np_damping", None)
         if d.get("np_retraction") == "cayley":
             d.pop("np_retraction", None)
+        if d.get("np_stats_dtype") == "fp32":
+            d.pop("np_stats_dtype", None)
         return d
 
     @property
