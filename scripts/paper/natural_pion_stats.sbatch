@@ -20,7 +20,7 @@
 REPO="${REPO:-$DATA_p330/Natural-Pion}"; SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"; DATA="${DATA:-$DATA_p330/c4}"
 T=$SLURM_ARRAY_TASK_ID
 STEPS=(3000 15000); LR=(0.2 0.05); EV=(500 1000)
-STATS="${STATS:-fp32}"; OUT="$DATA_p330/runs/npstats_${STATS}/s${STEPS[$T]}"; mkdir -p "$OUT"
+STATS="${STATS:-fp32}"; OUT="$DATA_p330/runs/${OUTROOT:-npstats_${STATS}}/s${STEPS[$T]}"; mkdir -p "$OUT"
 apptainer exec --env PYTHONUNBUFFERED=1 --env PYTHONPATH="$REPO" --env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
     --nv --bind "$DATA_p330:$DATA_p330" --pwd "$REPO" "$SIF" \
     python -m harness.run --optimizer natural-pion-fast --np-stats-dtype "$STATS" --lr "${LR[$T]}" --ngd-beta1 0.9 \
