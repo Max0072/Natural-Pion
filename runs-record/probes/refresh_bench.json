@@ -2,44 +2,50 @@
  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
  "checkpoint": "/onyx/data/p330/runs/npfast2/s3000/natural-pion-fast-lr0.2-s0-7a078ebda7/checkpoint.pt",
  "R0 current": {
-  "s_per_refresh": 0.5528243789449334,
-  "s_per_step_tfac25": 0.022112975157797338,
+  "s_per_refresh": 0.55368718795944,
+  "s_per_step_tfac25": 0.0221474875183776,
   "dir_err_median": 0.0,
   "dir_err_max": 0.0
  },
  "R1 share eigh(A)": {
-  "s_per_refresh": 0.5504525179276243,
-  "s_per_step_tfac25": 0.02201810071710497,
+  "s_per_refresh": 0.5503785919863731,
+  "s_per_step_tfac25": 0.022015143679454924,
   "dir_err_median": 0.0,
   "dir_err_max": 0.00035900092916563153
  },
  "R2 no is_identity": {
-  "s_per_refresh": 0.5515673520276323,
-  "s_per_step_tfac25": 0.022062694081105293,
+  "s_per_refresh": 0.551383891957812,
+  "s_per_step_tfac25": 0.02205535567831248,
   "dir_err_median": 0.0,
   "dir_err_max": 0.0
  },
  "R1+R2": {
-  "s_per_refresh": 0.549861034960486,
-  "s_per_step_tfac25": 0.02199444139841944,
+  "s_per_refresh": 0.5493791810004041,
+  "s_per_step_tfac25": 0.021975167240016164,
   "dir_err_median": 0.0,
   "dir_err_max": 0.00035900092916563153
  },
  "R4 R1+R2, C unfloored": {
-  "s_per_refresh": 0.36891341290902346,
-  "s_per_step_tfac25": 0.014756536516360939,
+  "s_per_refresh": 0.36897356598638,
+  "s_per_step_tfac25": 0.0147589426394552,
   "dir_err_median": 0.1163172647356987,
   "dir_err_max": 0.7055104374885559
  },
  "R6 R1+R2, A^-1/2 by Newton-Schulz": {
-  "s_per_refresh": 0.46267114800866693,
-  "s_per_step_tfac25": 0.01850684592034668,
+  "s_per_refresh": 0.4634135600645095,
+  "s_per_step_tfac25": 0.018536542402580382,
   "dir_err_median": 0.03292249143123627,
   "dir_err_max": 0.30325958132743835
  },
+ "R4b R1+R2, C shifted by eps*lmax": {
+  "s_per_refresh": 0.38026358000934124,
+  "s_per_step_tfac25": 0.01521054320037365,
+  "dir_err_median": 0.0912739560008049,
+  "dir_err_max": 0.15440945327281952
+ },
  "R3 R1+R2 on MAGMA": {
-  "s_per_refresh": 0.550151047995314,
-  "s_per_step_tfac25": 0.02200604191981256,
+  "s_per_refresh": 0.5502603049390018,
+  "s_per_step_tfac25": 0.022010412197560073,
   "dir_err_median": 0.0,
   "dir_err_max": 0.00035900092916563153
  }
