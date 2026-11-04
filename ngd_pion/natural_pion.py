@@ -268,6 +268,15 @@ class NaturalPion(torch.optim.Optimizer):
         s_out, state["angle_v_out"] = spectral_norm(X_out, iters, state.get("angle_v_out"))
         return float(torch.maximum(s_in, s_out))
 
+    def _scales(self, rows: list, group: dict) -> list:
+        """`c = theta / sigma` per rotated unit, one power iteration per matrix (the reference path)."""
+        cs = []
+        for p, W, X_in, X_out, b, _, _ in rows:
+            state = self._unit_state(self.state[p], b)
+            state["since_refactor"] = self.state[p]["since_refactor"]
+            cs.append(group["lr"] / max(self._sigma(state, group, X_in, X_out), 1e-30))
+        return cs
+
     def _rotate(self, active: list[torch.Tensor], group: dict) -> None:
         dt, beta1 = group["compute_dtype"], group["beta1"]
         rows = []                                  # [p, W, X_in, X_out, block index, block rows, whole]
@@ -301,18 +310,19 @@ class NaturalPion(torch.optim.Optimizer):
                 rows[i][slot] = X[k]
 
         # c = theta / sigma, shared by both sides of a matrix
+        cs = self._scales(rows, group)
         solves: dict[int, list] = {}
         for i, (p, W, X_in, X_out, b, _, _) in enumerate(rows):
-            state = self._unit_state(self.state[p], b)
-            state["since_refactor"] = self.state[p]["since_refactor"]
-            c = group["lr"] / max(self._sigma(state, group, X_in, X_out), 1e-30)
-            solves.setdefault(X_in.shape[0], []).append((i, 2, c, X_in))
-            solves.setdefault(X_out.shape[0], []).append((i, 3, c, X_out))
+            solves.setdefault(X_in.shape[0], []).append((i, 2, cs[i], X_in))
+            solves.setdefault(X_out.shape[0], []).append((i, 3, cs[i], X_out))
 
         # Cayley: R = (I + c/2 X)^-1 (I - c/2 X), exactly orthogonal for skew X
         for n, items in solves.items():
             X = torch.stack([x for *_, x in items])
-            half = torch.as_tensor([0.5 * c for _, _, c, _ in items], dtype=X.dtype, device=X.device).reshape(-1, 1, 1)
+            if isinstance(items[0][2], torch.Tensor):
+                half = (0.5 * torch.stack([c for _, _, c, _ in items])).to(X.dtype).reshape(-1, 1, 1)
+            else:
+                half = torch.as_tensor([0.5 * c for _, _, c, _ in items], dtype=X.dtype, device=X.device).reshape(-1, 1, 1)
             eye = torch.eye(n, dtype=X.dtype, device=X.device).expand_as(X)
             if group["retraction"] == "trunc":
                 A = -(half + half) * X                       # -c X: Cay(cX) and exp(-cX) agree to second order
@@ -382,9 +392,38 @@ class NaturalPionFast(NaturalPion):
 
     def __init__(self, params, lr: float = 0.05, *, t_fac: int = 25, stats_window: int | None = 6,
                  beta_a: float = 0.5, beta_d: float = 0.5, share_inputs: bool = True,
-                 retraction: str = "ns_delta", **kwargs) -> None:
+                 retraction: str = "ns_delta", batch_sigma: bool = True, **kwargs) -> None:
         super().__init__(params, lr, t_fac=t_fac, stats_window=stats_window, beta_a=beta_a, beta_d=beta_d,
                          share_inputs=share_inputs, retraction=retraction, **kwargs)
+        self.batch_sigma = batch_sigma
+
+    def _scales(self, rows: list, group: dict) -> list:
+        """The power iteration batched by (side size, iterations); `c` stays on the device, so the step makes no
+        host synchronisation for it. Same estimate as the reference path up to the round-off of batched products."""
+        if not self.batch_sigma:
+            return super()._scales(rows, group)
+        n = len(rows)
+        sig = torch.zeros(2, n, dtype=rows[0][2].dtype, device=rows[0][2].device)
+        groups: dict[tuple, list] = defaultdict(list)
+        states = []
+        for k, (p, W, X_in, X_out, b, _, _) in enumerate(rows):
+            st = self._unit_state(self.state[p], b)
+            st["since_refactor"] = self.state[p]["since_refactor"]
+            states.append(st)
+            fresh = "angle_v_in" not in st or st["since_refactor"] == 0
+            it = group["angle_warmup"] if fresh else group["angle_iters"]
+            groups[(X_in.shape[0], it)].append((0, k, X_in, "angle_v_in"))
+            groups[(X_out.shape[0], it)].append((1, k, X_out, "angle_v_out"))
+        for (_, it), items in groups.items():
+            X = torch.stack([x for _, _, x, _ in items])
+            vs = [states[k].get(key) for _, k, _, key in items]
+            v = None if any(x is None for x in vs) else torch.stack(vs)
+            s_, v = spectral_norm(X, it, v)
+            for j, (side, k, _, key) in enumerate(items):
+                states[k][key] = v[j]
+                sig[side, k] = s_[j]
+        c = group["lr"] / sig.amax(dim=0).clamp_min(1e-30)
+        return list(c.unbind(0))
 
 
 class NaturalPionTurbo(NaturalPionFast):

@@ -70,7 +70,7 @@ def test_fast_is_the_probe_bit_for_bit(t_fac, window):
     a, b = _weights(0), _weights(0)
     probe = StepNorm(a, lr=0.2, beta=0.5, eps=1e-4, alpha_max=1.0, t_fac=t_fac, use_s=True,
                      momentum="lie", beta1=0.9, trust="none", beta_backward=0.5)
-    ours = NaturalPionFast(b, lr=0.2, t_fac=t_fac, stats_window=window, retraction="cayley")
+    ours = NaturalPionFast(b, lr=0.2, t_fac=t_fac, stats_window=window, retraction="cayley", batch_sigma=False)
     ta = _drive(probe, a, 60, 1, _cosine)
     tb = _drive(ours, b, 60, 1, _cosine)
     for t, (wa, wb) in enumerate(zip(ta, tb)):
@@ -228,3 +228,11 @@ def test_turbo_is_fast_batched(retraction):
     for j, (p, s0) in enumerate(zip(b, [torch.linalg.svdvals(p.detach().double()) for p in _weights(23)])):
         if j != 1:                                      # b[1] is split into row blocks: each block keeps its own
             assert torch.allclose(torch.linalg.svdvals(p.detach().double()), s0, rtol=1e-4)
+
+
+def test_batched_sigma_matches_the_loop():
+    a, b = _weights(25), _weights(25)
+    oa = NaturalPionFast(a, lr=0.2, t_fac=5, stats_window=2, batch_sigma=False, row_blocks={id(a[1]): 4})
+    ob = NaturalPionFast(b, lr=0.2, t_fac=5, stats_window=2, row_blocks={id(b[1]): 4})
+    for x, y in zip(_drive(oa, a, 30, 26, _cosine)[-1], _drive(ob, b, 30, 26, _cosine)[-1]):
+        assert torch.allclose(x, y, rtol=1e-4, atol=1e-5), (x - y).abs().max()   # batched reductions: round-off only
