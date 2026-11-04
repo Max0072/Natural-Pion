@@ -166,6 +166,8 @@ def main():
         "R4 R1+R2, C unfloored": dict(share=True, checks=False, floor_c=False),
         "R6 R1+R2, A^-1/2 by Newton-Schulz": dict(share=True, checks=False, inv_half=inv_half_ns),
         "R4b R1+R2, C shifted by eps*lmax": dict(share=True, checks=False, floor_c="shift"),
+        "R4b+R6 C shifted and NS root (one eigh per side)": dict(share=True, checks=False, floor_c="shift",
+                                                                  inv_half=inv_half_ns),
         "R6 NS root, 20 iterations": dict(share=True, checks=False, inv_half=lambda B: inv_half_ns(B, 20)),
         "R6 NS root, 30 iterations": dict(share=True, checks=False, inv_half=lambda B: inv_half_ns(B, 30)),
         "R6r NS root in residual form, 12": dict(share=True, checks=False, inv_half=lambda B: inv_half_ns_residual(B, 12)),
