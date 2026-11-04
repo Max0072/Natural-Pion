@@ -429,7 +429,10 @@ class RunConfig:
     np_split_q_per_head: bool = False
     # Natural Pion: damping of the Fisher relative to its largest eigenvalue (0 = floor only). Out of the hash at 0.
     np_damping: float = 0.0
-    # Natural Pion: "ns" replaces the Cayley solve by Newton-Schulz (ngd_ns_iters, ngd_ns_guard). Out of the hash at cayley.
+    # Natural Pion: how the Cayley inverse is computed -- "cayley" exact solve (every paper run in Section 5), "ns"
+    # Newton-Schulz (biased in fp32), "ns_delta" Newton-Schulz in Z - I (NaturalPionFast's own default since
+    # 2026-11-04), "trunc" Pion's truncated exponential. Stays "cayley" here so earlier hashes keep their meaning;
+    # pass --np-retraction ns_delta for the current fast form. Out of the hash at cayley.
     np_retraction: str = "cayley"
     # Natural Pion: "bf16" forms the grams of A and D from bf16-rounded inputs with fp32 accumulation and result
     # (tensor cores); "fp32" from fp32 inputs. Out of the hash at fp32.

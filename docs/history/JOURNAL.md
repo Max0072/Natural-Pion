@@ -7099,3 +7099,11 @@ clipping and budget match. One deviation: their single `--lr 1e-3` also drives A
 ours uses 8e-3 for every method (the 2026-08-26 anchor with 1e-3 was worse, 3.3805). Left unexplained: their
 data (`c4-megatron`), Megatron's sampler, padded vocab, TE. User's decision: state "in our setting" and do not
 run the Megatron control. Preprint 5.1 and Limitations reworded; `pion_full_train` in the registry.
+
+## 2026-11-04, evening — Newton-Schulz in Z - I adopted in NaturalPionFast
+
+npnsdelta_b200 (3000 steps, B200): val 3.7224 (exact solve 3.7242), 0.444 s/step against 0.499 for the exact solve
+with the same shared A. ns_diag over 200 training steps: ||W||_F^2 +2e-8 in total (exact solve +4.9e-5, standard
+NS +1.9e-3), falling on 92 of 200 steps, so the bias is gone. User: adopt. `NaturalPionFast(retraction="ns_delta")`
+is the class default; `NaturalPion` (reference) keeps the exact solve; the harness keeps `np_retraction="cayley"` so
+earlier hashes do not collide. Trained-spectrum drift of the checkpoint pending (job 400335).

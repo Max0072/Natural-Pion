@@ -70,7 +70,7 @@ def test_fast_is_the_probe_bit_for_bit(t_fac, window):
     a, b = _weights(0), _weights(0)
     probe = StepNorm(a, lr=0.2, beta=0.5, eps=1e-4, alpha_max=1.0, t_fac=t_fac, use_s=True,
                      momentum="lie", beta1=0.9, trust="none", beta_backward=0.5)
-    ours = NaturalPionFast(b, lr=0.2, t_fac=t_fac, stats_window=window)
+    ours = NaturalPionFast(b, lr=0.2, t_fac=t_fac, stats_window=window, retraction="cayley")
     ta = _drive(probe, a, 60, 1, _cosine)
     tb = _drive(ours, b, 60, 1, _cosine)
     for t, (wa, wb) in enumerate(zip(ta, tb)):
@@ -129,7 +129,7 @@ def test_one_block_is_the_unsplit_optimizer():
 
 def test_newton_schulz_retraction_matches_cayley_at_small_angles():
     a, b = _weights(11), _weights(11)
-    oa = NaturalPionFast(a, lr=0.2, t_fac=5, stats_window=2)
+    oa = NaturalPionFast(a, lr=0.2, t_fac=5, stats_window=2, retraction="cayley")
     ob = NaturalPionFast(b, lr=0.2, t_fac=5, stats_window=2, retraction="ns", ns_iters=2)
     ta, tb = _drive(oa, a, 30, 12, _cosine), _drive(ob, b, 30, 12, _cosine)
     for x, y in zip(ta[-1], tb[-1]):
@@ -141,7 +141,7 @@ def test_newton_schulz_retraction_matches_cayley_at_small_angles():
 
 def test_truncated_exponential_is_close_to_cayley_and_inflates_the_spectrum():
     a, b = _weights(13), _weights(13)
-    oa = NaturalPionFast(a, lr=0.2, t_fac=5, stats_window=2)
+    oa = NaturalPionFast(a, lr=0.2, t_fac=5, stats_window=2, retraction="cayley")
     ob = NaturalPionFast(b, lr=0.2, t_fac=5, stats_window=2, retraction="trunc")
     ta, tb = _drive(oa, a, 30, 14, _cosine), _drive(ob, b, 30, 14, _cosine)
     w0 = _weights(13)
@@ -207,8 +207,8 @@ def test_bf16_statistics_keep_the_spectrum_and_track_fp32():
 
 def test_newton_schulz_in_correction_form_matches_cayley_and_keeps_the_norm():
     a, b = _weights(21), _weights(21)
-    oa = NaturalPionFast(a, lr=0.2, t_fac=5, stats_window=2)
-    ob = NaturalPionFast(b, lr=0.2, t_fac=5, stats_window=2, retraction="ns_delta")
+    oa = NaturalPionFast(a, lr=0.2, t_fac=5, stats_window=2, retraction="cayley")
+    ob = NaturalPionFast(b, lr=0.2, t_fac=5, stats_window=2)
     ta, tb = _drive(oa, a, 30, 22, _cosine), _drive(ob, b, 30, 22, _cosine)
     for x, y in zip(ta[-1], tb[-1]):
         assert torch.allclose(x, y, rtol=1e-4, atol=1e-5), (x - y).abs().max()

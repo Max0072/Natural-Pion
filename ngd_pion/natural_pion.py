@@ -375,9 +375,11 @@ class NaturalPion(torch.optim.Optimizer):
 
 class NaturalPionFast(NaturalPion):
     """Natural Pion, efficient form: basis every 25 steps, statistics in the 6 steps before each rebuild,
-    EMA 0.5 on both factors, one `A` per distinct input tensor. Everything else as `NaturalPion`."""
+    EMA 0.5 on both factors, one `A` per distinct input tensor, the Cayley inverse by Newton-Schulz in the
+    correction form (`ns_delta`; the exact solve above `ns_guard`). Everything else as `NaturalPion`."""
 
     def __init__(self, params, lr: float = 0.05, *, t_fac: int = 25, stats_window: int | None = 6,
-                 beta_a: float = 0.5, beta_d: float = 0.5, share_inputs: bool = True, **kwargs) -> None:
+                 beta_a: float = 0.5, beta_d: float = 0.5, share_inputs: bool = True,
+                 retraction: str = "ns_delta", **kwargs) -> None:
         super().__init__(params, lr, t_fac=t_fac, stats_window=stats_window, beta_a=beta_a, beta_d=beta_d,
-                         share_inputs=share_inputs, **kwargs)
+                         share_inputs=share_inputs, retraction=retraction, **kwargs)

@@ -1,0 +1,13 @@
+{"event": "start", "steps": 200, "time": 1793804366.130732}
+{"event": "corpus", "tokens": 10007773709, "passes": 0.003}
+{"step": 0, "lr": 0.2, "train_loss": 10.492457866668701, "wall": 21.2, "tokens_per_sec": 6178, "tokens_per_sec_window": null, "peak_gb": 42.1, "pred_drop": 0.0, "rho": NaN}
+{"step": 23, "lr": 0.19997099718168915, "train_loss": 7.360265731811523, "wall": 50.3, "tokens_per_sec": 62581, "tokens_per_sec_window": 103769, "peak_gb": 42.92, "pred_drop": 0.0, "rho": NaN}
+{"step": 46, "lr": 0.19988400555086705, "train_loss": 6.672971963882446, "wall": 81.1, "tokens_per_sec": 76007, "tokens_per_sec_window": 97929, "peak_gb": 42.92, "pred_drop": 0.0, "rho": NaN}
+{"step": 69, "lr": 0.19973907557010623, "train_loss": 6.070441722869873, "wall": 111.9, "tokens_per_sec": 82023, "tokens_per_sec_window": 97852, "peak_gb": 42.92, "pred_drop": 0.0, "rho": NaN}
+{"step": 92, "lr": 0.19953629131116818, "train_loss": 5.779126405715942, "wall": 142.9, "tokens_per_sec": 85311, "tokens_per_sec_window": 97167, "peak_gb": 42.92, "pred_drop": 0.0, "rho": NaN}
+{"step": 115, "lr": 0.19927577040623493, "train_loss": 5.566720247268677, "wall": 174.0, "tokens_per_sec": 87370, "tokens_per_sec_window": 96814, "peak_gb": 42.92, "pred_drop": 0.0, "rho": NaN}
+{"step": 138, "lr": 0.19895766397967207, "train_loss": 5.38014817237854, "wall": 205.1, "tokens_per_sec": 88819, "tokens_per_sec_window": 96929, "peak_gb": 42.92, "pred_drop": 0.0, "rho": NaN}
+{"step": 161, "lr": 0.19858215656036401, "train_loss": 5.206821918487549, "wall": 236.9, "tokens_per_sec": 89636, "tokens_per_sec_window": 94915, "peak_gb": 42.92, "pred_drop": 0.0, "rho": NaN}
+{"step": 184, "lr": 0.19814946597467115, "train_loss": 5.052465438842773, "wall": 268.8, "tokens_per_sec": 90194, "tokens_per_sec_window": 94324, "peak_gb": 42.92, "pred_drop": 0.0, "rho": NaN}
+{"step": 199, "lr": 0.19783658707386648, "train_loss": 4.954283952713013, "wall": 289.1, "tokens_per_sec": 90660, "tokens_per_sec_window": 96841, "peak_gb": 42.92, "pred_drop": 0.0, "rho": NaN}
+{"step": 199, "val_loss": 4.954841589927673}

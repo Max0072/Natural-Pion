@@ -519,7 +519,9 @@ $R = I + 2z$) nothing is next to 1, at the same cost. 200 steps of a $1376 \time
 |---|---|---|---|---|---|
 | exact solve | $+3.4 \cdot 10^{-5}$ | 3.7242 | 0.04% / 0.29% | 0.596 | — |
 | Newton–Schulz, standard | $+2.8 \cdot 10^{-4}$ | 3.7252 | 1.26% / 1.77% | 0.558 | 0.453 |
-| Newton–Schulz in $Z - I$ | $+1.6 \cdot 10^{-7}$ | **[ret_nsd_3000?]** (B200) | **[ret_nsd_drift?]** / **[ret_nsd_drift_max?]** | — | **[ret_nsd_sps_b200?]** |
+| Newton–Schulz in $Z - I$ | $+1.6 \cdot 10^{-7}$ | 3.7224 (B200) | 0.03% / 1.42% | — | 0.444 |
+
+Natural Pion Fast uses the $Z - I$ form from here on; every run in Section 5 used the exact solve.
 
 ### 4.9 Tried and not adopted
 
