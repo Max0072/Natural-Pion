@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from ngd_pion.natural_pion import NaturalPion, NaturalPionFast
+from ngd_pion.natural_pion import NaturalPion, NaturalPionFast, NaturalPionTurbo
 
 ROOT = Path(__file__).resolve().parents[1]
 SHAPES = [(12, 8), (8, 8), (8, 8), (8, 12), (12, 8)]  # repeated shapes and sizes exercise the batching
@@ -214,3 +214,17 @@ def test_newton_schulz_in_correction_form_matches_cayley_and_keeps_the_norm():
         assert torch.allclose(x, y, rtol=1e-4, atol=1e-5), (x - y).abs().max()
     for p, s0 in zip(b, [torch.linalg.svdvals(p.detach().double()) for p in _weights(21)]):
         assert torch.allclose(torch.linalg.svdvals(p.detach().double()), s0, rtol=1e-5)
+
+
+@pytest.mark.parametrize("retraction", ["ns_delta", "cayley"])
+def test_turbo_is_fast_batched(retraction):
+    a, b = _weights(23), _weights(23)
+    fa = NaturalPionFast(a, lr=0.2, t_fac=5, stats_window=2, retraction=retraction, row_blocks={id(a[1]): 4})
+    fb = NaturalPionTurbo(b, lr=0.2, t_fac=5, stats_window=2, retraction=retraction, stats_dtype="fp32",
+                          row_blocks={id(b[1]): 4})
+    ta, tb = _drive(fa, a, 30, 24, _cosine), _drive(fb, b, 30, 24, _cosine)
+    for x, y in zip(ta[-1], tb[-1]):
+        assert torch.allclose(x, y, rtol=1e-4, atol=1e-5), (x - y).abs().max()
+    for j, (p, s0) in enumerate(zip(b, [torch.linalg.svdvals(p.detach().double()) for p in _weights(23)])):
+        if j != 1:                                      # b[1] is split into row blocks: each block keeps its own
+            assert torch.allclose(torch.linalg.svdvals(p.detach().double()), s0, rtol=1e-4)

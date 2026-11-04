@@ -39,7 +39,7 @@ from .direction import generators
 from .factorization import basis_congruence, basis_identity_anchor
 from .linalg import exact_fp32, is_identity, skew, spectral_norm
 
-__all__ = ["NaturalPion", "NaturalPionFast"]
+__all__ = ["NaturalPion", "NaturalPionFast", "NaturalPionTurbo"]
 
 
 class NaturalPion(torch.optim.Optimizer):
@@ -383,3 +383,130 @@ class NaturalPionFast(NaturalPion):
                  retraction: str = "ns_delta", **kwargs) -> None:
         super().__init__(params, lr, t_fac=t_fac, stats_window=stats_window, beta_a=beta_a, beta_d=beta_d,
                          share_inputs=share_inputs, retraction=retraction, **kwargs)
+
+
+class NaturalPionTurbo(NaturalPionFast):
+    """Natural Pion Fast with everything batched, including the parts Pion shares (generators, momentum, the
+    two-sided product), and bf16 statistics. **Not used in any comparison**: it measures how much engineering
+    headroom the method has once the comparison with Pion no longer constrains what may be optimised. Same
+    mathematics as `NaturalPionFast` with the same options, up to the round-off of batched products."""
+
+    def __init__(self, params, lr: float = 0.05, *, stats_dtype: str = "bf16", **kwargs) -> None:
+        super().__init__(params, lr, stats_dtype=stats_dtype, **kwargs)
+
+    @torch.no_grad()
+    def _rotate(self, active: list[torch.Tensor], group: dict) -> None:
+        dt, beta1, lr = group["compute_dtype"], group["beta1"], group["lr"]
+        units = []                                   # (param, block, rows, whole, state, W, G)
+        for p in active:
+            blocks = self._units(p)
+            Wp, Gp = p.detach().to(dt), p.grad.detach().to(dt)
+            for i, r in enumerate(blocks):
+                whole = len(blocks) == 1
+                st = self._unit_state(self.state[p], i)
+                st["since_refactor"] = self.state[p]["since_refactor"]
+                units.append((p, i, r, whole, st, Wp if whole else Wp[r], Gp if whole else Gp[r]))
+        n_u = len(units)
+        by_shape: dict[tuple, list[int]] = defaultdict(list)
+        for k, u in enumerate(units):
+            by_shape[tuple(u[5].shape)].append(k)
+
+        # generators, batched by shape
+        g_in, g_out = [None] * n_u, [None] * n_u
+        for ks in by_shape.values():
+            W = torch.stack([units[k][5] for k in ks]); G = torch.stack([units[k][6] for k in ks])
+            Wt = W.transpose(-1, -2)
+            a, b = Wt @ G, G @ Wt
+            a = 0.5 * (a - a.transpose(-1, -2)); b = 0.5 * (b - b.transpose(-1, -2))
+            for j, k in enumerate(ks):
+                g_in[k], g_out[k] = a[j], b[j]
+        # Lie momentum, one multi-tensor call
+        if beta1 > 0.0:
+            for k, u in enumerate(units):
+                u[4].setdefault("m_in", torch.zeros_like(g_in[k]))
+                u[4].setdefault("m_out", torch.zeros_like(g_out[k]))
+            ms = [u[4]["m_in"] for u in units] + [u[4]["m_out"] for u in units]
+            torch._foreach_mul_(ms, beta1)
+            torch._foreach_add_(ms, g_in + g_out, alpha=1.0 - beta1)
+            g_in, g_out = ms[:n_u], ms[n_u:]
+
+        # X = F^-1 G, batched by side size
+        x_in, x_out = [None] * n_u, [None] * n_u
+        sides: dict[int, list] = defaultdict(list)
+        for k, u in enumerate(units):
+            b_in, b_out = u[4]["bases"]
+            sides[g_in[k].shape[0]].append((x_in, k, g_in[k], b_in))
+            sides[g_out[k].shape[0]].append((x_out, k, g_out[k], b_out))
+        for items in sides.values():
+            P = torch.stack([b.P for *_, b in items]); Pt = P.transpose(-1, -2)
+            den = torch.stack([b.denominator for *_, b in items])
+            if group["damping"]:
+                den = den + group["damping"] * den.amax(dim=(-2, -1), keepdim=True)
+            G = torch.stack([g for _, _, g, _ in items])
+            X = skew(P @ ((Pt @ G @ P) / den) @ Pt)
+            for j, (dst, k, _, _) in enumerate(items):
+                dst[k] = X[j]
+
+        # sigma = max(||X_in||, ||X_out||) by warm power iteration, batched by (size, iterations); no host sync
+        sig = torch.zeros(2, n_u, dtype=dt, device=units[0][5].device)
+        pw: dict[tuple, list] = defaultdict(list)
+        for k, u in enumerate(units):
+            st = u[4]
+            fresh = "angle_v_in" not in st or st["since_refactor"] == 0
+            it = group["angle_warmup"] if fresh else group["angle_iters"]
+            pw[(x_in[k].shape[0], it)].append((0, k, x_in[k], "angle_v_in"))
+            pw[(x_out[k].shape[0], it)].append((1, k, x_out[k], "angle_v_out"))
+        for (n, it), items in pw.items():
+            X = torch.stack([x for _, _, x, _ in items])
+            vs = [units[k][4].get(key) for _, k, _, key in items]
+            v = None if any(x is None for x in vs) else torch.stack(vs)
+            s, v = spectral_norm(X, it, v)
+            for j, (side, k, _, key) in enumerate(items):
+                units[k][4][key] = v[j]
+                sig[side, k] = s[j]
+        c = lr / sig.amax(dim=0).clamp_min(1e-30)              # (n_u,)
+
+        # Cayley, batched by size: Newton-Schulz in Z - I, or the exact solve above the guard
+        r_in, r_out = [None] * n_u, [None] * n_u
+        cay: dict[int, list] = defaultdict(list)
+        for k in range(n_u):
+            cay[x_in[k].shape[0]].append((r_in, k, x_in[k]))
+            cay[x_out[k].shape[0]].append((r_out, k, x_out[k]))
+        use_ns = group["retraction"] == "ns_delta" and lr <= group["ns_guard"]
+        for n, items in cay.items():
+            X = torch.stack([x for _, _, x in items])
+            idx = torch.tensor([k for _, k, _ in items], device=X.device)
+            A = (0.5 * c[idx]).reshape(-1, 1, 1) * X
+            eye = torch.eye(n, dtype=X.dtype, device=X.device)
+            if use_ns:
+                z = -A
+                for _ in range(group["ns_iters"]):
+                    r = A + z + A @ z
+                    z = z - r - z @ r
+                R = eye + 2.0 * z
+            else:
+                E = eye.expand_as(X)
+                R = torch.linalg.solve(E + A, E - A)
+            for j, (dst, k, _) in enumerate(items):
+                dst[k] = R[j]
+
+        # W <- R_out W R_in, batched by shape
+        new = [None] * n_u
+        for ks in by_shape.values():
+            W = torch.stack([units[k][5] for k in ks])
+            Ro = torch.stack([r_out[k] for k in ks]); Ri = torch.stack([r_in[k] for k in ks])
+            Y = Ro @ W @ Ri
+            for j, k in enumerate(ks):
+                new[k] = Y[j]
+        by_param: dict[int, list] = {}
+        for k, u in enumerate(units):
+            p, whole = u[0], u[3]
+            if whole:
+                p.copy_(new[k].to(p.dtype))
+            else:
+                by_param.setdefault(id(p), [p, []])[1].append(new[k])
+        for p, blocks in by_param.values():
+            p.copy_(torch.cat(blocks, dim=0).to(p.dtype))
+        for p in active:
+            self.state[p]["step"] += 1
+            self.state[p]["since_refactor"] += 1
