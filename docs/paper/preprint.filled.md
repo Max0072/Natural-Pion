@@ -20,7 +20,7 @@ the layer's inputs and $S$ that of its output gradients pulled back through $W$.
 eigendecomposition per side inverts this operator exactly. Second, the natural gradient is a good
 direction with a bad scale: its magnitude varies over orders of magnitude between layers. We keep the
 direction and set the length so that every matrix turns its fastest rotation plane by the same scheduled
-angle. Third, an exact Cayley retraction keeps Pion's invariant exactly rather than approximately. A fast
+angle. Third, an exact Cayley retraction keeps Pion's invariant, which Pion's own truncated exponential lets drift. A fast
 form of the method costs 1.28x Pion's time per step.
 
 ---
@@ -67,8 +67,7 @@ provides.
    fixed step size, $F^{-1}G$ reaches only 3.8419, against 3.7399 with the angle (Section 5.4).
 4. **A retraction that is exact at large angles.** Natural Pion turns every matrix by 0.05–0.2 rad per step.
    The Cayley transform keeps the trained spectrum to 0.04%; Pion's truncated exponential moves
-   it by 0.59% and a standard Newton–Schulz inverse by 1.26% (fp32 rounding). Newton–Schulz
-   carried in $Z - I$ removes the bias (Section 3.4).
+   it by 0.59% (Section 3.4).
 5. **A fast form.** Amortised refreshes, statistics collected only where they are read, a warm power
    iteration and batching take the step from 1.77 s to 0.596 s (Pion: 0.468 s). Each change is
    measured separately for time and loss (Section 4).
@@ -352,27 +351,17 @@ $\Omega^\top = -\Omega$: the odd and quadratic terms cancel, leaving $\Omega^4/4
 step. Pion's angles are smaller and uneven: typical block 0.026 rad per step (p90/p10
 2.0), largest 0.097 (`scripts/probes/pion_angles.py`, first 1 058
 steps). Per step, the truncated exponential changes singular values by up to $4 \cdot 10^{-4}$ at 0.2,
-$2 \cdot 10^{-6}$ at 0.05, and about $10^{-7}$ at Pion's typical angle. Two Newton–Schulz
-iterations for $(I + A)^{-1}$ have truncation error $R = \mathrm{Cay} - 2(I+A)^{-1}A^8$: $5 \cdot 10^{-9}$ at 0.2,
-$10^{-6}$ at 0.4, $3 \cdot 10^{-4}$ at 0.8 (fp64), and it can only shrink the spectrum.
+$2 \cdot 10^{-6}$ at 0.05, and about $10^{-7}$ at Pion's typical angle.
 
-*Retractions in training (Natural Pion Fast, seed 0). Last column: relative change of singular values from
-initialisation after 3 000 steps, median / worst of 56 matrices.*
+*Natural Pion Fast, seed 0. Drift: relative change of singular values from initialisation after 3 000 steps,
+median / worst of 56 matrices.*
 
-| retraction | val, 3 000 steps ($\theta_0$ 0.2) | val, 15 000 steps ($\theta_0$ 0.05) | spectrum drift |
+| retraction | val, 3 000 steps ($\theta_0$ 0.2) | val, 15 000 steps ($\theta_0$ 0.05) | drift |
 |---|---|---|---|
 | Cayley | 3.7242 | 3.4720 | 0.04% / 0.29% |
 | truncated exponential (Pion's) | 3.7217 | 3.4733 | 0.59% / 1.49% |
-| Newton–Schulz, 2 iterations | 3.7252 | 3.4724 | 1.26% / 1.77% |
-| Newton–Schulz in $Z - I$ | **[ret_nsd_3000?]** (B200) | — | **[ret_nsd_drift?]** / **[ret_nsd_drift_max?]** |
 
-The loss does not separate them (same run on RTX and B200: 0.003); the spectrum does.
-Newton–Schulz inflates it, which its truncation error cannot do: $\|W\|_F^2$ grows by a median
-$9.5 \cdot 10^{-6}$ per step (Cayley $2.6 \cdot 10^{-7}$) and never falls, in true fp32
-(`scripts/probes/ns_diag.py`). The iteration $Z \leftarrow Z(2I - MZ)$ rounds entries next to 1. Carried in
-$z = Z - I$ ($r = A + z + Az$, $z \leftarrow z - r - zr$, $R = I + 2z$), at the same cost, the bias goes: 200 steps
-of a $1376 \times 1376$ retraction at 0.05 change $\|W\|_F^2$ by $+2.8 \cdot 10^{-4}$ (standard),
-$+1.6 \cdot 10^{-7}$ ($Z - I$), $+3.4 \cdot 10^{-5}$ (Cayley) (`scripts/probes/ns_rounding.py`).
+The loss does not separate them at these horizons (same run on RTX and B200: 0.003); the spectrum does.
 
 **Precision.** The solve must run in true fp32: TF32 moves the spectrum by 0.37% in 200 steps at angle
 $10^{-2}$, fp32 by 0.012%.
@@ -532,15 +521,31 @@ activations and output gradients to bf16 and multiply them with fp32 accumulatio
 bf16 inputs save 0.035 s per step at no measurable cost at 3 000 steps; at 15 000 steps
 (angle 0.05) the run gives **[stats_bf16_15k?]** against 3.4720 for fp32.
 
-### 4.8 Tried and not adopted
+### 4.8 The Cayley solve by Newton–Schulz
 
-* **Newton–Schulz, standard form:** 0.558 s per step against 0.596 s (RTX; truncated
-  exponential 0.550 s), but it inflates the spectrum (Section 3.4). The $Z - I$ form: pending.
+$\mathrm{Cay} = 2(I + A)^{-1} - I$ with $A = \tfrac c2 X$, and $(I + A)^{-1}$ can be computed by Newton–Schulz,
+$Z \leftarrow Z(2I - (I + A)Z)$ from $Z_0 = I - A$, with matrix products only. Two iterations leave
+$R = \mathrm{Cay} - 2(I+A)^{-1}A^8$: $5 \cdot 10^{-9}$ at angle 0.2, $10^{-6}$ at 0.4, $3 \cdot 10^{-4}$ at 0.8 (fp64).
+
+In fp32 the standard form is unstable: it rounds entries next to 1 with a sign, and $\|W\|_F^2$, which a
+rotation keeps, grows by a median $9.5 \cdot 10^{-6}$ per training step (exact solve $2.6 \cdot 10^{-7}$;
+`scripts/probes/ns_diag.py`). Carried in $z = Z - I$ ($r = A + z + Az$, $z \leftarrow z - r - zr$,
+$R = I + 2z$) nothing is next to 1, at the same cost. 200 steps of a $1376 \times 1376$ rotation at angle 0.05
+(`scripts/probes/ns_rounding.py`):
+
+| Cayley computed by | $\Delta\|W\|_F^2$, bare matrix | val, 3 000 steps | drift (median / worst) | s / step, RTX | s / step, B200 |
+|---|---|---|---|---|---|
+| exact solve | $+3.4 \cdot 10^{-5}$ | 3.7242 | 0.04% / 0.29% | 0.596 | — |
+| Newton–Schulz, standard | $+2.8 \cdot 10^{-4}$ | 3.7252 | 1.26% / 1.77% | 0.558 | 0.453 |
+| Newton–Schulz in $Z - I$ | $+1.6 \cdot 10^{-7}$ | **[ret_nsd_3000?]** (B200) | **[ret_nsd_drift?]** / **[ret_nsd_drift_max?]** | — | **[ret_nsd_sps_b200?]** |
+
+### 4.9 Tried and not adopted
+
 * **Exact SVD to reshape the step's spectrum** (the polar step in Section 5.4): 6.8–7.8 s per step, and worse in
   loss.
 * **A larger $T_{\mathrm{fac}}$ beyond 25** saves little: the refresh is already 0.025 s per step.
 
-### 4.9 Summary
+### 4.10 Summary
 
 *Table 2. From Algorithm 1 to Natural Pion Fast.*
 
