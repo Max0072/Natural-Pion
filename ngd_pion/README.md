@@ -4,6 +4,18 @@
 `docs/paper/FINAL.md`. Variants that were tried and set aside moved to `legacy/` on 2026-11-03 (imports are
 `ngd_pion.legacy.<module>`); the table below predates that and describes them as they were judged.
 
+## The three tiers of `natural_pion.py` (2026-11-04)
+
+Fast: every speed-up standard and explainable. Turbo: whatever is faster, no guarantees.
+
+| class | tier | rule | members |
+|---|---|---|---|
+| `NaturalPion` | reference | exact form; nothing sped up | -- |
+| `NaturalPionFast` | conservative | each speed-up a standard technique with a stated reason not to change the result, confirmed within 0.010 of the reference at 3000 and 15000 steps; only Natural Pion's own parts, never those shared with Pion (skew(W^T G), skew(G W^T), Lie momentum, R_out W R_in), so wall-clock vs Pion stays fair | basis every 25 steps (K-FAC amortisation); A, D only in the 6 steps before a refresh (within 0.002); warm power iteration for sigma; F^-1 and Cayley batched by shape; one A per input tensor (q,k,v; gate,up); Cayley inverse by Newton-Schulz in Z - I. Candidate: bf16 statistics inputs, fp32 accumulation, pending 15000 steps |
+| `NaturalPionTurbo` | aggressive | anything faster, no guarantees; loss cost measured and recorded; in no comparison | everything batched incl. Pion-shared parts; sigma without host syncs; bf16 statistics. Planned: alternate update, low-rank sketches of A and S, incremental basis updates, rotation in a k-dim subspace (`docs/history/drafts/natural_gradient_pion_addendum.md`) |
+
+T_fac 25 is 0.013 behind the exact form at 3000 steps (mean of 4 seeds) and level at 15000; accepted on the long horizon.
+
 # Which variant is which
 
 Nine optimizer names are registered in `harness.train.NGD_IMPLEMENTATIONS` and

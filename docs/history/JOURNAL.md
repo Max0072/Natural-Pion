@@ -7118,3 +7118,13 @@ one process gave wrong numbers for all but the first and was discarded). 3000 st
 exact Cayley 3.6e-4 / 4.3e-4 (signed +0.035%), truncated exponential 9.7e-4 / 3.4e-3, standard NS 1.2e-2 / 1.7e-2,
 NS in Z - I 2.8e-6 / 3.9e-6. The exact solve has a small systematic inflation of its own; the Z - I form does not.
 Preprint contribution 4, 3.4, 4.8 and Limitations now use this measure.
+
+## 2026-11-04 — three tiers: reference, conservative, aggressive
+
+User's decision. `NaturalPion`: exact form, the reference, nothing sped up. `NaturalPionFast`: conservative -- every
+speed-up standard and explainable, confirmed within 0.010 of the reference at 3000 and 15000 steps, and only in
+Natural Pion's own parts, never those shared with Pion, so wall-clock vs Pion stays fair. `NaturalPionTurbo`:
+aggressive -- whatever is faster, no guarantees, loss cost recorded, in no comparison. Rule: "Fast: every speed-up
+standard and explainable. Turbo: whatever is faster, no guarantees." Note: T_fac 25 is 0.013 behind the exact form
+at 3000 steps (mean of 4 seeds) and level at 15000; accepted on the long horizon. bf16 statistics stay a Fast
+candidate until the 15000-step check. Tables in `ngd_pion/README.md`.

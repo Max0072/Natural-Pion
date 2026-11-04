@@ -374,9 +374,11 @@ class NaturalPion(torch.optim.Optimizer):
 
 
 class NaturalPionFast(NaturalPion):
-    """Natural Pion, efficient form: basis every 25 steps, statistics in the 6 steps before each rebuild,
-    EMA 0.5 on both factors, one `A` per distinct input tensor, the Cayley inverse by Newton-Schulz in the
-    correction form (`ns_delta`; the exact solve above `ns_guard`). Everything else as `NaturalPion`."""
+    """Natural Pion, **conservative** tier: every speed-up standard and explainable, loss within 0.010 of
+    `NaturalPion` at 3000 and 15000 steps, and only in Natural Pion's own parts (never those shared with Pion).
+    Basis every 25 steps, statistics in the 6 steps before each rebuild, EMA 0.5 on both factors, one `A` per
+    distinct input tensor, the Cayley inverse by Newton-Schulz in the correction form (`ns_delta`; the exact
+    solve above `ns_guard`). Everything else as `NaturalPion`."""
 
     def __init__(self, params, lr: float = 0.05, *, t_fac: int = 25, stats_window: int | None = 6,
                  beta_a: float = 0.5, beta_d: float = 0.5, share_inputs: bool = True,
@@ -386,10 +388,10 @@ class NaturalPionFast(NaturalPion):
 
 
 class NaturalPionTurbo(NaturalPionFast):
-    """Natural Pion Fast with everything batched, including the parts Pion shares (generators, momentum, the
-    two-sided product), and bf16 statistics. **Not used in any comparison**: it measures how much engineering
-    headroom the method has once the comparison with Pion no longer constrains what may be optimised. Same
-    mathematics as `NaturalPionFast` with the same options, up to the round-off of batched products."""
+    """Natural Pion, **aggressive** tier: whatever is faster, no guarantees; its loss cost is measured and
+    recorded, and it is used in no comparison. Now: everything batched, including the parts Pion shares
+    (generators, momentum, the two-sided product), sigma without host syncs, bf16 statistics. Same mathematics
+    as `NaturalPionFast` with the same options, up to the round-off of batched products."""
 
     def __init__(self, params, lr: float = 0.05, *, stats_dtype: str = "bf16", **kwargs) -> None:
         super().__init__(params, lr, stats_dtype=stats_dtype, **kwargs)
