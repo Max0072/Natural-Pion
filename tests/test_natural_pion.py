@@ -203,3 +203,14 @@ def test_bf16_statistics_keep_the_spectrum_and_track_fp32():
     for x, y, z, s in zip(wa, wb, _weights(19), s0):
         assert (x - y).abs().max() < 0.1 * (x - z).abs().max()
         assert torch.allclose(torch.linalg.svdvals(y.double()), s, rtol=1e-4)
+
+
+def test_newton_schulz_in_correction_form_matches_cayley_and_keeps_the_norm():
+    a, b = _weights(21), _weights(21)
+    oa = NaturalPionFast(a, lr=0.2, t_fac=5, stats_window=2)
+    ob = NaturalPionFast(b, lr=0.2, t_fac=5, stats_window=2, retraction="ns_delta")
+    ta, tb = _drive(oa, a, 30, 22, _cosine), _drive(ob, b, 30, 22, _cosine)
+    for x, y in zip(ta[-1], tb[-1]):
+        assert torch.allclose(x, y, rtol=1e-4, atol=1e-5), (x - y).abs().max()
+    for p, s0 in zip(b, [torch.linalg.svdvals(p.detach().double()) for p in _weights(21)]):
+        assert torch.allclose(torch.linalg.svdvals(p.detach().double()), s0, rtol=1e-5)

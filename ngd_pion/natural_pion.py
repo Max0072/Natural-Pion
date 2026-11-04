@@ -62,7 +62,9 @@ class NaturalPion(torch.optim.Optimizer):
             damping in the metric of the anchor factor. 0 (default) leaves only the floor `eps`.
         retraction: "cayley" solves (I + c/2 X) R = (I - c/2 X) exactly; "ns" computes the inverse by
             `ns_iters` Newton-Schulz iterations (matrix products only), which is exact to fp32 round-off for
-            angles well below 1 and is used only while the scheduled angle is at most `ns_guard`; "trunc" is
+            angles well below 1 and is used only while the scheduled angle is at most `ns_guard`, but rounds
+            next to 1 with a positive bias in fp32 (kept to reproduce that measurement); "ns_delta" is the same
+            iteration carried in Z - I, which removes the bias; "trunc" is
             Pion's retraction, the degree-2 truncated exponential I + A + A^2/2 with A = -c X, which is not
             orthogonal: (T^T T = I + A^4/4), so it lets the spectrum grow.
         row_blocks: `{id(weight): k}` splits that weight's rows into `k` equal blocks, each rotated as a
@@ -105,8 +107,8 @@ class NaturalPion(torch.optim.Optimizer):
                 raise ValueError(f"{name} must lie in [0, 1), got {b}")
         if t_fac < 1:
             raise ValueError(f"t_fac must be at least 1, got {t_fac}")
-        if retraction not in ("cayley", "ns", "trunc"):
-            raise ValueError(f"retraction must be cayley, ns or trunc, got {retraction!r}")
+        if retraction not in ("cayley", "ns", "ns_delta", "trunc"):
+            raise ValueError(f"retraction must be cayley, ns, ns_delta or trunc, got {retraction!r}")
         if stats_dtype not in ("fp32", "bf16"):
             raise ValueError(f"stats_dtype must be fp32 or bf16, got {stats_dtype!r}")
         if stats_window is not None and not 1 <= stats_window <= t_fac:
@@ -315,6 +317,17 @@ class NaturalPion(torch.optim.Optimizer):
             if group["retraction"] == "trunc":
                 A = -(half + half) * X                       # -c X: Cay(cX) and exp(-cX) agree to second order
                 R = eye + A + 0.5 * (A @ A)
+            elif group["retraction"] == "ns_delta" and group["lr"] <= group["ns_guard"]:
+                # The same Newton-Schulz iteration carried in the correction z = Z - I: residual r = M Z - I =
+                # A + z + A z, and Z (I - r) gives z <- z - r - z r. Nothing is rounded next to 1, which in "ns"
+                # biases R^T R - I positive by ~1e-6 per side per step in fp32 (the trained spectrum grew 1.1%
+                # over 3000 steps). R = I + 2 z.
+                A = half * X
+                z = -A
+                for _ in range(group["ns_iters"]):
+                    r = A + z + A @ z
+                    z = z - r - z @ r
+                R = eye + 2.0 * z
             elif group["retraction"] == "ns" and group["lr"] <= group["ns_guard"]:
                 # Cay = 2 (I + A)^-1 - I; Newton-Schulz Z <- Z (2I - M Z) from Z0 = I - A, residual A^2 squaring
                 A = half * X
