@@ -138,6 +138,13 @@ rtx6002,rtx6003` rather than letting the scheduler choose**, and check
 leaving a long run unattended: a hung job looks exactly like a slow one in the
 log.
 
+*(2026-11-04: at 01:52 the node health check drained `rtx6004` with
+`NHC: nv_check: found 7 GPUs; expected 8.` One card has dropped off the bus. A
+failing card is a likely cause of the August hangs -- a job placed on it would
+start and stall -- but that is inferred, not shown. Our record there since
+September: 17 jobs, 8 completed, 9 cancelled, mostly hung. Keep `-x rtx6004`
+until the node is repaired and a short job has been seen to run on every GPU.)*
+
 **Partition access came back the same afternoon.** At 14:47 on 2026-08-28
 `sbatch --test-only -A p330` was accepted on `rtx` again and
 `sacctmgr show assoc` listed `b200`, `genoa` and `rtx` once more. So the
