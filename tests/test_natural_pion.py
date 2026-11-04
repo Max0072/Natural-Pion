@@ -221,7 +221,7 @@ def test_turbo_is_fast_batched(retraction):
     a, b = _weights(23), _weights(23)
     fa = NaturalPionFast(a, lr=0.2, t_fac=5, stats_window=2, retraction=retraction, row_blocks={id(a[1]): 4})
     fb = NaturalPionTurbo(b, lr=0.2, t_fac=5, stats_window=2, retraction=retraction, stats_dtype="fp32",
-                          row_blocks={id(b[1]): 4})
+                          fisher_dtype="fp32", c_floor="eigh", inv_root="eigh", row_blocks={id(b[1]): 4})
     ta, tb = _drive(fa, a, 30, 24, _cosine), _drive(fb, b, 30, 24, _cosine)
     for x, y in zip(ta[-1], tb[-1]):
         assert torch.allclose(x, y, rtol=1e-4, atol=1e-5), (x - y).abs().max()
@@ -240,13 +240,15 @@ def test_batched_sigma_matches_the_loop():
 
 
 @pytest.mark.parametrize("opts", [dict(fisher_dtype="bf16"), dict(stats_stride=4), dict(c_floor="shift"),
-                                  dict(inv_root="ns"), dict(c_floor="shift", inv_root="ns", fisher_dtype="bf16")])
+                                  dict(inv_root="ns"), dict(c_floor="shift", inv_root="ns", fisher_dtype="bf16"),
+                                  dict(c_floor="shift", inv_root="ns", fisher_dtype="bf16", stats_window=1)])
 def test_turbo_approximations_stay_behind_the_cayley_gate(opts):
     """Whatever the approximation upstream, X is skew at the gate, so every spectrum is kept; the step still moves."""
     ps = _weights(29)
     s0 = [torch.linalg.svdvals(p.detach().double()) for p in ps]
     w0 = [p.detach().clone() for p in ps]
-    _drive(NaturalPionTurbo(ps, lr=0.2, t_fac=5, stats_window=2, stats_dtype="fp32", **opts), ps, 20, 30, _cosine)
+    base = dict(fisher_dtype="fp32", c_floor="eigh", inv_root="eigh", stats_window=2)
+    _drive(NaturalPionTurbo(ps, lr=0.2, t_fac=5, stats_dtype="fp32", **{**base, **opts}), ps, 20, 30, _cosine)
     for p, s, w in zip(ps, s0, w0):
         assert torch.allclose(torch.linalg.svdvals(p.detach().double()), s, rtol=1e-4)
         assert (p.detach() - w).abs().max() > 1e-3

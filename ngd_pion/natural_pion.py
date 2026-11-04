@@ -531,9 +531,12 @@ class NaturalPionTurbo(NaturalPionFast):
     (generators, momentum, the two-sided product), sigma without host syncs, bf16 statistics. Same mathematics
     as `NaturalPionFast` with the same options, up to the round-off of batched products."""
 
-    def __init__(self, params, lr: float = 0.05, *, stats_dtype: str = "bf16", fisher_dtype: str = "fp32",
-                 stats_stride: int = 1, c_floor: str = "eigh", inv_root: str = "eigh", **kwargs) -> None:
-        """Approximations, all upstream of the Cayley gate (X is made exactly skew before it, so the rotation stays
+    def __init__(self, params, lr: float = 0.05, *, stats_dtype: str = "bf16", fisher_dtype: str = "bf16",
+                 stats_stride: int = 1, c_floor: str = "shift", inv_root: str = "ns", stats_window: int | None = 1,
+                 **kwargs) -> None:
+        """Defaults (2026-11-05): every approximation that cost nothing in loss at 3000 steps -- F^-1 in bf16, C
+        shifted, B^-1/2 by Newton-Schulz, statistics in the one step before a refresh. T_fac stays 25 (50 cost 0.023).
+        Approximations, all upstream of the Cayley gate (X is made exactly skew before it, so the rotation stays
         orthogonal whatever they do; only the direction changes):
           fisher_dtype "bf16": the four products of F^-1 in bf16
           stats_stride k:      A and D from every k-th token
@@ -544,7 +547,7 @@ class NaturalPionTurbo(NaturalPionFast):
         if stats_stride < 1:
             raise ValueError("stats_stride must be at least 1")
         self._stats_stride = stats_stride
-        super().__init__(params, lr, stats_dtype=stats_dtype, **kwargs)
+        super().__init__(params, lr, stats_dtype=stats_dtype, stats_window=stats_window, **kwargs)
         self.fisher_dtype, self.c_floor, self.inv_root = fisher_dtype, c_floor, inv_root
 
     @staticmethod
