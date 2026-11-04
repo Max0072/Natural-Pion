@@ -7128,3 +7128,10 @@ aggressive -- whatever is faster, no guarantees, loss cost recorded, in no compa
 standard and explainable. Turbo: whatever is faster, no guarantees." Note: T_fac 25 is 0.013 behind the exact form
 at 3000 steps (mean of 4 seeds) and level at 15000; accepted on the long horizon. bf16 statistics stay a Fast
 candidate until the 15000-step check. Tables in `ngd_pion/README.md`.
+
+## 2026-11-04 — alternate update: not pursued, not even in Turbo
+
+User: a two-sided step does both rotations at once at nearly the price of one; splitting them over steps halves the
+optimizer work but also the motion per step, and steps are what this method saves (the RL motivation). The sides
+are nearly additive (ALGORITHM.md), so alternating buys time per step and gives back steps. An implementation was
+written and reverted uncommitted.
