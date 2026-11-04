@@ -44,6 +44,15 @@ from .linalg import exact_fp32, is_identity, skew, spectral_norm
 __all__ = ["NaturalPion", "NaturalPionFast", "NaturalPionTurbo"]
 
 
+def _lmax(C: torch.Tensor, iters: int = 30) -> torch.Tensor:
+    """Largest eigenvalue of symmetric PSD `C` (batched) by power iteration, shape (..., 1)."""
+    v = torch.ones(*C.shape[:-1], 1, dtype=C.dtype, device=C.device)
+    for _ in range(iters):
+        v = C @ v
+        v = v / v.norm(dim=-2, keepdim=True).clamp_min(1e-30)
+    return (v.transpose(-1, -2) @ C @ v).squeeze(-1)
+
+
 class NaturalPion(torch.optim.Optimizer):
     """Natural Pion, exact form: fresh Fisher basis and statistics every step.
 
@@ -307,6 +316,10 @@ class NaturalPion(torch.optim.Optimizer):
         s_out, state["angle_v_out"] = spectral_norm(X_out, iters, state.get("angle_v_out"))
         return float(torch.maximum(s_in, s_out))
 
+    def _correct(self, X, G, P, den, items, rows, group):
+        """Hook after `X = F^-1 G` in the basis; the reference path uses the basis solution as it is."""
+        return X
+
     def _scales(self, rows: list, group: dict) -> list:
         """`c = theta / sigma` per rotated unit, one power iteration per matrix (the reference path)."""
         cs = []
@@ -347,6 +360,7 @@ class NaturalPion(torch.optim.Optimizer):
             G = torch.stack([g for _, _, g, _ in items])
             Pt = P.transpose(-1, -2)
             X = skew(P @ ((Pt @ G @ P) / den) @ Pt)
+            X = self._correct(X, G, P, den, items, rows, group)
             for k, (i, slot, _, _) in enumerate(items):
                 rows[i][slot] = X[k]
 
@@ -437,7 +451,7 @@ class NaturalPionFast(NaturalPion):
     def __init__(self, params, lr: float = 0.05, *, t_fac: int = 25, stats_window: int | None = 6,
                  beta_a: float = 0.5, beta_d: float = 0.5, share_inputs: bool = True,
                  retraction: str = "ns_delta", batch_sigma: bool = True, share_root: bool = True,
-                 async_refresh: bool = False, **kwargs) -> None:
+                 async_refresh: bool = False, cg_iters: int = 0, **kwargs) -> None:
         super().__init__(params, lr, t_fac=t_fac, stats_window=stats_window, beta_a=beta_a, beta_d=beta_d,
                          share_inputs=share_inputs, retraction=retraction, **kwargs)
         self.batch_sigma = batch_sigma
@@ -446,8 +460,56 @@ class NaturalPionFast(NaturalPion):
         # next forward and backward pass. Only with a statistics window: otherwise the hooks would write A and D
         # while the refresh reads them.
         self.async_refresh = async_refresh
+        # cg_iters > 0: that many iterations of preconditioned conjugate gradient on F(X) = G with the *current* W
+        # (S = W^T D W, V = W A W^T; A, D as last collected, every factor shifted by eps*lmax), started from the
+        # basis solution and preconditioned by it. Corrects the basis for the rotation of W since the last refresh.
+        if cg_iters < 0:
+            raise ValueError("cg_iters must be >= 0")
+        self.cg_iters = cg_iters
         self._side = None
         self._pending = None
+
+    def _correct(self, X, G, P, den, items, rows, group):
+        if not self.cg_iters:
+            return X
+        eps = group["eps"]
+        Bs, Cs = [], []
+        for i, slot, _, _ in items:
+            p, W, _, _, b, r, whole = rows[i]
+            st = self.state[p]
+            A = st["cov"].matrix.to(W.dtype)
+            D = st["cov_backward"].matrix.to(W.dtype)
+            if not whole:
+                D = D[r, r]
+            if slot == 2:                                   # in side: F(X) = (S X A + A X S)/2, S = W^T D W
+                Bs.append(A); Cs.append(W.transpose(-1, -2) @ D @ W)
+            else:                                           # out side: (V X D + D X V)/2, V = W A W^T
+                Bs.append(D); Cs.append(W @ A @ W.transpose(-1, -2))
+        B, C = torch.stack(Bs), torch.stack(Cs)
+        eye = torch.eye(B.shape[-1], dtype=B.dtype, device=B.device)
+        B = B + eps * _lmax(B).unsqueeze(-1) * eye
+        C = C + eps * _lmax(C).unsqueeze(-1) * eye
+        Pt = P.transpose(-1, -2)
+        F = lambda Y: 0.5 * (C @ Y @ B + B @ Y @ C)
+        Minv = lambda R: skew(P @ ((Pt @ R @ P) / den) @ Pt)
+        dot = lambda a, b: (a * b).sum(dim=(-2, -1), keepdim=True)
+        r = G - F(X)
+        z = Minv(r)
+        d = z
+        rz = dot(r, z)
+        tiny = torch.finfo(X.dtype).tiny
+        for k in range(self.cg_iters):
+            Ad = F(d)
+            alpha = rz / dot(d, Ad).clamp_min(tiny)
+            X = X + alpha * d
+            if k + 1 == self.cg_iters:
+                break
+            r = r - alpha * Ad
+            z = Minv(r)
+            rz_new = dot(r, z)
+            d = z + (rz_new / rz.clamp_min(tiny)) * d
+            rz = rz_new
+        return skew(X)
 
     def _refresh(self, params: list[torch.Tensor], group: dict) -> None:
         dev = params[0].device

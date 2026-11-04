@@ -13,13 +13,16 @@
 #   0  3000 steps, angle 0.2    -t 01:00:00
 #   1  15000 steps, angle 0.05  -t 03:30:00
 #   sbatch -x rtx6003,rtx6004 -t 01:00:00 --array=0 scripts/paper/natural_pion_fast2.sbatch
+# CG correction (2026-11-05): NP_KWARGS='{"cg_iters": 1}' OUTROOT=npcg1 sbatch --export=ALL ... --array=0
+# HYPOTHESIS: part of the stale-basis cost (T_fac 25 vs 1: 0.0195 at 3000 steps) is the rotation of W since the refresh;
+# PREDICTION: cg_iters 1 improves 3.7224 by 0.005-0.010, 2 by a little more; step +0.03-0.04 s.
 REPO="${REPO:-$DATA_p330/Natural-Pion}"; SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"; DATA="${DATA:-$DATA_p330/c4}"
 T=$SLURM_ARRAY_TASK_ID
 STEPS=(3000 15000); LR=(0.2 0.05); EV=(500 1000)
-OUT="$DATA_p330/runs/npfast2/s${STEPS[$T]}"; mkdir -p "$OUT"
+OUT="$DATA_p330/runs/${OUTROOT:-npfast2}/s${STEPS[$T]}"; mkdir -p "$OUT"
 apptainer exec --env PYTHONUNBUFFERED=1 --env PYTHONPATH="$REPO" --env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
     --nv --bind "$DATA_p330:$DATA_p330" --pwd "$REPO" "$SIF" \
-    python -m harness.run --optimizer natural-pion-fast --np-retraction ns_delta --np-stats-dtype bf16 --lr "${LR[$T]}" \
+    python -m harness.run --optimizer natural-pion-fast --np-retraction ns_delta --np-stats-dtype bf16 --np-kwargs "${NP_KWARGS:-}" --lr "${LR[$T]}" \
       --ngd-beta1 0.9 --train-steps "${STEPS[$T]}" --batch-sequences 512 --micro-batch 256 --rho-micro 128 --precision bf16 \
       --seed 0 --device cuda --log-every 23 --eval-every "${EV[$T]}" --adamw-lr 8e-3 --data-path "$DATA/c4_train.bin" \
       --val-path "$DATA/c4_val.bin" --out-dir "$OUT"

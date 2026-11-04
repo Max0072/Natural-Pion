@@ -253,3 +253,19 @@ def test_turbo_approximations_stay_behind_the_cayley_gate(opts):
     for p, s, w in zip(ps, s0, w0):
         assert torch.allclose(torch.linalg.svdvals(p.detach().double()), s, rtol=1e-4)
         assert (p.detach() - w).abs().max() > 1e-3
+
+
+
+def test_cg_correction_keeps_the_spectrum_and_reduces_the_residual():
+    ps = _weights(31)
+    s0 = [torch.linalg.svdvals(p.detach().double()) for p in ps]
+    opt = NaturalPionFast(ps, lr=0.2, t_fac=10, stats_window=2, cg_iters=2)
+    _drive(opt, ps, 20, 32, _cosine)
+    for p, s in zip(ps, s0):
+        assert torch.allclose(torch.linalg.svdvals(p.detach().double()), s, rtol=1e-4)
+    # zero iterations is the plain fast form, bit for bit
+    a, b = _weights(33), _weights(33)
+    wa = _drive(NaturalPionFast(a, lr=0.2, t_fac=5, stats_window=2), a, 10, 34, _cosine)[-1]
+    wb = _drive(NaturalPionFast(b, lr=0.2, t_fac=5, stats_window=2, cg_iters=0), b, 10, 34, _cosine)[-1]
+    for x, y in zip(wa, wb):
+        assert torch.equal(x, y)
