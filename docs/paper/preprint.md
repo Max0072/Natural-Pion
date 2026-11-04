@@ -65,8 +65,9 @@ provides.
    {{pion3000_s0:.4f}}). The angle rule is what lets the natural gradient through: without momentum and with a
    fixed step size, $F^{-1}G$ reaches only {{len_fixed:.4f}}, against {{dir_fisher_nomom:.4f}} with the angle (Section 5.4).
 4. **A retraction that is exact at large angles.** Natural Pion turns every matrix by 0.05–0.2 rad per step.
-   The Cayley transform keeps the trained spectrum to {{fp32_drift_3000:.2%}}; Pion's truncated exponential moves
-   it by {{ret_trunc_drift:.2%}} (Section 3.4).
+   After 3 000 steps the Cayley transform has moved the spectrum by {{rd_cayley_med:.1e}} of each
+   matrix's scale, Pion's truncated exponential by {{rd_trunc_med:.1e}}, and Cayley computed by Newton–Schulz in
+   correction form by {{rd_ns_delta_med:.1e}} (Sections 3.4, 4.8).
 5. **A fast form.** Amortised refreshes, statistics collected only where they are read, a warm power
    iteration and batching take the step from {{tf1_mom_sps:.2f}} s to {{batch_sps:.3f}} s (Pion: {{pion3000_sps:.3f}} s). Each change is
    measured separately for time and loss (Section 4).
@@ -341,13 +342,13 @@ step. Pion's angles are smaller and uneven: typical block {{pion_angle_block_med
 steps). Per step, the truncated exponential changes singular values by up to {{trunc_err_0.2:.0e}} at 0.2,
 {{trunc_err_0.05:.0e}} at 0.05, and about {{trunc_err_pion:.0e}} at Pion's typical angle.
 
-*Natural Pion Fast, seed 0. Drift: relative change of singular values from initialisation after 3 000 steps,
-median / worst of 56 matrices.*
+*Natural Pion Fast, seed 0. Drift: $\max_i |s_i - s_i^0| / \max_i s_i^0$ after 3 000 steps, median / worst of the
+56 matrices (`scripts/probes/retraction_drift.py`).*
 
 | retraction | val, 3 000 steps ($\theta_0$ 0.2) | val, 15 000 steps ($\theta_0$ 0.05) | drift |
 |---|---|---|---|
-| Cayley | {{batch_val:.4f}} | {{np15k:.4f}} | {{fp32_drift_3000:.2%}} / {{fp32_drift_3000_max:.2%}} |
-| truncated exponential (Pion's) | {{ret_trunc_3000:.4f}} | {{ret_trunc_15000:.4f}} | {{ret_trunc_drift:.2%}} / {{ret_trunc_drift_max:.2%}} |
+| Cayley | {{batch_val:.4f}} | {{np15k:.4f}} | {{rd_cayley_med:.1e}} / {{rd_cayley_max:.1e}} |
+| truncated exponential (Pion's) | {{ret_trunc_3000:.4f}} | {{ret_trunc_15000:.4f}} | {{rd_trunc_med:.1e}} / {{rd_trunc_max:.1e}} |
 
 The loss does not separate them at these horizons (same run on RTX and B200: {{ret_hw_noise:.3f}}); the spectrum does.
 
@@ -515,11 +516,11 @@ rotation keeps, grows by a median {{diag_ns_step:.1e}} per training step (exact 
 $R = I + 2z$) nothing is next to 1, at the same cost. 200 steps of a $1376 \times 1376$ rotation at angle 0.05
 (`scripts/probes/ns_rounding.py`):
 
-| Cayley computed by | $\Delta\|W\|_F^2$, bare matrix | val, 3 000 steps | drift (median / worst) | s / step, RTX | s / step, B200 |
+| Cayley computed by | $\Delta\|W\|_F^2$, bare matrix | val, 3 000 steps | drift (as in Section 3.4) | s / step, RTX | s / step, B200 |
 |---|---|---|---|---|---|
-| exact solve | {{rnd_cayley_0.05:+.1e}} | {{batch_val:.4f}} | {{fp32_drift_3000:.2%}} / {{fp32_drift_3000_max:.2%}} | {{batch_sps:.3f}} | — |
-| Newton–Schulz, standard | {{rnd_ns_0.05:+.1e}} | {{ret_ns_3000:.4f}} | {{ret_ns_drift:.2%}} / {{ret_ns_drift_max:.2%}} | {{ret_ns_sps:.3f}} | {{ret_ns_sps_b200:.3f}} |
-| Newton–Schulz in $Z - I$ | {{rnd_ns_delta_0.05:+.1e}} | {{ret_nsd_3000:.4f}} (B200) | {{ret_nsd_drift:.2%}} / {{ret_nsd_drift_max:.2%}} | — | {{ret_nsd_sps_b200:.3f}} |
+| exact solve | {{rnd_cayley_0.05:+.1e}} | {{batch_val:.4f}} | {{rd_cayley_med:.1e}} / {{rd_cayley_max:.1e}} | {{batch_sps:.3f}} | — |
+| Newton–Schulz, standard | {{rnd_ns_0.05:+.1e}} | {{ret_ns_3000:.4f}} | {{rd_ns_med:.1e}} / {{rd_ns_max:.1e}} | {{ret_ns_sps:.3f}} | {{ret_ns_sps_b200:.3f}} |
+| Newton–Schulz in $Z - I$ | {{rnd_ns_delta_0.05:+.1e}} | {{ret_nsd_3000:.4f}} (B200) | {{rd_ns_delta_med:.1e}} / {{rd_ns_delta_max:.1e}} | — | {{ret_nsd_sps_b200:.3f}} |
 
 Natural Pion Fast uses the $Z - I$ form from here on; every run in Section 5 used the exact solve.
 
@@ -790,7 +791,8 @@ reports modest gains over its truncated exponential; at Natural Pion's angles it
   at shorter horizons agree in sign and size.
 * **One code base.** Our Pion ends {{pion_vs_paper:.3f}} above the Pion paper's training loss; we compare within our
   setting only.
-* **Exactness in practice.** In fp32 the spectrum drifts by {{fp32_drift_3000:.2%}} (median matrix) over 3 000 steps.
+* **Exactness in practice.** In fp32 the exact Cayley solve inflates the spectrum by {{rd_cayley_signed:+.2%}} over 3 000 steps;
+  the Newton–Schulz form of Section 4.8 does not.
 * **Only Pion as a baseline.** We compare against the published Pion configuration only, not against
   AdamW or Muon, and only on validation loss, not on downstream tasks.
 * **The peak angle depends on the horizon.** The best peak falls with the training length (0.2 at 3 000

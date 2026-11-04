@@ -65,8 +65,9 @@ provides.
    3.8412). The angle rule is what lets the natural gradient through: without momentum and with a
    fixed step size, $F^{-1}G$ reaches only 3.8419, against 3.7399 with the angle (Section 5.4).
 4. **A retraction that is exact at large angles.** Natural Pion turns every matrix by 0.05–0.2 rad per step.
-   The Cayley transform keeps the trained spectrum to 0.04%; Pion's truncated exponential moves
-   it by 0.59% (Section 3.4).
+   After 3 000 steps the Cayley transform has moved the spectrum by $3.6 \cdot 10^{-4}$ of each
+   matrix's scale, Pion's truncated exponential by $9.7 \cdot 10^{-4}$, and Cayley computed by Newton–Schulz in
+   correction form by $2.8 \cdot 10^{-6}$ (Sections 3.4, 4.8).
 5. **A fast form.** Amortised refreshes, statistics collected only where they are read, a warm power
    iteration and batching take the step from 1.77 s to 0.596 s (Pion: 0.468 s). Each change is
    measured separately for time and loss (Section 4).
@@ -341,13 +342,13 @@ step. Pion's angles are smaller and uneven: typical block 0.026 rad per step (p9
 steps). Per step, the truncated exponential changes singular values by up to $4 \cdot 10^{-4}$ at 0.2,
 $2 \cdot 10^{-6}$ at 0.05, and about $10^{-7}$ at Pion's typical angle.
 
-*Natural Pion Fast, seed 0. Drift: relative change of singular values from initialisation after 3 000 steps,
-median / worst of 56 matrices.*
+*Natural Pion Fast, seed 0. Drift: $\max_i |s_i - s_i^0| / \max_i s_i^0$ after 3 000 steps, median / worst of the
+56 matrices (`scripts/probes/retraction_drift.py`).*
 
 | retraction | val, 3 000 steps ($\theta_0$ 0.2) | val, 15 000 steps ($\theta_0$ 0.05) | drift |
 |---|---|---|---|
-| Cayley | 3.7242 | 3.4720 | 0.04% / 0.29% |
-| truncated exponential (Pion's) | 3.7217 | 3.4733 | 0.59% / 1.49% |
+| Cayley | 3.7242 | 3.4720 | $3.6 \cdot 10^{-4}$ / $4.3 \cdot 10^{-4}$ |
+| truncated exponential (Pion's) | 3.7217 | 3.4733 | $9.7 \cdot 10^{-4}$ / $3.4 \cdot 10^{-3}$ |
 
 The loss does not separate them at these horizons (same run on RTX and B200: 0.003); the spectrum does.
 
@@ -515,11 +516,11 @@ rotation keeps, grows by a median $9.5 \cdot 10^{-6}$ per training step (exact s
 $R = I + 2z$) nothing is next to 1, at the same cost. 200 steps of a $1376 \times 1376$ rotation at angle 0.05
 (`scripts/probes/ns_rounding.py`):
 
-| Cayley computed by | $\Delta\|W\|_F^2$, bare matrix | val, 3 000 steps | drift (median / worst) | s / step, RTX | s / step, B200 |
+| Cayley computed by | $\Delta\|W\|_F^2$, bare matrix | val, 3 000 steps | drift (as in Section 3.4) | s / step, RTX | s / step, B200 |
 |---|---|---|---|---|---|
-| exact solve | $+3.4 \cdot 10^{-5}$ | 3.7242 | 0.04% / 0.29% | 0.596 | — |
-| Newton–Schulz, standard | $+2.8 \cdot 10^{-4}$ | 3.7252 | 1.26% / 1.77% | 0.558 | 0.453 |
-| Newton–Schulz in $Z - I$ | $+1.6 \cdot 10^{-7}$ | 3.7224 (B200) | 0.03% / 1.42% | — | 0.444 |
+| exact solve | $+3.4 \cdot 10^{-5}$ | 3.7242 | $3.6 \cdot 10^{-4}$ / $4.3 \cdot 10^{-4}$ | 0.596 | — |
+| Newton–Schulz, standard | $+2.8 \cdot 10^{-4}$ | 3.7252 | $1.2 \cdot 10^{-2}$ / $1.7 \cdot 10^{-2}$ | 0.558 | 0.453 |
+| Newton–Schulz in $Z - I$ | $+1.6 \cdot 10^{-7}$ | 3.7224 (B200) | $2.8 \cdot 10^{-6}$ / $3.9 \cdot 10^{-6}$ | — | 0.444 |
 
 Natural Pion Fast uses the $Z - I$ form from here on; every run in Section 5 used the exact solve.
 
@@ -790,7 +791,8 @@ reports modest gains over its truncated exponential; at Natural Pion's angles it
   at shorter horizons agree in sign and size.
 * **One code base.** Our Pion ends 0.016 above the Pion paper's training loss; we compare within our
   setting only.
-* **Exactness in practice.** In fp32 the spectrum drifts by 0.04% (median matrix) over 3 000 steps.
+* **Exactness in practice.** In fp32 the exact Cayley solve inflates the spectrum by +0.03% over 3 000 steps;
+  the Newton–Schulz form of Section 4.8 does not.
 * **Only Pion as a baseline.** We compare against the published Pion configuration only, not against
   AdamW or Muon, and only on validation loss, not on downstream tasks.
 * **The peak angle depends on the horizon.** The best peak falls with the training length (0.2 at 3 000

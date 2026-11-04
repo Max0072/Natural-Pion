@@ -477,6 +477,19 @@ for ret in ("cayley", "ns", "trunc", "ns_delta"):
     else:
         for k in ("step", "neg", "sum"):
             missing(f"diag_{ret}_{k}", f"RETS={ret} sbatch scripts/probes/ns_diag.sbatch")
+# trained spectrum drift per retraction, in units of each matrix's largest singular value (retraction_drift.py)
+f = R / "probes" / "retraction_drift.json"
+if f.exists():
+    d = json.load(open(f))
+    for tag in ("cayley", "ns", "trunc", "ns_delta"):
+        if tag in d:
+            put(f"rd_{tag}_med", d[tag]["scaled_median"], f"{f.name}: median over 56 matrices of max|s1-s0|/max s0")
+            put(f"rd_{tag}_max", d[tag]["scaled_max"], f"{f.name}: worst matrix, same measure")
+            put(f"rd_{tag}_signed", d[tag]["signed_mean"], f"{f.name}: mean signed relative change")
+        else:
+            missing(f"rd_{tag}_med", "python scripts/probes/retraction_drift.py")
+else:
+    missing("rd_cayley_med", "python scripts/probes/retraction_drift.py")
 # rounding of the retractions on bare matrices (scripts/probes/ns_rounding.py)
 f = R / "probes" / "ns_rounding.json"
 if f.exists():

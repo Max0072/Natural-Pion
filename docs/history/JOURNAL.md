@@ -7107,3 +7107,14 @@ with the same shared A. ns_diag over 200 training steps: ||W||_F^2 +2e-8 in tota
 NS +1.9e-3), falling on 92 of 200 steps, so the bias is gone. User: adopt. `NaturalPionFast(retraction="ns_delta")`
 is the class default; `NaturalPion` (reference) keeps the exact solve; the harness keeps `np_retraction="cayley"` so
 earlier hashes do not collide. Trained-spectrum drift of the checkpoint pending (job 400335).
+
+## 2026-11-04, late — spectrum drift measured in each matrix's own scale
+
+The "worst matrix" relative drift (max_i |s1/s0 - 1|) was set by the smallest singular value of some square
+attention matrix (s0 ~ 1e-4 against s_max ~ 0.9): 1e-6 absolute, fp32 round-off, read as 0.3-1.4%. Two Cayley
+runs with the same mathematics gave 0.29% and 0.86% on it. Replaced by max_i |s1 - s0| / max s0
+(`scripts/probes/retraction_drift.py`, one process per checkpoint: a one-off script that rebuilt several models in
+one process gave wrong numbers for all but the first and was discarded). 3000 steps, median / worst of 56:
+exact Cayley 3.6e-4 / 4.3e-4 (signed +0.035%), truncated exponential 9.7e-4 / 3.4e-3, standard NS 1.2e-2 / 1.7e-2,
+NS in Z - I 2.8e-6 / 3.9e-6. The exact solve has a small systematic inflation of its own; the Z - I form does not.
+Preprint contribution 4, 3.4, 4.8 and Limitations now use this measure.
