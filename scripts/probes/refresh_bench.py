@@ -73,6 +73,23 @@ def lmax_power(C, iters=30):
     return (v.transpose(-1, -2) @ C @ v).squeeze(-1)          # (..., 1)
 
 
+def inv_half_ns_residual(B, iters=12):
+    """The same coupled Newton-Schulz carried in the residual E = I - Z Y: E <- 3/4 E^2 + 1/4 E^3,
+    Y <- Y + Y E / 2, Z <- Z + E Z / 2, so nothing is formed next to the identity."""
+    n = B.shape[-1]
+    eye = torch.eye(n, device=B.device, dtype=B.dtype)
+    lmax = torch.linalg.matrix_norm(B, ord="fro", keepdim=True)
+    Bd = B + EPS * lmax * eye
+    s = torch.linalg.matrix_norm(Bd, ord="fro", keepdim=True)
+    Y, Z = Bd / s, eye.expand_as(B).clone()
+    E = eye - Y
+    for _ in range(iters):
+        Y, Z = Y + 0.5 * (Y @ E), Z + 0.5 * (E @ Z)
+        E2 = E @ E
+        E = 0.75 * E2 + 0.25 * (E2 @ E)
+    return Z / s.sqrt()
+
+
 def congruence(Bih, C, floor_c=True):
     if floor_c == "shift":
         # C + eps * lmax(C) I instead of flooring C's eigenvalues: no eigendecomposition of C
@@ -149,6 +166,11 @@ def main():
         "R4 R1+R2, C unfloored": dict(share=True, checks=False, floor_c=False),
         "R6 R1+R2, A^-1/2 by Newton-Schulz": dict(share=True, checks=False, inv_half=inv_half_ns),
         "R4b R1+R2, C shifted by eps*lmax": dict(share=True, checks=False, floor_c="shift"),
+        "R6 NS root, 20 iterations": dict(share=True, checks=False, inv_half=lambda B: inv_half_ns(B, 20)),
+        "R6 NS root, 30 iterations": dict(share=True, checks=False, inv_half=lambda B: inv_half_ns(B, 30)),
+        "R6r NS root in residual form, 12": dict(share=True, checks=False, inv_half=lambda B: inv_half_ns_residual(B, 12)),
+        "R6r NS root in residual form, 20": dict(share=True, checks=False, inv_half=lambda B: inv_half_ns_residual(B, 20)),
+        "R6r NS root in residual form, 30": dict(share=True, checks=False, inv_half=lambda B: inv_half_ns_residual(B, 30)),
     }
     res = {"gpu": torch.cuda.get_device_name(0), "checkpoint": sys.argv[1]}
     with exact_fp32():
