@@ -27,17 +27,23 @@
 #   sbatch -x rtx6003,rtx6004 -t 04:30:00 --array=0-8%3 scripts/paper/step_norm_long.sbatch
 #   sbatch -x rtx6003,rtx6004 -t 01:30:00 --array=9-10 scripts/paper/step_norm_long.sbatch
 #   sbatch -x rtx6003,rtx6004 -t 16:00:00 --array=11-14 scripts/paper/step_norm_long.sbatch
+# Budget curve, tasks 18-22 (user, 2026-11-04), seed 0: points that let scripts/analysis/budget_fit.py interpolate at
+#   every Pion target. Ours at 9000 steps, angle 0.1 / 0.05 (best taken, as at every horizon), ours 30000 at 0.05;
+#   Pion 30000 and 56900. PREDICTION: power-law and interpolation savings agree within 0.05 once these are in.
+#   sbatch -x rtx6003,rtx6004 -t 02:30:00 --array=18-19 scripts/paper/step_norm_long.sbatch
+#   sbatch -x rtx6003,rtx6004 -t 07:00:00 --array=20-21 scripts/paper/step_norm_long.sbatch
+#   sbatch -x rtx6003,rtx6004 -t 10:00:00 --array=22 scripts/paper/step_norm_long.sbatch
 set -uo pipefail
 REPO="${REPO:-$DATA_p330/Natural-Pion}"
 SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"
 DATA="${DATA:-$DATA_p330/c4}"
 T=$SLURM_ARRAY_TASK_ID
 #      0        1         2       3        4         5       6        7         8       9           10          11        12         13        14         15     16     17
-KIND=( pion     pion      ours    pion     pion      ours    pion     pion      ours    pion        pion        pion      ours       ours      ours       pion  pion  pion )
-STEPS=( 3840    19200     15000   3840     19200     15000   3840     19200     15000   3840        3840        73242     56900      56900     73242      3840  19200 19200 )
-LR=(   1e-3     1e-3      0.05    1e-3     1e-3      0.05    1e-3     1e-3      0.05    5e-4        2e-3        1e-3      0.025      0.05      0.05       4e-3  2e-3  4e-3 )
-SEED=( 1        1         1       2        2         2       3        3         3       0           0           0         0          0         0          0     0     0 )
-EV=(   500      1000      1000    500      1000      1000    500      1000      1000    500         500         2000      2000       2000      2000       500   1000  1000 )
+KIND=( pion     pion      ours    pion     pion      ours    pion     pion      ours    pion        pion        pion      ours       ours      ours       pion  pion  pion  ours ours ours  pion  pion )
+STEPS=( 3840    19200     15000   3840     19200     15000   3840     19200     15000   3840        3840        73242     56900      56900     73242      3840  19200 19200 9000 9000 30000 30000 56900 )
+LR=(   1e-3     1e-3      0.05    1e-3     1e-3      0.05    1e-3     1e-3      0.05    5e-4        2e-3        1e-3      0.025      0.05      0.05       4e-3  2e-3  4e-3  0.1  0.05 0.05  1e-3  1e-3 )
+SEED=( 1        1         1       2        2         2       3        3         3       0           0           0         0          0         0          0     0     0     0    0    0     0     0 )
+EV=(   500      1000      1000    500      1000      1000    500      1000      1000    500         500         2000      2000       2000      2000       500   1000  1000  1000 1000 2000  2000  2000 )
 K="${KIND[$T]}"; ST="${STEPS[$T]}"; L="${LR[$T]}"; S="${SEED[$T]}"
 N="$K$ST-lr$L"; OUT="$DATA_p330/runs/stepnormlong/$N"; mkdir -p "$OUT"
 echo "node $(hostname) task $T $N seed $S"
