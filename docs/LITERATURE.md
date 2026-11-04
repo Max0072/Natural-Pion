@@ -45,7 +45,7 @@ The combination, none of whose parts is new alone: the Fisher operator on the
 **bivector** tangent space of the two-sided rotation, obtained in closed form
 because the per-sample generator is a wedge of two vectors and the K-FAC
 independence approximation then factorises it through the activation covariance
-(`F(X) = 2(SXA + AXS)`, one eigendecomposition per side); an exact Cayley
+(`F(X) = ½(SXA + AXS)`, one eigendecomposition per side); an exact Cayley
 retraction that keeps the frozen spectrum exact; applied to LLM pretraining on top
 of Pion, with tuned baselines. None of the works above does this, per what could
 be read.

@@ -317,7 +317,7 @@ sides (both share $c_t$, and each side's largest singular value is at most $\sig
 $R_{\mathrm{out}} W R_{\mathrm{in}} - W = (R_{\mathrm{out}} - I)\,W R_{\mathrm{in}} + W\,(R_{\mathrm{in}} - I)$. $\square$
 
 So the angle rule is a bound on the relative change of every weight in spectral norm, the quantity that
-Muon-style methods and the modular-norm view (Bernstein & Newhouse, 2024) control directly. Here it
+Muon-style methods and the modular norm (Large et al., 2024) control directly. Here it
 follows from the geometry of the rotation. The
 other planes turn in proportion to their singular values, so the natural gradient's own ranking of
 directions within a matrix is kept. $\theta_t$ follows a cosine schedule from a peak $\theta_0$.
@@ -753,16 +753,17 @@ momentum at the same step.
 ## 6 Related work
 
 <!-- Checked 2026-11-03 against the method sections of FISMO, Go-MUON, ISO, POET-X, POET and 2207.07287
-(arXiv HTML); the newer items (Mousse) from abstracts only. Re-run the novelty search before submission. -->
+(arXiv HTML); the newer items (Mousse) from abstracts only. References and claims re-checked 2026-11-04 against
+arXiv full texts; novelty search re-run the same day (nearest: COEC 2608.21142, Symo 2606.00442, neither a
+Fisher on the orbit). Re-run before submission. -->
 
-**Orthogonal equivalence training.** POET (Qiu et al., 2025) reparameterises $W = R W_0 P$ with orthogonal
-$R$, $P$ built from skew-symmetric parameters by a truncated Cayley–Neumann series and trained with AdamW;
-POET-X (Qiu et al., 2026) makes it memory-efficient with block-stochastic rotations. Pion (Shi et al.,
+**Orthogonal equivalence training.** POET (Qiu et al., 2025), following orthogonal fine-tuning (Qiu et al.,
+2023), reparameterises $W = R W_0 P$ with orthogonal $R$, $P$ built from skew-symmetric parameters by a
+truncated Cayley–Neumann series; POET-X (Qiu et al., 2026) makes it memory- and compute-efficient. Pion (Shi et al.,
 2026) turns the same principle into an optimizer, with updates in the Lie algebra. ISO (Zhu et al.,
 2026) keeps the spectrum of a pretrained model fixed through a frame parameterisation $W = U\Sigma_0 V^\top$,
 applies AdamW or Muon to the frames and retracts them by a polar map, for reinforcement learning from
-verifiable rewards; it observes that "spectrum preservation alone does not determine optimization
-quality; how the fixed-spectrum geometry is parameterized and optimized is consequential". None of these
+verifiable rewards, and reports reaching Pion's final accuracy faster on Qwen3-4B. None of these
 uses a curvature metric on the orbit: they move along the gradient with a first-order or orthogonalised
 preconditioner. Natural Pion keeps Pion's manifold and changes the metric to the Fisher.
 
@@ -780,23 +781,23 @@ natural gradient for orthogonal-equivalence updates, in prior work.
 additive step. FISMO (Xu et al., 2026) fits Kronecker factors to gradient outer products and takes
 $W \leftarrow W - \eta P^{-1/2}\,\mathrm{Polar}(\tilde G)\, Q^{-1/2}$ under a spectral-norm trust region in that
 metric. Go-MUON (Che, 2026) applies Muon between inverse fourth roots of K-FAC's activation and
-output-gradient moments, and states that the result is "not a natural-gradient step". Mousse (2026) runs
+output-gradient moments. Mousse (Zhang et al., 2026) runs
 Muon in Shampoo-whitened coordinates. All three are additive and change the weight spectrum; Natural
 Pion's update is a rotation and keeps it.
 
 **Orthogonalised additive updates.** Muon (Jordan et al., 2024) replaces the update by its orthogonal
 polar factor, $W \leftarrow W - \eta\, UV^\top$, which equalises the update's singular values but
-leaves the weight's spectrum free. It is additive and does not preserve the spectrum. Pion reports it
-as competitive with Muon at 1.3B parameters.
+leaves the weight's spectrum free.
 
 **Step size from geometry.** Grafting (Agarwal et al., 2020) separates the direction of one optimizer
-from the step size of another. Muon and the modular-norm view (Bernstein & Newhouse, 2024) set the
+from the step size of another. Muon and the modular norm (Large et al., 2024; Bernstein & Newhouse, 2024) set the
 step in the spectral norm. Our length rule is spectral as well, but applied to the natural-gradient
 generator. Its unit is the rotation angle, which the multiplicative update makes literal.
 
 **Retractions on the orthogonal group.** The Cayley transform is a standard retraction on the
-orthogonal and Stiefel manifolds (e.g. Wen & Yin, 2013; Li, Li & Todorovic, 2020). We use it for exact
-preservation of the spectrum.
+orthogonal and Stiefel manifolds (e.g. Wen & Yin, 2013; Li, Li & Todorovic, 2020). Pion tested it and
+reports modest gains over its truncated exponential; at Natural Pion's angles it is what keeps the spectrum
+(Section 3.4).
 
 ---
 
@@ -830,26 +831,26 @@ of all matrices takes {{rl_refactor_b200:.0f}} s on one B200.
 
 ## References
 
-*(To be verified and completed before submission; arXiv identifiers as recorded in the project notes.)*
-
-- Che, T. *Second-order Muon done right: a principled marriage of spectral geometry and curvature (Go-MUON).* arXiv:2608.09763, 2026.
-- Hu, J., Ao, R., So, A. M.-C., Yang, M., Wen, Z. *Riemannian natural gradient methods.* SIAM J. Sci. Comput. 46(1), 2024; arXiv:2207.07287.
-- Mousse. arXiv:2603.09697, 2026. *(abstract only; authors to add)*
+- Che, T. *Second-order Muon done right: a principled marriage of spectral geometry and curvature.* arXiv:2608.09763, 2026.
+- Hu, J., Ao, R., So, A. M.-C., Yang, M., Wen, Z. *Riemannian natural gradient methods.* SIAM J. Sci. Comput. 46(1):A204–A231, 2024; arXiv:2207.07287.
+- Zhang, Y., Xing, S., Huang, J., Lv, K., Zhou, Y., Qiu, X., Guo, Q., Chen, K. *Mousse: rectifying the geometry of Muon with curvature-aware preconditioning.* arXiv:2603.09697, 2026.
 - Qiu, Z., Liu, L., Weller, A., Shi, H., Liu, W. *POET-X: memory-efficient LLM training by scaling orthogonal transformation.* ICML 2026; arXiv:2603.05500.
 - Xu, C., Yan, W., Zhang, Y.-J. A. *FISMO: Fisher-structured momentum-orthogonalized optimizer.* arXiv:2601.21750, 2026.
 - Zhu, H., Cong, W., Sha, Z., et al. *ISO: an RLVR-native optimization stack.* arXiv:2607.19331, 2026.
 - Agarwal, N., Anil, R., Hazan, E., Koren, T., Zhang, C. *Disentangling adaptive gradient methods from learning rates.* arXiv:2002.11803, 2020.
-- Amari, S. *Natural gradient works efficiently in learning.* Neural Computation, 1998.
-- Bernstein, J., Newhouse, L. *Old optimizer, new norm: an anthology.* 2024.
+- Amari, S. *Natural gradient works efficiently in learning.* Neural Computation 10(2):251–276, 1998.
+- Bernstein, J., Newhouse, L. *Old optimizer, new norm: an anthology.* OPT Workshop 2024; arXiv:2409.20325.
 - Gupta, V., Koren, T., Singer, Y. *Shampoo: preconditioned stochastic tensor optimization.* ICML 2018.
-- Jordan, K., et al. *Muon: an optimizer for hidden layers in neural networks.* 2024.
+- Jordan, K., Jin, Y., Boza, V., You, J., Cesista, F., Newhouse, L., Bernstein, J. *Muon: an optimizer for hidden layers in neural networks.* 2024. https://kellerjordan.github.io/posts/muon/
 - Kakade, S. *A natural policy gradient.* NeurIPS 2001.
 - Li, J., Li, F., Todorovic, S. *Efficient Riemannian optimization on the Stiefel manifold via the Cayley transform.* ICLR 2020, arXiv:2002.01113.
 - Martens, J., Grosse, R. *Optimizing neural networks with Kronecker-factored approximate curvature.* ICML 2015, arXiv:1503.05671.
-- Martin, C. H., Mahoney, M. W. *Implicit self-regularization in deep neural networks.* JMLR, 2021.
+- Martin, C. H., Mahoney, M. W. *Implicit self-regularization in deep neural networks: evidence from random matrix theory and implications for learning.* JMLR 22(165):1–73, 2021.
 - Qiu, Z., Buchholz, S., Xiao, T. Z., Dax, M., Schölkopf, B., Liu, W. *Reparameterized LLM training via orthogonal equivalence transformation (POET).* NeurIPS 2025; arXiv:2506.08001.
-- Shi, et al. *Pion: a spectrum-preserving optimizer via orthogonal equivalence transformation.* arXiv:2605.12492, 2026.
-- Wen, Z., Yin, W. *A feasible method for optimization with orthogonality constraints.* Mathematical Programming, 2013.
+- Shi, K., Li, H., Qiu, Z., Wen, Y., Buchholz, S., Liu, W. *Pion: a spectrum-preserving optimizer via orthogonal equivalence transformation.* arXiv:2605.12492, 2026.
+- Wen, Z., Yin, W. *A feasible method for optimization with orthogonality constraints.* Mathematical Programming 142:397–434, 2013.
+- Large, T., Liu, Y., Huh, M., Bahng, H., Isola, P., Bernstein, J. *Scalable optimization in the modular norm.* NeurIPS 2024; arXiv:2405.14813.
+- Qiu, Z., Liu, W., Feng, H., Xue, Y., Feng, Y., Liu, Z., Zhang, D., Weller, A., Schölkopf, B. *Controlling text-to-image diffusion by orthogonal finetuning.* NeurIPS 2023; arXiv:2306.07280.
 - Raffel, C., et al. *Exploring the limits of transfer learning with a unified text-to-text transformer (C4, T5).* JMLR 2020.
 
 ---
