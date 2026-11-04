@@ -770,7 +770,9 @@ preconditioner. Natural Pion keeps Pion's manifold and changes the metric to the
 **Natural gradient on manifolds and Kronecker factorisations.** The natural gradient (Amari, 1998) has a
 long line of approximations. K-FAC (Martens & Grosse, 2015) factorises the Fisher of a layer into input
 and output-gradient moments; Shampoo (Gupta et al., 2018) builds Kronecker factors from the gradient
-itself. Riemannian natural gradient methods (Hu et al., 2024) define the Fisher on a manifold's tangent
+itself. On orthogonality-constrained parameters the natural Riemannian gradient goes back to ICA on
+Stiefel manifolds (Amari, 1999), and gradient flows that preserve eigenvalues or singular values are
+classical (Helmke & Moore, 1994, Ch. 2–3). Riemannian natural gradient methods (Hu et al., 2024) define the Fisher on a manifold's tangent
 space, use a retraction, and work out a K-FAC-style Kronecker approximation for Grassmann manifolds.
 Natural Pion is an instance of that framework on a different manifold, the orbit of a matrix under
 two-sided rotations. There the K-FAC Fisher on the generators is the two-term operator of Proposition 1
@@ -832,6 +834,7 @@ of all matrices takes 58 s on one B200.
 ## References
 
 - Che, T. *Second-order Muon done right: a principled marriage of spectral geometry and curvature.* arXiv:2608.09763, 2026.
+- Helmke, U., Moore, J. B. *Optimization and Dynamical Systems.* Springer, 1994.
 - Hu, J., Ao, R., So, A. M.-C., Yang, M., Wen, Z. *Riemannian natural gradient methods.* SIAM J. Sci. Comput. 46(1):A204–A231, 2024; arXiv:2207.07287.
 - Zhang, Y., Xing, S., Huang, J., Lv, K., Zhou, Y., Qiu, X., Guo, Q., Chen, K. *Mousse: rectifying the geometry of Muon with curvature-aware preconditioning.* arXiv:2603.09697, 2026.
 - Qiu, Z., Liu, L., Weller, A., Shi, H., Liu, W. *POET-X: memory-efficient LLM training by scaling orthogonal transformation.* ICML 2026; arXiv:2603.05500.
@@ -839,6 +842,7 @@ of all matrices takes 58 s on one B200.
 - Zhu, H., Cong, W., Sha, Z., et al. *ISO: an RLVR-native optimization stack.* arXiv:2607.19331, 2026.
 - Agarwal, N., Anil, R., Hazan, E., Koren, T., Zhang, C. *Disentangling adaptive gradient methods from learning rates.* arXiv:2002.11803, 2020.
 - Amari, S. *Natural gradient works efficiently in learning.* Neural Computation 10(2):251–276, 1998.
+- Amari, S. *Natural gradient learning for over- and under-complete bases in ICA.* Neural Computation 11(8):1875–1883, 1999.
 - Bernstein, J., Newhouse, L. *Old optimizer, new norm: an anthology.* OPT Workshop 2024; arXiv:2409.20325.
 - Gupta, V., Koren, T., Singer, Y. *Shampoo: preconditioned stochastic tensor optimization.* ICML 2018.
 - Jordan, K., Jin, Y., Boza, V., You, J., Cesista, F., Newhouse, L., Bernstein, J. *Muon: an optimizer for hidden layers in neural networks.* 2024. https://kellerjordan.github.io/posts/muon/
