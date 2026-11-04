@@ -31,7 +31,10 @@ REC = {"ret": RET, "steps": [], "sigma_ratio": [], "precision": []}
 class Probe(NaturalPionFast):
     def _sigma(self, state, group, X_in, X_out):
         s = super()._sigma(state, group, X_in, X_out)
-        exact = max(torch.linalg.matrix_norm(X_in.float(), 2).item(), torch.linalg.matrix_norm(X_out.float(), 2).item())
+        # ||X||_2 for skew X is sqrt(lambda_max(-X^2)); svd on skew matrices (paired singular values) falls back
+        # to a slow path in cusolver, eigvalsh does not.
+        nrm = lambda X: torch.linalg.eigvalsh(-(X.double() @ X.double())).amax().clamp_min(0).sqrt().item()
+        exact = max(nrm(X_in), nrm(X_out))
         self._ratios.append(s / max(exact, 1e-30))
         return s
 
