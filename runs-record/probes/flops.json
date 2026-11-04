@@ -1,0 +1,46 @@
+{
+ "60M": {
+  "model": 34468723163136,
+  "pion": {
+   "generators": 81025564672,
+   "truncated exp": 148676018176,
+   "RMS scale": 81025564672,
+   "rotation": 81025564672
+  },
+  "natural_pion_fast": {
+   "generators": 81025564672,
+   "F^-1": 594704072704,
+   "Cayley (Newton-Schulz)": 594704072704,
+   "rotation": 81025564672,
+   "statistics": 3914433193574.4,
+   "refresh": 116502298624.0
+  },
+  "pion_total": 391752712192,
+  "np_total": 5382394766950.4,
+  "pion_overhead": 0.01136545471492765,
+  "np_overhead": 0.1561530069296801,
+  "np_over_pion": 1.1431604683942498
+ },
+ "1.3B": {
+  "model": 1021315305701376,
+  "pion": {
+   "generators": 15388063039488,
+   "truncated exp": 27974557848576,
+   "RMS scale": 15388063039488,
+   "rotation": 15388063039488
+  },
+  "natural_pion_fast": {
+   "generators": 15388063039488,
+   "F^-1": 111898231394304,
+   "Cayley (Newton-Schulz)": 111898231394304,
+   "rotation": 15388063039488,
+   "statistics": 185707521984430.1,
+   "refresh": 21932217851105.28
+  },
+  "pion_total": 74138746967040,
+  "np_total": 462212328703119.4,
+  "pion_overhead": 0.072591438269033,
+  "np_overhead": 0.4525657513628474,
+  "np_over_pion": 1.3542582007805541
+ }
+}

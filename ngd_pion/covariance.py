@@ -32,7 +32,7 @@ class CovarianceAccumulator:
     """
 
     def __init__(self, beta: float = 0.95, dtype: torch.dtype = torch.float32,
-                 input_dtype: torch.dtype | None = None) -> None:
+                 input_dtype: torch.dtype | None = None, stride: int = 1) -> None:
         if not 0.0 <= beta < 1.0:
             raise ValueError(f"beta must lie in [0, 1), got {beta}")
         if dtype not in _ALLOWED:
@@ -48,6 +48,9 @@ class CovarianceAccumulator:
         # an fp32 result: the gram of bf16 vectors, still PSD (the safe case described in `observe`), at
         # tensor-core speed. The assembled matrix is never rounded.
         self.input_dtype = input_dtype
+        # `stride > 1` keeps every stride-th token (an approximation, for NaturalPionTurbo only): the gram is the mean
+        # over the kept tokens, so the scale of A and D is unchanged.
+        self.stride = stride
         self._matrix: torch.Tensor | None = None
         self.count = 0
 
@@ -73,7 +76,11 @@ class CovarianceAccumulator:
         enough to full that the allocator was already failing to map 20 MB.
         """
         input_dtype = getattr(self, "input_dtype", None)   # checkpoints from before the option lack it
-        flat = x.detach().reshape(-1, x.shape[-1]).to(input_dtype or self.dtype)
+        flat = x.detach().reshape(-1, x.shape[-1])
+        stride = getattr(self, "stride", 1)
+        if stride > 1:
+            flat = flat[::stride]
+        flat = flat.to(input_dtype or self.dtype)
         if flat.shape[0] == 0:
             return
         # Two separate ways this matmul stops being fp32, and both have to be

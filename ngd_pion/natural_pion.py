@@ -36,8 +36,9 @@ import torch
 
 from .covariance import CovarianceAccumulator
 from .direction import generators
-from .factorization import (basis_congruence, basis_congruence_from_root, basis_identity_anchor,
+from .factorization import (Basis, basis_congruence, basis_congruence_from_root, basis_identity_anchor,
                             floored_inverse_root)
+from .linalg import floor_eigenvalues, safe_eigh
 from .linalg import exact_fp32, is_identity, skew, spectral_norm
 
 __all__ = ["NaturalPion", "NaturalPionFast", "NaturalPionTurbo"]
@@ -152,7 +153,8 @@ class NaturalPion(torch.optim.Optimizer):
     def _stat(self, param: torch.Tensor, key: str, beta: float) -> CovarianceAccumulator:
         state = self.state[param]
         if key not in state:
-            state[key] = CovarianceAccumulator(beta=beta, dtype=torch.float32, input_dtype=self._input_dtype)
+            state[key] = CovarianceAccumulator(beta=beta, dtype=torch.float32, input_dtype=self._input_dtype,
+                                               stride=getattr(self, "_stats_stride", 1))
             state.setdefault("step", 0)
             state.setdefault("since_refactor", 0)
         return state[key]
@@ -224,7 +226,7 @@ class NaturalPion(torch.optim.Optimizer):
             gram_out = W @ A @ Wt
             gram_in = Wt @ D @ W
             # D is never the identity for a trained layer, so no cheap-path check (each was a host sync)
-            basis_out = basis_congruence(D, gram_out, eps)
+            basis_out = self._basis_out(D, gram_out, eps, members)
             basis_in = self._basis_in(A, gram_in, eps, members)
             for j, (p, i, _, _) in enumerate(members):
                 self._unit_state(self.state[p], i)["bases"] = (
@@ -236,6 +238,10 @@ class NaturalPion(torch.optim.Optimizer):
     def _basis_in(self, A: torch.Tensor, gram_in: torch.Tensor, eps: float, members: list):
         """In-side basis of the pencil (A, W^T D W) for a batch of matrices of one shape."""
         return basis_congruence(A, gram_in, eps)
+
+    def _basis_out(self, D: torch.Tensor, gram_out: torch.Tensor, eps: float, members: list):
+        """Out-side basis of the pencil (D, W A W^T)."""
+        return basis_congruence(D, gram_out, eps)
 
     # --- optional per-part timing (off by default; one attribute check when off) ---------------------
 
@@ -268,14 +274,23 @@ class NaturalPion(torch.optim.Optimizer):
                         raise RuntimeError("no statistics for a parameter: attach the forward and backward hooks")
                 stale = [p for p in active if "bases" not in self.state[p]]
                 if stale:
+                    self._await_refresh()
                     self._tick("refresh"); self._refactor(stale, group); self._tick(None)
+                self._await_refresh()
                 self._rotate(active, group)
                 self._tick(None)
                 due = [p for p in active if self.state[p]["since_refactor"] >= group["t_fac"]]
                 self._last_input = None
                 if due:
-                    self._tick("refresh"); self._refactor(due, group); self._tick(None)
+                    self._refresh(due, group)
         return loss
+
+    def _refresh(self, params: list[torch.Tensor], group: dict) -> None:
+        """Rebuild the bases of `params` now (the reference path)."""
+        self._tick("refresh"); self._refactor(params, group); self._tick(None)
+
+    def _await_refresh(self) -> None:
+        """Wait for a refresh running elsewhere; nothing to wait for on the reference path."""
 
     @staticmethod
     def _ema(state: dict, key: str, g: torch.Tensor, beta: float) -> torch.Tensor:
@@ -421,11 +436,51 @@ class NaturalPionFast(NaturalPion):
 
     def __init__(self, params, lr: float = 0.05, *, t_fac: int = 25, stats_window: int | None = 6,
                  beta_a: float = 0.5, beta_d: float = 0.5, share_inputs: bool = True,
-                 retraction: str = "ns_delta", batch_sigma: bool = True, share_root: bool = True, **kwargs) -> None:
+                 retraction: str = "ns_delta", batch_sigma: bool = True, share_root: bool = True,
+                 async_refresh: bool = False, **kwargs) -> None:
         super().__init__(params, lr, t_fac=t_fac, stats_window=stats_window, beta_a=beta_a, beta_d=beta_d,
                          share_inputs=share_inputs, retraction=retraction, **kwargs)
         self.batch_sigma = batch_sigma
         self.share_root = share_root
+        # A refresh is read only by the next step's rotation, so on a GPU it runs on a side stream, overlapping the
+        # next forward and backward pass. Only with a statistics window: otherwise the hooks would write A and D
+        # while the refresh reads them.
+        self.async_refresh = async_refresh
+        self._side = None
+        self._pending = None
+
+    def _refresh(self, params: list[torch.Tensor], group: dict) -> None:
+        dev = params[0].device
+        if not (self.async_refresh and dev.type == "cuda" and group["stats_window"] is not None
+                and group["stats_window"] < group["t_fac"] and self.profile is None):
+            return super()._refresh(params, group)
+        self._await_refresh()
+        if self._side is None:
+            self._side = torch.cuda.Stream(device=dev)
+        main = torch.cuda.current_stream(dev)
+        self._side.wait_stream(main)                       # W as rotated this step, A and D as collected
+        with torch.cuda.stream(self._side):
+            self._refactor(params, group)
+            for p in params:                               # bases made here are read on the main stream later
+                st = self.state[p]
+                for unit in [st, *st.get("blocks", {}).values()]:
+                    for b in unit.get("bases", ()):
+                        b.P.record_stream(main); b.lam.record_stream(main)
+        ev = torch.cuda.Event()
+        ev.record(self._side)
+        self._pending = (ev, main)
+
+    def _await_refresh(self) -> None:
+        if self._pending is not None:
+            ev, main = self._pending
+            main.wait_event(ev)
+            self._pending = None
+
+    def state_dict(self):
+        if self._pending is not None:
+            self._pending[0].synchronize()
+            self._pending = None
+        return super().state_dict()
 
     def _basis_in(self, A: torch.Tensor, gram_in: torch.Tensor, eps: float, members: list):
         """`A^{-1/2}` once per distinct input moment (q, k, v and gate, up share one), then the rest per matrix."""
@@ -476,8 +531,67 @@ class NaturalPionTurbo(NaturalPionFast):
     (generators, momentum, the two-sided product), sigma without host syncs, bf16 statistics. Same mathematics
     as `NaturalPionFast` with the same options, up to the round-off of batched products."""
 
-    def __init__(self, params, lr: float = 0.05, *, stats_dtype: str = "bf16", **kwargs) -> None:
+    def __init__(self, params, lr: float = 0.05, *, stats_dtype: str = "bf16", fisher_dtype: str = "fp32",
+                 stats_stride: int = 1, c_floor: str = "eigh", inv_root: str = "eigh", **kwargs) -> None:
+        """Approximations, all upstream of the Cayley gate (X is made exactly skew before it, so the rotation stays
+        orthogonal whatever they do; only the direction changes):
+          fisher_dtype "bf16": the four products of F^-1 in bf16
+          stats_stride k:      A and D from every k-th token
+          c_floor "shift":     C + eps * lmax(C) I in the refresh instead of flooring C's eigenvalues (no eigh of C)
+          inv_root "ns":       B^-1/2 by coupled Newton-Schulz on B + eps * lmax I instead of an eigendecomposition"""
+        if fisher_dtype not in ("fp32", "bf16") or c_floor not in ("eigh", "shift") or inv_root not in ("eigh", "ns"):
+            raise ValueError("fisher_dtype fp32|bf16, c_floor eigh|shift, inv_root eigh|ns")
+        if stats_stride < 1:
+            raise ValueError("stats_stride must be at least 1")
+        self._stats_stride = stats_stride
         super().__init__(params, lr, stats_dtype=stats_dtype, **kwargs)
+        self.fisher_dtype, self.c_floor, self.inv_root = fisher_dtype, c_floor, inv_root
+
+    @staticmethod
+    def _lmax(C: torch.Tensor, iters: int = 30) -> torch.Tensor:
+        v = torch.ones(*C.shape[:-1], 1, dtype=C.dtype, device=C.device)
+        for _ in range(iters):
+            v = C @ v
+            v = v / v.norm(dim=-2, keepdim=True).clamp_min(1e-30)
+        return (v.transpose(-1, -2) @ C @ v).squeeze(-1)      # (..., 1)
+
+    def _root(self, B: torch.Tensor, eps: float) -> torch.Tensor:
+        if self.inv_root == "eigh":
+            return floored_inverse_root(B, eps)
+        eye = torch.eye(B.shape[-1], dtype=B.dtype, device=B.device)
+        Bd = B + eps * self._lmax(B).unsqueeze(-1) * eye
+        s = torch.linalg.matrix_norm(Bd, ord="fro", keepdim=True)
+        Y, Z = Bd / s, eye.expand_as(B).clone()
+        for _ in range(12):
+            T = 0.5 * (3.0 * eye - Z @ Y)
+            Y, Z = Y @ T, T @ Z
+        return Z / s.sqrt()
+
+    def _from_root(self, root: torch.Tensor, C: torch.Tensor, eps: float):
+        if self.c_floor == "eigh":
+            return basis_congruence_from_root(root, C, eps)
+        eye = torch.eye(C.shape[-1], dtype=C.dtype, device=C.device)
+        C = C + eps * self._lmax(C).unsqueeze(-1) * eye
+        M = root @ C @ root
+        lam, Q = safe_eigh(0.5 * (M + M.transpose(-1, -2)))
+        return Basis(P=root @ Q, lam=floor_eigenvalues(lam, eps), orthogonal=False)
+
+    def _basis_out(self, D, gram_out, eps, members):
+        if self.c_floor == "eigh" and self.inv_root == "eigh":
+            return super()._basis_out(D, gram_out, eps, members)
+        return self._from_root(self._root(D, eps), gram_out, eps)
+
+    def _basis_in(self, A, gram_in, eps, members):
+        if self.c_floor == "eigh" and self.inv_root == "eigh":
+            return super()._basis_in(A, gram_in, eps, members)
+        slot, order = {}, []
+        for j, (p, *_) in enumerate(members):
+            key = id(self.state[p]["cov"])
+            if key not in slot:
+                slot[key] = len(order); order.append(j)
+        roots = self._root(A[order], eps)
+        root = roots[[slot[id(self.state[p]["cov"])] for p, *_ in members]]
+        return self._from_root(root, gram_in, eps)
 
     @torch.no_grad()
     def _rotate(self, active: list[torch.Tensor], group: dict) -> None:
@@ -530,7 +644,12 @@ class NaturalPionTurbo(NaturalPionFast):
             if group["damping"]:
                 den = den + group["damping"] * den.amax(dim=(-2, -1), keepdim=True)
             G = torch.stack([g for _, _, g, _ in items])
-            X = skew(P @ ((Pt @ G @ P) / den) @ Pt)
+            if self.fisher_dtype == "bf16":
+                Pb, Ptb = P.to(torch.bfloat16), Pt.to(torch.bfloat16)
+                Y = ((Ptb @ G.to(torch.bfloat16) @ Pb).float() / den).to(torch.bfloat16)
+                X = skew((Pb @ Y @ Ptb).float())
+            else:
+                X = skew(P @ ((Pt @ G @ P) / den) @ Pt)
             for j, (dst, k, _, _) in enumerate(items):
                 dst[k] = X[j]
 

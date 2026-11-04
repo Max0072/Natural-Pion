@@ -35,7 +35,7 @@ from ngd_pion.unified import NGDPionUnified
 from ngd_pion.legacy.damped import DampedNGDPionS
 from ngd_pion.legacy.exact_curv import ExactCurvNGDPionS
 from ngd_pion.linalg import EIGH_FALLBACKS
-from ngd_pion.natural_pion import NaturalPion, NaturalPionFast
+from ngd_pion.natural_pion import NaturalPion, NaturalPionFast, NaturalPionTurbo
 
 from .config import RunConfig
 from .data import TokenCorpus
@@ -97,7 +97,8 @@ def lr_at(step: int, cfg: RunConfig, base: float | None = None) -> float:
 # to it and differs only by recording `quad`, `curv` and `pred_drop`. The
 # 69.5 s of a 73.5 s step this comment used to cite is history, not a live cost.
 # The final method, exact and efficient forms (ngd_pion/natural_pion.py).
-NATURAL_PION = {"natural-pion": NaturalPion, "natural-pion-fast": NaturalPionFast}
+NATURAL_PION = {"natural-pion": NaturalPion, "natural-pion-fast": NaturalPionFast,
+                "natural-pion-turbo": NaturalPionTurbo}
 
 NGD_IMPLEMENTATIONS = {
     "ngd-pion": FastNGDPion,
@@ -137,7 +138,8 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
         rot = NATURAL_PION[cfg.optimizer](weights, lr=cfg.lr, beta1=cfg.ngd_beta1, row_blocks=blocks,
                                           eps=cfg.ngd_eps, damping=cfg.np_damping,
                                           retraction=cfg.np_retraction, ns_iters=cfg.ngd_ns_iters,
-                                          ns_guard=cfg.ngd_ns_guard, stats_dtype=cfg.np_stats_dtype)
+                                          ns_guard=cfg.ngd_ns_guard, stats_dtype=cfg.np_stats_dtype,
+                                          **(json.loads(cfg.np_kwargs) if cfg.np_kwargs else {}))
         recorder = attach(linears, rot)
     elif cfg.optimizer in NGD_IMPLEMENTATIONS:
         kw = {}

@@ -437,6 +437,9 @@ class RunConfig:
     # Natural Pion: "bf16" forms the grams of A and D from bf16-rounded inputs with fp32 accumulation and result
     # (tensor cores); "fp32" from fp32 inputs. Out of the hash at fp32.
     np_stats_dtype: str = "fp32"
+    # Natural Pion: extra optimizer keyword arguments as JSON (natural-pion-turbo's approximations). Out of the hash
+    # when empty.
+    np_kwargs: str = ""
 
     # plumbing, deliberately excluded from the hash
     data_path: str = "data/c4_train.bin"
@@ -495,6 +498,8 @@ class RunConfig:
             d.pop("np_retraction", None)
         if d.get("np_stats_dtype") == "fp32":
             d.pop("np_stats_dtype", None)
+        if not d.get("np_kwargs"):
+            d.pop("np_kwargs", None)
         return d
 
     @property

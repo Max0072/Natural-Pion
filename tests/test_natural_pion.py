@@ -236,3 +236,17 @@ def test_batched_sigma_matches_the_loop():
     ob = NaturalPionFast(b, lr=0.2, t_fac=5, stats_window=2, row_blocks={id(b[1]): 4})
     for x, y in zip(_drive(oa, a, 30, 26, _cosine)[-1], _drive(ob, b, 30, 26, _cosine)[-1]):
         assert torch.allclose(x, y, rtol=1e-4, atol=1e-5), (x - y).abs().max()   # batched reductions: round-off only
+
+
+
+@pytest.mark.parametrize("opts", [dict(fisher_dtype="bf16"), dict(stats_stride=4), dict(c_floor="shift"),
+                                  dict(inv_root="ns"), dict(c_floor="shift", inv_root="ns", fisher_dtype="bf16")])
+def test_turbo_approximations_stay_behind_the_cayley_gate(opts):
+    """Whatever the approximation upstream, X is skew at the gate, so every spectrum is kept; the step still moves."""
+    ps = _weights(29)
+    s0 = [torch.linalg.svdvals(p.detach().double()) for p in ps]
+    w0 = [p.detach().clone() for p in ps]
+    _drive(NaturalPionTurbo(ps, lr=0.2, t_fac=5, stats_window=2, stats_dtype="fp32", **opts), ps, 20, 30, _cosine)
+    for p, s, w in zip(ps, s0, w0):
+        assert torch.allclose(torch.linalg.svdvals(p.detach().double()), s, rtol=1e-4)
+        assert (p.detach() - w).abs().max() > 1e-3
