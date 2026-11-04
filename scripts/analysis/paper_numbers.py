@@ -490,6 +490,14 @@ if f.exists():
             missing(f"rd_{tag}_med", "python scripts/probes/retraction_drift.py")
 else:
     missing("rd_cayley_med", "python scripts/probes/retraction_drift.py")
+f = R / "probes" / "retraction_bias.json"
+if f.exists():
+    d = json.load(open(f))["n1376_th0.05"]
+    for tag in ("solve", "ns", "ns_delta"):
+        put(f"rb_{tag}_mean", d[tag]["mean"], f"{f.name}: 1376 x 1376, angle 0.05, mean tr(R^T R - I)/n")
+        put(f"rb_{tag}_z", d[tag]["z"], f"{f.name}: same, mean over its standard error")
+else:
+    missing("rb_solve_mean", "python scripts/probes/retraction_bias.py")
 # rounding of the retractions on bare matrices (scripts/probes/ns_rounding.py)
 f = R / "probes" / "ns_rounding.json"
 if f.exists():
@@ -511,11 +519,11 @@ for st in ("fp32", "bf16"):
 if "stats_bf16_val" in NUM and "stats_fp32_val" in NUM:
     put("stats_bf16_d", NUM["stats_bf16_val"] - NUM["stats_fp32_val"], "stats_bf16_val - stats_fp32_val")
     put("stats_bf16_saving", NUM["stats_fp32_sps"] - NUM["stats_bf16_sps"], "stats_fp32_sps - stats_bf16_sps")
-hits = runs("npstats_bf16_b200/s15000/*")
+hits = runs("npstats_bf16_rtx/s15000/*")
 if hits and info(hits[0])["done"]:
-    put("stats_bf16_15k", info(hits[0])["val"], "npstats_bf16_b200/s15000")
+    put("stats_bf16_15k", info(hits[0])["val"], "npstats_bf16_rtx/s15000 (RTX, as np15k)")
 else:
-    missing("stats_bf16_15k", "STATS=bf16 OUTROOT=npstats_bf16_b200 sbatch -p b200 --array=1 scripts/paper/natural_pion_stats.sbatch")
+    missing("stats_bf16_15k", "STATS=bf16 OUTROOT=npstats_bf16_rtx sbatch --array=1 scripts/paper/natural_pion_stats.sbatch")
 
 PC = R / "probes" / "paper_checks.json"
 pc = json.load(open(PC)) if PC.exists() else {}

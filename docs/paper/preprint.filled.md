@@ -513,7 +513,10 @@ $R = \mathrm{Cay} - 2(I+A)^{-1}A^8$: $5 \cdot 10^{-9}$ at angle 0.2, $10^{-6}$ a
 In fp32 the standard form is unstable: it rounds entries next to 1 with a sign, and $\|W\|_F^2$, which a
 rotation keeps, grows by a median $9.5 \cdot 10^{-6}$ per training step (exact solve $2.6 \cdot 10^{-7}$;
 `scripts/probes/ns_diag.py`). Carried in $z = Z - I$ ($r = A + z + Az$, $z \leftarrow z - r - zr$,
-$R = I + 2z$) nothing is next to 1, at the same cost. 200 steps of a $1376 \times 1376$ rotation at angle 0.05
+$R = I + 2z$) nothing is next to 1, at the same cost. Over random rotations ($1376 \times 1376$, angle 0.05),
+$\operatorname{tr}(R^\top R - I)/n$ averages $+1.7 \cdot 10^{-7}$ for the exact solve ($z = 171$ standard
+errors), $+1.4 \cdot 10^{-6}$ for standard Newton–Schulz and $+6.3 \cdot 10^{-11}$ ($z = 0.7$) in this
+form (`scripts/probes/retraction_bias.py`). 200 steps of a $1376 \times 1376$ rotation at angle 0.05
 (`scripts/probes/ns_rounding.py`):
 
 | Cayley computed by | $\Delta\|W\|_F^2$, bare matrix | val, 3 000 steps | drift (as in Section 3.4) | s / step, RTX | s / step, B200 |
