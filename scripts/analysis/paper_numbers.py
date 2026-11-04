@@ -377,7 +377,11 @@ put("tf10_mom_d", NUM["tf10_mom"] - NUM["tf1_mom"], "tf10_mom - tf1_mom")
 put("tf25_mom_d", NUM["tf25_mom"] - NUM["tf1_mom"], "tf25_mom - tf1_mom")
 put("win_maxdev", max(abs(NUM[f"win_{k}"] - NUM["win_ref"]) for k in ("dlast6", "alast6", "adlast6", "aevery2", "betad09", "betad095")),
     "largest |win_* - win_ref|")
-put("pion_vs_paper", NUM["pion_full"] - 3.3575, "pion_full - 3.3575 (the Pion paper's own 60M number, cited)")
+_tr = [r for r in _rows(one(f"{L}/pion73242-lr1e-3/*")) if "train_loss" in r]
+_tr = [r["train_loss"] for r in _tr if r["step"] > _tr[-1]["step"] - 2000]
+put("pion_full_train", sum(_tr) / len(_tr), f"{L}/pion73242-lr1e-3: mean logged training loss over the last 2000 steps")
+put("pion_vs_paper", NUM["pion_full_train"] - 3.3575,
+    "pion_full_train - 3.3575 (the Pion paper's final training loss, Fig. 5, cited)")
 
 # analytic: the truncated exponential's departure from orthogonality, ||T^T T - I||_2 = (angle)^4 / 4
 for th in (0.05, 0.2):

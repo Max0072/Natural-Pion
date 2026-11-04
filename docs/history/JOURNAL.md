@@ -7089,3 +7089,13 @@ bf16 3.7216 / 0.463 s. Rule: adopt bf16 if also within 0.010 at 15000 steps (not
 
 Preprint: contribution 4 rewritten from measurements; 3.4 explains the NS bias and the correction form; new 4.7
 "Cheaper statistics". Gaps: ret_nsd_*, stats_bf16_15k.
+
+## 2026-11-04 — the gap to the Pion paper's number
+
+The Pion paper's 3.3575 is a final *training* loss (Fig. 5 caption, "Training loss of bilateral and alternate
+update"); the preprint had set our *validation* loss beside it. Train to train: ours 3.3735 (mean of the last
+2000 steps), gap 0.016. Re-checked their `opt_llama_60M_pion.sh`: architecture, Pion settings, AdamW betas,
+clipping and budget match. One deviation: their single `--lr 1e-3` also drives Adam on embeddings/head/norms;
+ours uses 8e-3 for every method (the 2026-08-26 anchor with 1e-3 was worse, 3.3805). Left unexplained: their
+data (`c4-megatron`), Megatron's sampler, padded vocab, TE. User's decision: state "in our setting" and do not
+run the Megatron control. Preprint 5.1 and Limitations reworded; `pion_full_train` in the registry.

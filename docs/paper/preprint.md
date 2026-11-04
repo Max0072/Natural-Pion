@@ -565,7 +565,7 @@ full-length runs, which evaluate every 2 000 steps, give {{np_sps:.3f}} s and {{
 | data | C4, sequence length 256, batch 512 sequences (131 072 tokens per step) |
 | budget | 73 242 steps = 9.6B tokens: Pion's 60M budget |
 | rotated | the 56 matrices inside the blocks (43.5% of parameters) |
-| the rest | AdamW, lr 8e-3, betas (0.9, 0.95), weight decay 0.1, cosine; the same for every method |
+| the rest | AdamW, lr 8e-3 (the Pion script: 1e-3), betas (0.9, 0.95), weight decay 0.1, cosine; the same for every method |
 | precision | bf16 model; statistics, eigendecompositions and retractions in exact fp32 |
 | metric | validation loss: token cross-entropy on held-out C4, in nats |
 | hardware | one NVIDIA RTX PRO 6000 Blackwell per run; B200 where marked |
@@ -576,8 +576,8 @@ Pion paper chose lr $10^{-3}$ from $\{10^{-4}, 5\cdot10^{-4}, 10^{-3}, 5\cdot10^
 checked it in our setting (Table 3). $10^{-3}$ is best at 19 200 steps. At 3 840 steps $2\cdot10^{-3}$
 is better by {{pion_lr_3840_better:.3f}}, and we report that comparison too.
 
-All comparisons are within one code base. Our Pion reaches {{pion_full:.4f}} at full length, against 3.3575
-reported by the Pion paper in Megatron-LM. The difference is a harness offset we do not try to close.
+All comparisons are within one code base and one data pipeline. In our setting Pion ends at a training loss
+of {{pion_full_train:.4f}} (validation {{pion_full:.4f}}); the Pion paper reports 3.3575 in its own Megatron-LM setting.
 
 **Natural Pion.** Natural Pion Fast (Algorithm 2, Section 4): $T_{\mathrm{fac}} = 25$; $A$ and $D$
 accumulated (EMA 0.5) over the 6 steps before each refresh, one $A$ per input tensor; Lie momentum 0.9; $\varepsilon = 10^{-4}$; cosine schedule on $\theta$ down to
@@ -786,8 +786,8 @@ reports modest gains over its truncated exponential; at Natural Pion's angles it
 
 * **Scale.** One model size (60M) and one data set. The full-length comparison is one seed; four seeds
   at shorter horizons agree in sign and size.
-* **One code base.** Our Pion is {{pion_vs_paper:.3f}} above the Pion paper's own number, so we compare within our
-  harness only.
+* **One code base.** Our Pion ends {{pion_vs_paper:.3f}} above the Pion paper's training loss; we compare within our
+  setting only.
 * **Exactness in practice.** In fp32 the spectrum drifts by {{fp32_drift_3000:.2%}} (median matrix) over 3 000 steps.
 * **Only Pion as a baseline.** We compare against the published Pion configuration only, not against
   AdamW or Muon, and only on validation loss, not on downstream tasks.
