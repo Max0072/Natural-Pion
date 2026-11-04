@@ -2,50 +2,80 @@
  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
  "checkpoint": "/onyx/data/p330/runs/npfast2/s3000/natural-pion-fast-lr0.2-s0-7a078ebda7/checkpoint.pt",
  "R0 current": {
-  "s_per_refresh": 0.55368718795944,
-  "s_per_step_tfac25": 0.0221474875183776,
+  "s_per_refresh": 0.5569005120014481,
+  "s_per_step_tfac25": 0.022276020480057925,
   "dir_err_median": 0.0,
   "dir_err_max": 0.0
  },
  "R1 share eigh(A)": {
-  "s_per_refresh": 0.5503785919863731,
-  "s_per_step_tfac25": 0.022015143679454924,
+  "s_per_refresh": 0.5554034460001276,
+  "s_per_step_tfac25": 0.022216137840005104,
   "dir_err_median": 0.0,
   "dir_err_max": 0.00035900092916563153
  },
  "R2 no is_identity": {
-  "s_per_refresh": 0.551383891957812,
-  "s_per_step_tfac25": 0.02205535567831248,
+  "s_per_refresh": 0.5542719149998447,
+  "s_per_step_tfac25": 0.02217087659999379,
   "dir_err_median": 0.0,
   "dir_err_max": 0.0
  },
  "R1+R2": {
-  "s_per_refresh": 0.5493791810004041,
-  "s_per_step_tfac25": 0.021975167240016164,
+  "s_per_refresh": 0.553865224999754,
+  "s_per_step_tfac25": 0.02215460899999016,
   "dir_err_median": 0.0,
   "dir_err_max": 0.00035900092916563153
  },
  "R4 R1+R2, C unfloored": {
-  "s_per_refresh": 0.36897356598638,
-  "s_per_step_tfac25": 0.0147589426394552,
+  "s_per_refresh": 0.3732926080010657,
+  "s_per_step_tfac25": 0.014931704320042627,
   "dir_err_median": 0.1163172647356987,
   "dir_err_max": 0.7055104374885559
  },
  "R6 R1+R2, A^-1/2 by Newton-Schulz": {
-  "s_per_refresh": 0.4634135600645095,
-  "s_per_step_tfac25": 0.018536542402580382,
+  "s_per_refresh": 0.46029596099833725,
+  "s_per_step_tfac25": 0.01841183843993349,
   "dir_err_median": 0.03292249143123627,
   "dir_err_max": 0.30325958132743835
  },
  "R4b R1+R2, C shifted by eps*lmax": {
-  "s_per_refresh": 0.38026358000934124,
-  "s_per_step_tfac25": 0.01521054320037365,
+  "s_per_refresh": 0.38636699900234817,
+  "s_per_step_tfac25": 0.015454679960093927,
   "dir_err_median": 0.0912739560008049,
   "dir_err_max": 0.15440945327281952
  },
+ "R6 NS root, 20 iterations": {
+  "s_per_refresh": 0.5133388040012505,
+  "s_per_step_tfac25": 0.020533552160050022,
+  "dir_err_median": 0.0328606478869915,
+  "dir_err_max": 0.282572865486145
+ },
+ "R6 NS root, 30 iterations": {
+  "s_per_refresh": 0.5799696539979777,
+  "s_per_step_tfac25": 0.023198786159919108,
+  "dir_err_median": 0.03286236524581909,
+  "dir_err_max": 0.2825726270675659
+ },
+ "R6r NS root in residual form, 12": {
+  "s_per_refresh": 0.494156609998754,
+  "s_per_step_tfac25": 0.01976626439995016,
+  "dir_err_median": 0.033054281026124954,
+  "dir_err_max": 0.3033421039581299
+ },
+ "R6r NS root in residual form, 20": {
+  "s_per_refresh": 0.5792866140000115,
+  "s_per_step_tfac25": 0.02317146456000046,
+  "dir_err_median": 0.03299861401319504,
+  "dir_err_max": 0.2826835513114929
+ },
+ "R6r NS root in residual form, 30": {
+  "s_per_refresh": 0.6817243620025693,
+  "s_per_step_tfac25": 0.02726897448010277,
+  "dir_err_median": 0.03299861401319504,
+  "dir_err_max": 0.2826835513114929
+ },
  "R3 R1+R2 on MAGMA": {
-  "s_per_refresh": 0.5502603049390018,
-  "s_per_step_tfac25": 0.022010412197560073,
+  "s_per_refresh": 0.5380926400030148,
+  "s_per_step_tfac25": 0.021523705600120593,
   "dir_err_median": 0.0,
   "dir_err_max": 0.00035900092916563153
  }
