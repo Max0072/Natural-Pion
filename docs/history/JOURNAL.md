@@ -7135,3 +7135,13 @@ User: a two-sided step does both rotations at once at nearly the price of one; s
 optimizer work but also the motion per step, and steps are what this method saves (the RL motivation). The sides
 are nearly additive (ALGORITHM.md), so alternating buys time per step and gives back steps. An implementation was
 written and reverted uncommitted.
+
+## 2026-11-04, night — basis refresh: exact variants give nothing, approximations deferred to Turbo
+
+`scripts/probes/refresh_bench.py` on the npfast2 step-2500 checkpoint (RTX): refresh 0.553 s (0.022 s/step at
+T_fac 25), all of it in the ~72 eigendecompositions of 1376 x 1376 pencils. Exact variants -- one A^-1/2 per shared
+input, no identity checks, MAGMA (silently fell back to cuSOLVER) -- 0.549-0.552 s; kept (R1 in Fast, R2 everywhere)
+as clean-up. Approximations, direction error of F^-1 M vs exact (median / max): C unfloored 0.12 / 0.71 (0.369 s),
+C + eps*lmax*I instead of the floor 0.091 / 0.15 (0.380 s; predicted ~1e-3 -- wrong: the floored directions are the
+ones that dominate X), A^-1/2 by Newton-Schulz 0.033 / 0.30 (0.463 s). Deferred to Turbo (user), to be judged by a
+training run, not by direction error alone.
