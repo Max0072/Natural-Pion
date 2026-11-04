@@ -231,6 +231,23 @@ class NaturalPion(torch.optim.Optimizer):
                 )
                 self.state[p]["since_refactor"] = 0
 
+    # --- optional per-part timing (off by default; one attribute check when off) ---------------------
+
+    profile: dict | None = None          # set to {} to accumulate GPU-synchronised seconds per part
+
+    def _tick(self, part: str | None) -> None:
+        """Close the running part and open `part`. Synchronises the GPU only when profiling is on."""
+        if self.profile is None:
+            return
+        import time
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        now = time.perf_counter()
+        last = getattr(self, "_tick_open", None)
+        if last is not None:
+            self.profile[last[0]] = self.profile.get(last[0], 0.0) + now - last[1]
+        self._tick_open = (part, now) if part else None
+
     # --- the step -------------------------------------------------------------------------------------
 
     @torch.no_grad()
@@ -245,12 +262,13 @@ class NaturalPion(torch.optim.Optimizer):
                         raise RuntimeError("no statistics for a parameter: attach the forward and backward hooks")
                 stale = [p for p in active if "bases" not in self.state[p]]
                 if stale:
-                    self._refactor(stale, group)
+                    self._tick("refresh"); self._refactor(stale, group); self._tick(None)
                 self._rotate(active, group)
+                self._tick(None)
                 due = [p for p in active if self.state[p]["since_refactor"] >= group["t_fac"]]
                 self._last_input = None
                 if due:
-                    self._refactor(due, group)
+                    self._tick("refresh"); self._refactor(due, group); self._tick(None)
         return loss
 
     @staticmethod
@@ -278,6 +296,7 @@ class NaturalPion(torch.optim.Optimizer):
         return cs
 
     def _rotate(self, active: list[torch.Tensor], group: dict) -> None:
+        self._tick("generators+momentum")
         dt, beta1 = group["compute_dtype"], group["beta1"]
         rows = []                                  # [p, W, X_in, X_out, block index, block rows, whole]
         by_size: dict[int, list] = {}              # side size -> [(row, slot, generator, basis)]
@@ -298,6 +317,7 @@ class NaturalPion(torch.optim.Optimizer):
                 by_size.setdefault(G_out.shape[0], []).append((len(rows) - 1, 3, G_out, b_out))
 
         # X = F^-1 G: in the basis F is elementwise division by (lam_i + lam_j)/2
+        self._tick("F^-1")
         for items in by_size.values():
             P = torch.stack([b.P for *_, b in items])
             den = torch.stack([b.denominator for *_, b in items])     # (lam_i + lam_j) / 2
@@ -310,6 +330,7 @@ class NaturalPion(torch.optim.Optimizer):
                 rows[i][slot] = X[k]
 
         # c = theta / sigma, shared by both sides of a matrix
+        self._tick("sigma")
         cs = self._scales(rows, group)
         solves: dict[int, list] = {}
         for i, (p, W, X_in, X_out, b, _, _) in enumerate(rows):
@@ -317,6 +338,7 @@ class NaturalPion(torch.optim.Optimizer):
             solves.setdefault(X_out.shape[0], []).append((i, 3, cs[i], X_out))
 
         # Cayley: R = (I + c/2 X)^-1 (I - c/2 X), exactly orthogonal for skew X
+        self._tick("cayley")
         for n, items in solves.items():
             X = torch.stack([x for *_, x in items])
             if isinstance(items[0][2], torch.Tensor):
@@ -350,6 +372,7 @@ class NaturalPion(torch.optim.Optimizer):
             for k, (i, slot, _, _) in enumerate(items):
                 rows[i][slot] = R[k]
 
+        self._tick("apply W")
         new: dict[int, list] = {}
         for p, W, R_in, R_out, b, r, whole in rows:
             if whole:
@@ -453,6 +476,7 @@ class NaturalPionTurbo(NaturalPionFast):
             by_shape[tuple(u[5].shape)].append(k)
 
         # generators, batched by shape
+        self._tick("generators+momentum")
         g_in, g_out = [None] * n_u, [None] * n_u
         for ks in by_shape.values():
             W = torch.stack([units[k][5] for k in ks]); G = torch.stack([units[k][6] for k in ks])
@@ -472,6 +496,7 @@ class NaturalPionTurbo(NaturalPionFast):
             g_in, g_out = ms[:n_u], ms[n_u:]
 
         # X = F^-1 G, batched by side size
+        self._tick("F^-1")
         x_in, x_out = [None] * n_u, [None] * n_u
         sides: dict[int, list] = defaultdict(list)
         for k, u in enumerate(units):
@@ -489,6 +514,7 @@ class NaturalPionTurbo(NaturalPionFast):
                 dst[k] = X[j]
 
         # sigma = max(||X_in||, ||X_out||) by warm power iteration, batched by (size, iterations); no host sync
+        self._tick("sigma")
         sig = torch.zeros(2, n_u, dtype=dt, device=units[0][5].device)
         pw: dict[tuple, list] = defaultdict(list)
         for k, u in enumerate(units):
@@ -508,6 +534,7 @@ class NaturalPionTurbo(NaturalPionFast):
         c = lr / sig.amax(dim=0).clamp_min(1e-30)              # (n_u,)
 
         # Cayley, batched by size: Newton-Schulz in Z - I, or the exact solve above the guard
+        self._tick("cayley")
         r_in, r_out = [None] * n_u, [None] * n_u
         cay: dict[int, list] = defaultdict(list)
         for k in range(n_u):
@@ -532,6 +559,7 @@ class NaturalPionTurbo(NaturalPionFast):
                 dst[k] = R[j]
 
         # W <- R_out W R_in, batched by shape
+        self._tick("apply W")
         new = [None] * n_u
         for ks in by_shape.values():
             W = torch.stack([units[k][5] for k in ks])

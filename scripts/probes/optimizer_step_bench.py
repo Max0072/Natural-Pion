@@ -32,7 +32,7 @@ def params():
     return out
 
 
-def run(name, make, steps=100, warm=50, compile_step=False):
+def run(name, make, steps=100, warm=50, compile_step=False, parts=False):
     torch.manual_seed(0)
     ps = make_ps = params()
     opt = make(ps)
@@ -41,8 +41,10 @@ def run(name, make, steps=100, warm=50, compile_step=False):
     dH, dF = torch.randn(N, H, device=DEV) / N, torch.randn(N, F, device=DEV) / N
     grads = [torch.randn_like(p) * 1e-3 for p in ps]
     step = torch.compile(opt.step) if compile_step else opt.step
-    times = []
+    times, stats_t = [], 0.0
     for t in range(warm + steps):
+        if parts and t == warm:
+            opt.profile = {}
         torch.cuda.synchronize(); t0 = time.perf_counter()
         if feeds:
             for i, p in enumerate(ps):
@@ -50,6 +52,8 @@ def run(name, make, steps=100, warm=50, compile_step=False):
                 x = xa if k < 3 else xo if k == 3 else xa if k < 6 else xf
                 opt.observe(p, x)
                 opt.observe_backward(p, dF if k in (4, 5) else dH)
+        if parts and t >= warm:
+            torch.cuda.synchronize(); stats_t += time.perf_counter() - t0
         for p, gr in zip(ps, grads):
             p.grad = gr
         step()
@@ -58,6 +62,14 @@ def run(name, make, steps=100, warm=50, compile_step=False):
             times.append(time.perf_counter() - t0)
     s = sum(times) / len(times)
     print(f"{name:42s} {s:.4f} s/step", flush=True)
+    if parts:
+        prof = {"statistics": stats_t / steps, **{k: v / steps for k, v in (opt.profile or {}).items()}}
+        prof["total (synchronised)"] = s
+        for k, v in prof.items():
+            print(f"    {k:28s} {v:.4f}", flush=True)
+        del opt, ps
+        torch.cuda.empty_cache()
+        return prof
     del opt, ps
     torch.cuda.empty_cache()
     return s
@@ -77,6 +89,8 @@ def main():
     }
     for name, make in cases.items():
         out[name] = run(name, make)
+    for name in ("fast_cayley_loop", "fast_nsdelta_batchsigma_bf16", "turbo"):
+        out[name + "_parts"] = run(name + " (parts, synchronised)", cases[name], parts=True)
     for name in ("fast_nsdelta_batchsigma_bf16", "turbo"):
         try:
             out[name + "_compiled"] = run(name + " + torch.compile(step)", cases[name], compile_step=True)
