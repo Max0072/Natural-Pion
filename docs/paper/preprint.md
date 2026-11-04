@@ -43,8 +43,7 @@ gradient of the loss with respect to the two generators. Steepest descent depend
 Pion's is the Euclidean one on the generators, which treats every direction of rotation alike. But the curvature of the loss along
 different rotation directions, and across layers, differs by orders of magnitude. The classical remedy
 is the natural gradient (Amari, 1998): steepest descent in the metric of the model's output
-distribution, the Fisher information. It accounts for these differences and is invariant to how the
-rotation is parameterised. This paper derives the natural gradient for Pion's parameterization, makes
+distribution, the Fisher information. This paper derives the natural gradient for Pion's parameterization, makes
 it exact and cheap, and pairs it with a step-length rule that keeps the stability Pion's normalisation
 provides.
 
@@ -58,8 +57,8 @@ provides.
 2. **Exact inversion.** One generalized eigendecomposition per side diagonalises $F$, and the
    solve becomes an elementwise division (Proposition 2). No damping is needed beyond a relative
    floor on the eigenvalues.
-3. **Direction from the Fisher, length from an angle.** $F^{-1}$ amplifies gradients by four or more
-   orders of magnitude, unevenly across layers. We take only its direction. The step length is set so
+3. **Direction from the Fisher, length from an angle.** $F^{-1}$ scales gradients very unevenly across
+   layers. We take only its direction. The step length is set so
    that the largest rotation plane of every matrix turns by the same scheduled angle $\theta_t$
    (Proposition 3). With the same angle rule and the same momentum, the natural gradient reaches
    {{dir_fisher_mom:.4f}} at 3 000 steps against {{dir_raw_mom:.4f}} for Pion's raw generator (Pion itself:
@@ -111,15 +110,10 @@ variant, which it finds slightly worse at 60M). The query projection is rotated 
 head's block of rows is treated as a separate matrix. Embeddings, the output head and normalization
 gains are trained by AdamW. Only the 2-D weights inside the transformer blocks are rotated.
 
-**Why preserve the spectrum.** Pion motivates the constraint by what it buys, and these properties are
-what Natural Pion inherits. The spectral norm of every weight is fixed by the dynamics, so no weight
-decay or explicit normalisation is needed to control it. Pion reports that a 60M model without
-normalization layers trains stably to the end of its 9.6B-token budget, where AdamW and Muon diverge to
-NaN. It also reports that the optimal learning rate transfers across model widths (a μP-compatible
-variant), and that the minimum hyperspherical energy of the Gaussian initialisation is preserved
-throughout training. At 1.3B parameters and 54B tokens it is within 0.0125 of Muon in validation loss
-and ahead of AdamW and Muon on downstream benchmarks. Pion establishes the constraint. This paper is about
-the direction of motion inside it.
+**Why preserve the spectrum.** It fixes every weight's spectral norm without weight decay or
+normalisation; Pion reports stable training without normalisation layers, learning-rate transfer across
+widths, and results within 0.0125 of Muon at 1.3B parameters. This paper is about the direction of
+motion inside the constraint.
 
 ### 2.2 The natural gradient and K-FAC
 
@@ -240,8 +234,6 @@ $D^{-1} V A^{-1}$ does not apply.
 * **The output gradient enters both sides.** It appears on the input side through $S = W^\top D W$,
   and the input moment appears on the output side through $V = W A W^\top$. If $D$ is replaced by $I$
   (no backward statistic), the two sides receive the wrong relative scale (Appendix B).
-* **Block-diagonal approximation.** We drop the coupling between $\Omega_{\mathrm{in}}$ and
-  $\Omega_{\mathrm{out}}$ and between layers. K-FAC drops the coupling between layers in the same way.
 * **Numerical check.** We checked Proposition 1 against a Monte Carlo estimate with independent $x$
   and $\delta$: relative error {{mc_err_in:.1%}} (in) and {{mc_err_out:.1%}} (out) at $4 \times 10^5$ samples, which is
   sampling noise. The pull-back identity holds to {{pullback_err:.0e}} (`scripts/analysis/check_fisher.py`).
@@ -330,10 +322,6 @@ Two design points matter, each tested in Section 5.4:
   the ratio $F^{-1}$ sets between them is part of the direction. Normalising each side by its own
   $\sigma$ discards that ratio.
 
-This is the same division of labour as *grafting* (Agarwal et al., 2020), which takes the direction
-of one optimizer and the step size of another. Here the step size is not borrowed from another
-optimizer. It is a property of the rotation itself.
-
 ### 3.4 Retraction and exact spectrum preservation
 
 **Proposition 4.** For skew $\Omega$, the Cayley map $R = (I + \Omega)^{-1}(I - \Omega)$ is orthogonal
@@ -394,14 +382,8 @@ every step t:
 Embedding, output head and normalization gains use AdamW, as in Pion. The rotated matrices get no
 weight decay: a rotation cannot change their norm, and their spectrum is fixed by construction.
 
-$d$ is the gradient of one token's loss at the layer output. Autograd returns the gradient of the
-batch-mean loss, which carries a factor $1/N$; in any case a constant factor in $A$ or $D$ scales $F$ by a
-constant, which scales $X$ and $\sigma$ alike and cancels in $c X$, so the step does not depend on it. The
-implementation (`ngd_pion/natural_pion.py`) uses the operator exactly as derived, with the factor
-$\tfrac12$.
-
-The floor $\varepsilon = 10^{-4}$ was re-tested on Natural Pion against other floors and against Tikhonov
-damping (Section 5.4); it is the best of the settings tried.
+A constant factor in $A$ or $D$ (e.g. autograd's $1/N$) cancels in $cX$. The floor $10^{-4}$ is the best
+setting tried (Section 5.4).
 
 ---
 
@@ -409,7 +391,7 @@ damping (Section 5.4); it is the best of the settings tried.
 
 Algorithm 1 costs {{tf1_mom_sps:.2f}} s per step in our setting, against Pion's {{pion3000_sps:.3f}} s. This section takes it to
 {{batch_sps:.3f}} s, one change at a time, and gives for each change what it saves and what it costs in loss. All
-numbers are at 3 000 steps, seed 0, Lie momentum 0.9. Seconds per step are wall-clock time over steps of
+numbers are at 3 000 steps, seed 0, Lie momentum 0.9, on RTX unless marked. Seconds per step are wall-clock time over steps of
 the training runs themselves, evaluation every 500 steps included for every method, unless marked as
 profiled.
 
@@ -560,7 +542,7 @@ $R = I + 2z$) nothing is next to 1, at the same cost. 200 steps of a $1376 \time
 
 **Algorithm 2: Natural Pion Fast.** It is Algorithm 1 with the bases refreshed every 25 steps; $A$ and
 $D$ accumulated (EMA 0.5) only in the 6 steps before a refresh; $\sigma$ by warm power iteration (2
-iterations, 50 after a refresh); $F^{-1}$ and Cayley batched by shape. At 3 000 steps it is {{exact_vs_fast_3000:.3f}}
+iterations, 50 after a refresh); $F^{-1}$ and Cayley batched by shape; one $A$ per input tensor. At 3 000 steps it is {{exact_vs_fast_3000:.3f}}
 behind Algorithm 1 over four seeds. At 15 000 steps it is level or ahead. It is {{speedup_vs_exact:.1f}}x faster per step
 and {{cost_ratio_3000:.2f}}x slower than Pion.[^cost] Its peak GPU memory is {{peak_np:.1f}} GB against Pion's {{peak_pion:.1f}} GB (+{{peak_d:.1f}} GB for $A$, $D$, the bases
 and the momentum). All results in Section 5 use it.
@@ -598,7 +580,7 @@ All comparisons are within one code base. Our Pion reaches {{pion_full:.4f}} at 
 reported by the Pion paper in Megatron-LM. The difference is a harness offset we do not try to close.
 
 **Natural Pion.** Natural Pion Fast (Algorithm 2, Section 4): $T_{\mathrm{fac}} = 25$; $A$ and $D$
-accumulated (EMA 0.5) over the 6 steps before each refresh; Lie momentum 0.9; $\varepsilon = 10^{-4}$; cosine schedule on $\theta$ down to
+accumulated (EMA 0.5) over the 6 steps before each refresh, one $A$ per input tensor; Lie momentum 0.9; $\varepsilon = 10^{-4}$; cosine schedule on $\theta$ down to
 $10^{-5}$. The peak angle $\theta_0$ is 0.2 at 3 000 steps and 0.05 from 15 000 steps on. The best peak
 falls with the horizon; 0.05 was chosen on 15 000-step runs and kept for the full length, where the one
 other value we ran, 0.025, is worse ({{np_full_clock_0025:.4f}} against {{np_full_clock:.4f}}).
@@ -672,10 +654,7 @@ loss.
 
 The crossing is interpolated linearly between two evaluations (every 500 steps in the short runs, every
 2 000 in the full-length ones), so each ratio is known to an interval: {{steps_ratio_73242_lo:.2f}}–{{steps_ratio_73242_hi:.2f}} at
-73 242 steps and {{steps_ratio_19200_lo:.2f}}–{{steps_ratio_19200_hi:.2f}} at 19 200. The crossing also happens mid-schedule, before the
-Natural Pion run's cosine has decayed; a schedule fitted to that length would likely reach the loss
-earlier, so we read the ratio as a lower bound. It is not a measurement with fitted schedules. The ratio does not
-shrink with length. In settings where a step is expensive for reasons other than the optimizer (large
+73 242 steps and {{steps_ratio_19200_lo:.2f}}–{{steps_ratio_19200_hi:.2f}} at 19 200. The ratio does not shrink with length. In settings where a step is expensive for reasons other than the optimizer (large
 distributed batches, reinforcement learning with generation), steps rather than optimizer time are
 the cost that matters.
 
@@ -880,9 +859,7 @@ of all matrices takes {{rl_refactor_b200:.0f}} s on one B200.
 
 If $D$ is taken to be the identity, $S = W^\top W$ and the step's scale per layer goes as
 $\|\delta\| / (\|W\|\,\|x\|)$ instead of $1 / (\|W\|\,\|\delta\|\,\|x\|)$. The step is then largest
-where the backward signal is strongest, the opposite of what curvature prescribes. In an earlier
-variant that made this simplification, output projections rotated by angles several orders of magnitude
-larger than query and key projections within the same step.
+where the backward signal is strongest, the opposite of what curvature prescribes.
 
 ## Appendix C: hyperparameters
 
@@ -913,7 +890,11 @@ trained layers (Martin & Mahoney, 2021). It changes energy as well as shape.
 | flat, all singular values $\sqrt{m/n}$ | {{init_flat:.4f}} | +{{init_flat_d:.3f}} |
 | orthogonal, all singular values 1 | {{init_orth:.4f}} | +{{init_orth_d:.3f}} |
 
-With $\alpha = 3$, Natural Pion gains {{init_gain_3000_mean:.3f}} at 3 000 steps (mean of 4 seeds) and {{init_gain_15k:.3f}} at 15 000 steps (a
-tie). The same initialisation makes Pion worse at every horizon tried ({{init_pion_gain_3000:.3f}} at 3 000, {{init_pion_gain_15k:.3f}} at 15 000
-steps). Flat spectra are worse for Natural Pion by about {{init_flat_d:.2f}}. Every other experiment in the paper uses
-$\mathcal N(0, 0.02^2)$.
+*Gain from $\alpha = 3$: val with $\mathcal N(0, 0.02^2)$ minus val with $\alpha = 3$; positive means $\alpha = 3$ helps.*
+
+| | 3 000 steps (4 seeds) | 15 000 steps | full length |
+|---|---|---|---|
+| Natural Pion | {{init_gain_3000_mean:+.3f}} | {{init_gain_15k:+.3f}} | {{init_gain_full:+.3f}} |
+| Pion | {{init_pion_gain_3000:+.3f}} (seed 0) | {{init_pion_gain_15k:+.3f}} | {{init_pion_gain_full:+.3f}} |
+
+Every other experiment in the paper uses $\mathcal N(0, 0.02^2)$.

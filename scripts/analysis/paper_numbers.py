@@ -368,6 +368,8 @@ put("init_gain_3000_mean", sum(g) / 4, "Natural Pion, alpha 3 vs normal, 3000 st
 put("init_gain_15k", NUM["np15k"] - val(f"{IL}/ours15000-lr0.05-pl3/*"), "Natural Pion, 15000 steps")
 put("init_pion_gain_3000", NUM["pion3000_s0"] - val(f"{IL}/pion3000-lr1e-3-pl3/*"), "Pion, 3000 steps")
 put("init_pion_gain_15k", NUM["pion15k"] - val(f"{IL}/pion15000-lr1e-3-pl3/*"), "Pion, 15000 steps")
+put("init_gain_full", NUM["np_full_clock"] - val(f"{IL}/ours56900-lr0.05-pl3/*"), "Natural Pion, 56900 steps")
+put("init_pion_gain_full", NUM["pion_full"] - val(f"{IL}/pion73242-lr1e-3-pl3/*"), "Pion, 73242 steps")
 
 # small derived values used in the text
 put("tf25_nomom_d", NUM["tf25_nomom"] - NUM["tf1_nomom"], "tf25_nomom - tf1_nomom")
