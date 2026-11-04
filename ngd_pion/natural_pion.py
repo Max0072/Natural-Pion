@@ -533,7 +533,7 @@ class NaturalPionTurbo(NaturalPionFast):
 
     def __init__(self, params, lr: float = 0.05, *, stats_dtype: str = "bf16", fisher_dtype: str = "bf16",
                  stats_stride: int = 1, c_floor: str = "shift", inv_root: str = "ns", stats_window: int | None = 1,
-                 **kwargs) -> None:
+                 warm_refresh: int = 0, **kwargs) -> None:
         """Defaults (2026-11-05): every approximation that cost nothing in loss at 3000 steps -- F^-1 in bf16, C
         shifted, B^-1/2 by Newton-Schulz, statistics in the one step before a refresh. T_fac stays 25 (50 cost 0.023).
         Approximations, all upstream of the Cayley gate (X is made exactly skew before it, so the rotation stays
@@ -541,7 +541,11 @@ class NaturalPionTurbo(NaturalPionFast):
           fisher_dtype "bf16": the four products of F^-1 in bf16
           stats_stride k:      A and D from every k-th token
           c_floor "shift":     C + eps * lmax(C) I in the refresh instead of flooring C's eigenvalues (no eigh of C)
-          inv_root "ns":       B^-1/2 by coupled Newton-Schulz on B + eps * lmax I instead of an eigendecomposition"""
+          inv_root "ns":       B^-1/2 by coupled Newton-Schulz on B + eps * lmax I instead of an eigendecomposition
+          warm_refresh K:      only every K-th refresh is a full one (K = 1 or 0: all full); in between the previous
+                               vectors P are kept, each column rescaled to (P^T B~ P)_ii = 1 and lam_i set to the
+                               Rayleigh quotient (P^T C~ P)_ii / (P^T B~ P)_ii, floored (B~, C~ shifted by eps*lmax);
+                               no eigendecomposition, two products per side"""
         if fisher_dtype not in ("fp32", "bf16") or c_floor not in ("eigh", "shift") or inv_root not in ("eigh", "ns"):
             raise ValueError("fisher_dtype fp32|bf16, c_floor eigh|shift, inv_root eigh|ns")
         if stats_stride < 1:
@@ -549,6 +553,58 @@ class NaturalPionTurbo(NaturalPionFast):
         self._stats_stride = stats_stride
         super().__init__(params, lr, stats_dtype=stats_dtype, stats_window=stats_window, **kwargs)
         self.fisher_dtype, self.c_floor, self.inv_root = fisher_dtype, c_floor, inv_root
+        if warm_refresh < 0:
+            raise ValueError("warm_refresh must be >= 0")
+        self.warm_refresh = warm_refresh
+
+    def _refactor(self, params: list[torch.Tensor], group: dict) -> None:
+        K = self.warm_refresh
+        if K <= 1:
+            return super()._refactor(params, group)
+        full, warm = [], []
+        for p in params:
+            st = self.state[p]
+            n = st.get("refreshes", 0)
+            (warm if "bases" in st and n % K != 0 else full).append(p)
+            st["refreshes"] = n + 1
+        if full:
+            super()._refactor(full, group)
+        if warm:
+            self._warm_refactor(warm, group)
+
+    def _warm_refactor(self, params: list[torch.Tensor], group: dict) -> None:
+        dt, eps = group["compute_dtype"], group["eps"]
+        by_shape: dict[tuple[int, int], list[tuple]] = defaultdict(list)
+        for p in params:
+            units = self._units(p)
+            for i, rows in enumerate(units):
+                by_shape[(rows.stop - rows.start, p.shape[1])].append((p, i, rows, len(units) == 1))
+
+        def rescale(P, B, C):
+            n = B.shape[-1]
+            eye = torch.eye(n, dtype=B.dtype, device=B.device)
+            Bs = B + eps * self._lmax(B).unsqueeze(-1) * eye
+            Cs = C + eps * self._lmax(C).unsqueeze(-1) * eye
+            g = (P * (Bs @ P)).sum(-2)                         # diag(P^T B~ P)
+            h = (P * (Cs @ P)).sum(-2)                         # diag(P^T C~ P)
+            g = g.clamp_min(torch.finfo(g.dtype).tiny)
+            return P / g.sqrt().unsqueeze(-2), floor_eigenvalues(h / g, eps)
+
+        for members in by_shape.values():
+            W = torch.stack([p.detach().to(dt) if whole else p.detach().to(dt)[rows] for p, _, rows, whole in members])
+            A = torch.stack([self.state[p]["cov"].matrix.to(device=p.device, dtype=dt) for p, *_ in members])
+            D = torch.stack([
+                self.state[p]["cov_backward"].matrix.to(device=p.device, dtype=dt) if whole
+                else self.state[p]["cov_backward"].matrix.to(device=p.device, dtype=dt)[rows, rows]
+                for p, _, rows, whole in members])
+            Wt = W.transpose(-1, -2)
+            old = [self._unit_state(self.state[p], i)["bases"] for p, i, _, _ in members]
+            P_in, l_in = rescale(torch.stack([b[0].P for b in old]), A, Wt @ D @ W)
+            P_out, l_out = rescale(torch.stack([b[1].P for b in old]), D, W @ A @ Wt)
+            for j, (p, i, _, _) in enumerate(members):
+                self._unit_state(self.state[p], i)["bases"] = (
+                    Basis(P=P_in[j], lam=l_in[j], orthogonal=False), Basis(P=P_out[j], lam=l_out[j], orthogonal=False))
+                self.state[p]["since_refactor"] = 0
 
     @staticmethod
     def _lmax(C: torch.Tensor, iters: int = 30) -> torch.Tensor:

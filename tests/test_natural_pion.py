@@ -241,7 +241,8 @@ def test_batched_sigma_matches_the_loop():
 
 @pytest.mark.parametrize("opts", [dict(fisher_dtype="bf16"), dict(stats_stride=4), dict(c_floor="shift"),
                                   dict(inv_root="ns"), dict(c_floor="shift", inv_root="ns", fisher_dtype="bf16"),
-                                  dict(c_floor="shift", inv_root="ns", fisher_dtype="bf16", stats_window=1)])
+                                  dict(c_floor="shift", inv_root="ns", fisher_dtype="bf16", stats_window=1),
+                                  dict(warm_refresh=3), dict(warm_refresh=10**6)])
 def test_turbo_approximations_stay_behind_the_cayley_gate(opts):
     """Whatever the approximation upstream, X is skew at the gate, so every spectrum is kept; the step still moves."""
     ps = _weights(29)
