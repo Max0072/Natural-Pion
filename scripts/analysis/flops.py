@@ -7,7 +7,8 @@ Counting conventions (one multiply-add = 2 FLOP):
   * a product of (a x b) by (b x c): 2abc
   * a symmetric eigendecomposition with eigenvectors of an n x n matrix: 9 n^3 (Golub & Van Loan's count for the
     tridiagonal QR route; libraries vary, so treat the refresh row as an estimate)
-Per rotated matrix W (m x n, out x in), side sizes m (out) and n (in):
+Per rotated unit W (m x n, out x in; a matrix, or one head's row block of the query projection), side sizes m (out)
+and n (in):
   Pion:          generators W^T G, G W^T          2mn^2 + 2m^2n
                  truncated exponential, both sides 2n^3 + 2m^3            (one square of each generator)
                  RMS scale W O_in + O_out W        2mn^2 + 2m^2n
@@ -33,39 +34,47 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 T_FAC, WINDOW = 25, 6
 MODELS = {   # hidden, ffn, layers, vocab, seq, batch (sequences): ours (60M) and Pion's 1.3B
-    "60M": dict(h=512, f=1376, L=8, V=32100, seq=256, batch=512, micro=256),
-    "1.3B": dict(h=2048, f=5460, L=24, V=32100, seq=256, batch=512, micro=256),
+    "60M": dict(h=512, f=1376, L=8, heads=8, V=32100, seq=256, batch=512, micro=256),
+    "1.3B": dict(h=2048, f=5460, L=24, heads=16, V=32100, seq=256, batch=512, micro=256),
 }
 
 
 def matrices(c):
-    """(m, n, input group) per rotated matrix: q, k, v share an input, gate and up share one."""
-    h, f = c["h"], c["f"]
+    """(m, n, input group, units) per rotated matrix: q, k, v share an input, gate and up share one. The query
+    projection rotates as `heads` row blocks (harness.train.query_blocks), each with its own pair of rotations."""
+    h, f, k = c["h"], c["f"], c["heads"]
     out = []
     for l in range(c["L"]):
-        out += [(h, h, (l, "attn")), (h, h, (l, "attn")), (h, h, (l, "attn")), (h, h, (l, "o")),
-                (f, h, (l, "ffn")), (f, h, (l, "ffn")), (h, f, (l, "down"))]
+        out += [(h, h, (l, "attn"), k), (h, h, (l, "attn"), 1), (h, h, (l, "attn"), 1), (h, h, (l, "o"), 1),
+                (f, h, (l, "ffn"), 1), (f, h, (l, "ffn"), 1), (h, f, (l, "down"), 1)]
     return out
+
+
+def units(mats):
+    """(m, n) of every rotated unit: a matrix, or one row block of it."""
+    return [(m // k, n) for m, n, _, k in mats for _ in range(k)]
 
 
 def count(c):
     T = c["seq"] * c["batch"]
     mats = matrices(c)
-    params = sum(m * n for m, n, _ in mats) + c["V"] * c["h"]
+    us = units(mats)                                # the parts of the step that act per rotated unit
+    params = sum(m * n for m, n, _, _ in mats) + c["V"] * c["h"]
     model = 6 * T * params + 12 * c["L"] * c["h"] * c["seq"] * T
-    gen = sum(2 * m * n * n + 2 * m * m * n for m, n, _ in mats)
+    gen = sum(2 * m * n * n + 2 * m * m * n for m, n in us)
     rot = gen
-    pion = {"generators": gen, "truncated exp": sum(2 * n ** 3 + 2 * m ** 3 for m, n, _ in mats),
+    pion = {"generators": gen, "truncated exp": sum(2 * n ** 3 + 2 * m ** 3 for m, n in us),
             "RMS scale": gen, "rotation": rot}
     inputs = {}
-    for m, n, g in mats:
+    for m, n, g, _ in mats:
         inputs[g] = n
     Ts = c["seq"] * c["micro"]                      # the hooks record the first micro-batch of each step only
-    stats = (sum(2 * Ts * n * n for n in inputs.values()) + sum(2 * Ts * m * m for m, _, _ in mats)) * WINDOW / T_FAC
+    # D is one gram per matrix over its full output (a query block reads its diagonal block)
+    stats = (sum(2 * Ts * n * n for n in inputs.values()) + sum(2 * Ts * m * m for m, _, _, _ in mats)) * WINDOW / T_FAC
     side = lambda k: 3 * 9 * k ** 3 + 5 * 2 * k ** 3
-    refresh = sum(side(n) + side(m) + 2 * (2 * m * n * n + 2 * m * m * n) for m, n, _ in mats) / T_FAC
-    npf = {"generators": gen, "F^-1": sum(8 * n ** 3 + 8 * m ** 3 for m, n, _ in mats),
-           "Cayley (Newton-Schulz)": sum(8 * n ** 3 + 8 * m ** 3 for m, n, _ in mats), "rotation": rot,
+    refresh = sum(side(n) + side(m) + 2 * (2 * m * n * n + 2 * m * m * n) for m, n in us) / T_FAC
+    npf = {"generators": gen, "F^-1": sum(8 * n ** 3 + 8 * m ** 3 for m, n in us),
+           "Cayley (Newton-Schulz)": sum(8 * n ** 3 + 8 * m ** 3 for m, n in us), "rotation": rot,
            "statistics": stats, "refresh": refresh}
     return model, pion, npf
 

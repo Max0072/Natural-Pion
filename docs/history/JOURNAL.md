@@ -7282,3 +7282,19 @@ optimum", "linear decay and cosine are within noise", "the polar step is worse i
 Second wave, once the grids finish: add v2.sbatch rows alg1-mom-seeds (seeds 1-3 at the angle of tf1_mom) and
 len-rms-seeds (seeds 1-3 at the angle of len_rms); extend any grid whose optimum is at an edge.
 On a GPU after the runs: paper_checks.sbatch, ns_diag.sbatch (RETS="cayley ns ns_delta"), optimizer_step_bench.sbatch.
+
+## 2026-11-05 — read-through fixes
+
+A fresh full read (agent) and my check. Fixed: theta_0 = 0.05 from 9000 steps everywhere; setup precision (bf16
+statistics inputs, Newton-Schulz); Appendix C retraction; "a fast form" -> the method; contribution 5 no longer
+claims a separate measurement per change; theta^4/8 (not /4) for the truncated exponential's singular values; 10^15
+for the dense solve; Proposition 2 statement; (delta, v); warm power iteration described as part of Algorithm 1
+(50 iterations every step) and 4.4 as fewer + batched iterations; the 3.4 retraction table merged into 4.7 (which
+now has the truncated exponential at 3000 and 15000); 4.8 "tried and not adopted" removed (4.9/4.10 -> 4.8/4.9);
+the true-Fisher result moved from 2.2 to a 5.4 row; equal-time paragraph moved from 5.2 to 5.3; the quadratic-model
+rule explained (differs from fixed c only through basis staleness); one key per quantity (v2_3000_s0, v2_15000_s0,
+v2_sps in the text); signs from the format, not typed; duplicates cut (power-iteration schedule, Pion lr check,
+floors, cost, theta_0, K-FAC measurement); outcome prose without numbers cut; review comment removed; references
+sorted, six added and cited (AdamW, LLaMA, RoPE, SwiGLU, RMSNorm, Megatron-LM), C4 cited. flops.py and
+optimizer_step_bench.py count the query projection per head (60M FLOP ratio stays 1.09). Not done: numbering of the
+small inline tables, notation overloads (Omega, sigma, c), swapping 4.4 and 4.5.

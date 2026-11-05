@@ -2,45 +2,45 @@
  "60M": {
   "model": 34468723163136,
   "pion": {
-   "generators": 81025564672,
-   "truncated exp": 148676018176,
-   "RMS scale": 81025564672,
-   "rotation": 81025564672
+   "generators": 79146516480,
+   "truncated exp": 161594474496,
+   "RMS scale": 79146516480,
+   "rotation": 79146516480
   },
   "natural_pion_fast": {
-   "generators": 81025564672,
-   "F^-1": 594704072704,
-   "Cayley (Newton-Schulz)": 594704072704,
-   "rotation": 81025564672,
+   "generators": 79146516480,
+   "F^-1": 646377897984,
+   "Cayley (Newton-Schulz)": 646377897984,
+   "rotation": 79146516480,
    "statistics": 1957216596787.2,
-   "refresh": 116502298624.0
+   "refresh": 125911632445.44
   },
-  "pion_total": 391752712192,
-  "np_total": 3425178170163.2,
-  "pion_overhead": 0.01136545471492765,
-  "np_overhead": 0.09937061358357475,
-  "np_over_pion": 1.0870161804107232
+  "pion_total": 399034023936,
+  "np_total": 3534177058160.64,
+  "pion_overhead": 0.011576698737792627,
+  "np_overhead": 0.10253286846263025,
+  "np_over_pion": 1.0899152479869587
  },
  "1.3B": {
   "model": 1021315305701376,
   "pion": {
-   "generators": 15388063039488,
-   "truncated exp": 27974557848576,
-   "RMS scale": 15388063039488,
-   "rotation": 15388063039488
+   "generators": 15001515982848,
+   "truncated exp": 33748604507136,
+   "RMS scale": 15001515982848,
+   "rotation": 15001515982848
   },
   "natural_pion_fast": {
-   "generators": 15388063039488,
-   "F^-1": 111898231394304,
-   "Cayley (Newton-Schulz)": 111898231394304,
-   "rotation": 15388063039488,
+   "generators": 15001515982848,
+   "F^-1": 134994418028544,
+   "Cayley (Newton-Schulz)": 134994418028544,
+   "rotation": 15001515982848,
    "statistics": 92853760992215.05,
-   "refresh": 21932217851105.28
+   "refresh": 26174088613908.48
   },
-  "pion_total": 74138746967040,
-  "np_total": 369358567710904.4,
-  "pion_overhead": 0.072591438269033,
-  "np_overhead": 0.3616498897539304,
-  "np_over_pion": 1.2694953932798356
+  "pion_total": 78753152455680,
+  "np_total": 419019717628907.56,
+  "pion_overhead": 0.07710953905816306,
+  "np_overhead": 0.41027458933571037,
+  "np_over_pion": 1.3093139910067741
  }
 }

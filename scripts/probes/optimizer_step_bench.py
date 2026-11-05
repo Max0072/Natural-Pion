@@ -16,6 +16,11 @@ import torch
 
 from ngd_pion.linalg import exact_fp32
 from ngd_pion.natural_pion import NaturalPion, NaturalPionFast, NaturalPionTurbo
+
+
+def qb(ps):
+    """The query projection of every layer (the first of its seven matrices) in 8 head blocks."""
+    return {id(p): 8 for p in ps[0::7]}
 from ngd_pion.pion_baseline import Pion
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -79,13 +84,17 @@ def main():
     torch.backends.cuda.matmul.allow_tf32 = True          # as in training; the optimizers guard their own fp32
     out = {"gpu": torch.cuda.get_device_name(0)}
     cases = {
-        "pion": lambda ps: Pion(ps, lr=1e-3, scaling="rms", rms=0.2, momentum="lie", retraction="trunc", beta1=0.9),
-        "fast_cayley_loop": lambda ps: NaturalPionFast(ps, lr=0.2, retraction="cayley", batch_sigma=False, share_inputs=False),
-        "fast_cayley_shared": lambda ps: NaturalPionFast(ps, lr=0.2, retraction="cayley", batch_sigma=False),
-        "fast_nsdelta_shared": lambda ps: NaturalPionFast(ps, lr=0.2, batch_sigma=False),
-        "fast_nsdelta_batchsigma": lambda ps: NaturalPionFast(ps, lr=0.2),
-        "fast_nsdelta_batchsigma_bf16": lambda ps: NaturalPionFast(ps, lr=0.2, stats_dtype="bf16"),
-        "turbo": lambda ps: NaturalPionTurbo(ps, lr=0.2),
+        # every rotating optimizer rotates the query projection per head (harness.train.query_blocks)
+        "pion": lambda ps: Pion(ps, lr=1e-3, scaling="rms", rms=0.2, momentum="lie", retraction="trunc", beta1=0.9,
+                                row_blocks=qb(ps)),
+        "fast_cayley_loop": lambda ps: NaturalPionFast(ps, lr=0.2, retraction="cayley", stats_dtype="fp32",
+                                                       batch_sigma=False, share_inputs=False, row_blocks=qb(ps)),
+        "fast_cayley_shared": lambda ps: NaturalPionFast(ps, lr=0.2, retraction="cayley", stats_dtype="fp32",
+                                                         batch_sigma=False, row_blocks=qb(ps)),
+        "fast_nsdelta_shared": lambda ps: NaturalPionFast(ps, lr=0.2, stats_dtype="fp32", batch_sigma=False, row_blocks=qb(ps)),
+        "fast_nsdelta_batchsigma": lambda ps: NaturalPionFast(ps, lr=0.2, stats_dtype="fp32", row_blocks=qb(ps)),
+        "fast_nsdelta_batchsigma_bf16": lambda ps: NaturalPionFast(ps, lr=0.2, row_blocks=qb(ps)),
+        "turbo": lambda ps: NaturalPionTurbo(ps, lr=0.2, row_blocks=qb(ps)),
     }
     for name, make in cases.items():
         out[name] = run(name, make)

@@ -176,9 +176,9 @@ put("pion_full_train", sum(_tr) / len(_tr), f"{L}/pion73242-lr1e-3: mean logged 
 put("pion_vs_paper", NUM["pion_full_train"] - 3.3575,
     "pion_full_train - 3.3575 (the Pion paper's final training loss, Fig. 5, cited)")
 
-# analytic: the truncated exponential's departure from orthogonality, ||T^T T - I||_2 = (angle)^4 / 4
+# analytic: T^T T = I + Omega^4/4 (Proposition 4), so one step moves a singular value by about (angle)^4 / 8
 for th in (0.05, 0.2):
-    put(f"trunc_err_{th}", th ** 4 / 4, f"theta^4/4 at theta = {th} (Proposition 4)")
+    put(f"trunc_err_{th}", th ** 4 / 8, f"theta^4/8 at theta = {th} (Proposition 4: sqrt(1 + theta^4/4) - 1)")
 rc = json.load(open(R / "probes" / "rl_refactor_cost_b200.json"))
 put("rl_refactor_b200", rc["refactor_total_s"], "runs-record/probes/rl_refactor_cost_b200.json (scripts/probes/rl_refactor_cost.py, job 397885)")
 PA = R / "probes" / "pion_angles.json"
@@ -195,7 +195,7 @@ if PA.exists():
         meds.append(xs[len(xs) // 2])
         sprs.append(xs[int(0.9 * (len(xs) - 1))] / xs[int(0.1 * (len(xs) - 1))])
     meds.sort(); sprs.sort()
-    put("trunc_err_pion", meds[len(meds) // 2] ** 4 / 4, "(pion_angle_block_median)^4 / 4")
+    put("trunc_err_pion", meds[len(meds) // 2] ** 4 / 8, "(pion_angle_block_median)^4 / 8")
     put("pion_angle_block_median", meds[len(meds) // 2], "pion_angles.json: median over steps of the median block angle")
     put("pion_angle_spread", sprs[len(sprs) // 2], "pion_angles.json: median over steps of p90/p10 of the block angles")
     per_step.sort()
@@ -458,6 +458,7 @@ vval("ret_trunc_3000", "ret-trunc")
 vval("ret_trunc_15000", "ret-trunc-15k")
 vsps("ret_cayley_sps", "ret-cayley")
 vsps("ret_ns_sps", "ret-ns")
+vsps("ret_trunc_sps", "ret-trunc")
 
 # 4.1: the step by part (400 profiled steps; ngd_pion.natural_pion's own GPU-synchronised timers)
 PARTS = {"refresh": "refresh", "sigma": "sigma", "cayley": "cayley", "Finv": "F^-1",
