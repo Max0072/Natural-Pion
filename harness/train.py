@@ -35,7 +35,7 @@ from ngd_pion.unified import NGDPionUnified
 from ngd_pion.legacy.damped import DampedNGDPionS
 from ngd_pion.legacy.exact_curv import ExactCurvNGDPionS
 from ngd_pion.linalg import EIGH_FALLBACKS
-from ngd_pion.natural_pion import NaturalPion, NaturalPionFast, NaturalPionTurbo
+from ngd_pion.natural_pion import NaturalPion, NaturalPionFast, NaturalPionStiefel, NaturalPionTurbo
 
 from .config import RunConfig
 from .data import TokenCorpus
@@ -98,7 +98,7 @@ def lr_at(step: int, cfg: RunConfig, base: float | None = None) -> float:
 # 69.5 s of a 73.5 s step this comment used to cite is history, not a live cost.
 # The final method, exact and efficient forms (ngd_pion/natural_pion.py).
 NATURAL_PION = {"natural-pion": NaturalPion, "natural-pion-fast": NaturalPionFast,
-                "natural-pion-turbo": NaturalPionTurbo}
+                "natural-pion-turbo": NaturalPionTurbo, "natural-pion-stiefel": NaturalPionStiefel}
 
 NGD_IMPLEMENTATIONS = {
     "ngd-pion": FastNGDPion,

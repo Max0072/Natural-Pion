@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from ngd_pion.natural_pion import NaturalPion, NaturalPionFast, NaturalPionTurbo
+from ngd_pion.natural_pion import NaturalPion, NaturalPionFast, NaturalPionTurbo, NaturalPionStiefel
 
 ROOT = Path(__file__).resolve().parents[1]
 SHAPES = [(12, 8), (8, 8), (8, 8), (8, 12), (12, 8)]  # repeated shapes and sizes exercise the batching
@@ -306,3 +306,41 @@ def test_drop_kernel_keeps_the_spectrum():
     _drive(NaturalPionFast(ps, lr=0.2, t_fac=5, stats_window=2, drop_kernel=True), ps, 20, 40, _cosine)
     for p, s in zip(ps, s0):
         assert torch.allclose(torch.linalg.svdvals(p.detach().double()), s, rtol=1e-4)
+
+
+
+@pytest.mark.parametrize("side", ["out", "in"])
+def test_stiefel_direction_equals_full_solve_without_the_invisible_block(side):
+    from ngd_pion.natural_pion import stiefel_basis, stiefel_direction, drop_kernel, _orth_basis
+    from ngd_pion.linalg import skew, floor_eigenvalues
+    g = torch.Generator().manual_seed(41)
+    s, k, eps = 14, 5, 1e-4
+    dd = torch.float64
+    W = torch.randn(s, k, generator=g, dtype=dd) if side == "out" else torch.randn(k, s, generator=g, dtype=dd)
+    xb = torch.randn(200, s, generator=g, dtype=dd) @ torch.diag(torch.linspace(2, 0.2, s, dtype=dd))
+    B = xb.T @ xb / 200                                      # this side's moment
+    xo = torch.randn(200, k, generator=g, dtype=dd)
+    Ao = xo.T @ xo / 200                                     # the other side's moment
+    C = W @ Ao @ W.T if side == "out" else W.T @ Ao @ W      # rank-k gram on the wide side
+    G = skew(torch.randn(s, s, generator=g, dtype=dd))
+    # full solve, C unfloored, then the invisible block removed
+    wb, Ub = torch.linalg.eigh(B)
+    Bih = (Ub * floor_eigenvalues(wb, eps).rsqrt()) @ Ub.T
+    lam, Qm = torch.linalg.eigh(Bih @ C @ Bih)
+    P = Bih @ Qm
+    lf = floor_eigenvalues(lam, eps)
+    X = skew(P @ ((P.T @ G @ P) / (0.5 * (lf[:, None] + lf[None, :]))) @ P.T)
+    ref = drop_kernel(X, W, side)
+    Q = _orth_basis(W, side)
+    L, Mt = stiefel_direction(G, *stiefel_basis(B, C, Q, eps), Q)
+    assert torch.allclose(L @ Mt, ref, rtol=1e-6, atol=1e-9 * ref.abs().max())
+
+
+def test_stiefel_optimizer_keeps_the_spectrum_and_moves():
+    ps = _weights(43)
+    s0 = [torch.linalg.svdvals(p.detach().double()) for p in ps]
+    w0 = [p.detach().clone() for p in ps]
+    _drive(NaturalPionStiefel(ps, lr=0.2, t_fac=5, stats_window=2, stats_dtype="fp32"), ps, 20, 44, _cosine)
+    for p, s, w in zip(ps, s0, w0):
+        assert torch.allclose(torch.linalg.svdvals(p.detach().double()), s, rtol=1e-4)
+        assert (p.detach() - w).abs().max() > 1e-3

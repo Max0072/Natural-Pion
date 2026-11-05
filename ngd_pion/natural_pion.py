@@ -41,7 +41,7 @@ from .factorization import (Basis, basis_congruence, basis_congruence_from_root,
 from .linalg import floor_eigenvalues, safe_eigh
 from .linalg import exact_fp32, is_identity, skew, spectral_norm
 
-__all__ = ["NaturalPion", "NaturalPionFast", "NaturalPionTurbo"]
+__all__ = ["NaturalPion", "NaturalPionFast", "NaturalPionTurbo", "NaturalPionStiefel"]
 
 
 def drop_kernel(X: torch.Tensor, W: torch.Tensor, side: str) -> torch.Tensor:
@@ -886,3 +886,178 @@ class NaturalPionTurbo(NaturalPionFast):
         for p in active:
             self.state[p]["step"] += 1
             self.state[p]["since_refactor"] += 1
+
+
+def stiefel_basis(B: torch.Tensor, C: torch.Tensor, Q: torch.Tensor, eps: float):
+    """The wide side of a rectangular matrix without its invisible block (batched).
+
+    The side has size s, the other side k < s; B (s x s) is this side's moment, C (s x s) the gram of rank k
+    (W A W^T on the out side, W^T D W on the in side) and Q (s x k) an orthonormal basis of the k directions W
+    occupies on this side. The pencil (B_f, C) with C unfloored has k eigenvalues Lam in the range of C and s - k
+    zeros (floored to f = eps * max Lam); the zero-zero block of F^-1 is the one that cannot move W. Returns
+    (P_r, lam_r, f, H): P_r (s x k) the range part of the basis, lam_r floored, H = B_f^-1 - P_r P_r^T."""
+    wb, Ub = safe_eigh(B)
+    wb = floor_eigenvalues(wb, eps)
+    E = (Ub * (1.0 / wb).unsqueeze(-2)) @ Ub.transpose(-1, -2)            # B_f^-1
+    Qt = Q.transpose(-1, -2)
+    Cq = Qt @ C @ Q
+    wc, Uc = safe_eigh(0.5 * (Cq + Cq.transpose(-1, -2)))
+    Ch = (Uc * wc.clamp_min(0).sqrt().unsqueeze(-2)) @ Uc.transpose(-1, -2)  # Cq^1/2
+    G = Qt @ E @ Q
+    S = Ch @ G @ Ch
+    lam, U = safe_eigh(0.5 * (S + S.transpose(-1, -2)))
+    tiny = torch.finfo(lam.dtype).tiny
+    Pr = E @ Q @ Ch @ (U * lam.clamp_min(tiny).rsqrt().unsqueeze(-2))
+    lam_f = floor_eigenvalues(lam, eps)
+    f = eps * lam.amax(dim=-1, keepdim=True)
+    H = E - Pr @ Pr.transpose(-1, -2)
+    return Pr, lam_f, f, H
+
+
+def stiefel_direction(G: torch.Tensor, Pr, lam, f, H, Q: torch.Tensor):
+    """F^-1 G on the wide side without the invisible block, then projected off the current kernel; returns the
+    factors (L, Mt) with X' = L @ Mt, L = [Q, R2] (s x 2k), Mt = [Q^T X; Q^T] (2k x s). O(s^2 k), no s x s by s x s."""
+    GP = G @ Pr                                                            # s x k
+    Prt = Pr.transpose(-1, -2)
+    K = 0.5 * (lam.unsqueeze(-1) + lam.unsqueeze(-2))
+    T1 = Pr @ ((Prt @ GP) / K) @ Prt
+    delta = 2.0 / (lam + f)                                                # (.., k)
+    T2 = (Pr * delta.unsqueeze(-2)) @ ((-GP.transpose(-1, -2)) @ H)       # P_r D P_r^T G H
+    X = T1 + T2 - T2.transpose(-1, -2)
+    X = 0.5 * (X - X.transpose(-1, -2))
+    Qt = Q.transpose(-1, -2)
+    QX = Qt @ X                                                            # k x s
+    XQ = X @ Q                                                             # s x k
+    R2 = XQ - Q @ (QX @ Q)
+    return torch.cat([Q, R2], dim=-1), torch.cat([QX, Qt], dim=-2)
+
+
+def _factored_norm(L, Mt, v, iters):
+    """||L Mt||_2 for skew L Mt by warm power iteration on the factors."""
+    if v is None:
+        v = torch.ones(*L.shape[:-2], L.shape[-2], 1, dtype=L.dtype, device=L.device)
+    for _ in range(max(iters, 1)):
+        u = L @ (Mt @ v)
+        u = u / u.norm(dim=-2, keepdim=True).clamp_min(1e-30)
+        v = -(L @ (Mt @ u))
+        v = v / v.norm(dim=-2, keepdim=True).clamp_min(1e-30)
+    return (L @ (Mt @ v)).norm(dim=(-2, -1)), v
+
+
+def _orth_basis(W: torch.Tensor, side: str) -> torch.Tensor:
+    """Orthonormal basis of W's column space (out side) or row space (in side), by Cholesky of the small gram."""
+    if side == "out":
+        L = torch.linalg.cholesky_ex(W.transpose(-1, -2) @ W)[0]
+        return torch.linalg.solve_triangular(L, W.transpose(-1, -2), upper=False).transpose(-1, -2)
+    L = torch.linalg.cholesky_ex(W @ W.transpose(-1, -2))[0]
+    return torch.linalg.solve_triangular(L, W, upper=False).transpose(-1, -2)
+
+
+class NaturalPionStiefel(NaturalPionTurbo):
+    """Turbo with the wide side of every rectangular matrix in Stiefel form: its generator never forms the block that
+    cannot move W, F^-1 costs O(s^2 k) instead of O(s^3) and the Cayley step is a Woodbury solve of size 2k. Square
+    matrices and the narrow sides are exactly as in Turbo. The wide side's C is not floored (its rank-k structure is
+    what makes the reduction exact). Aggressive tier: used in no comparison."""
+
+    def __init__(self, params, lr: float = 0.05, **kwargs) -> None:
+        super().__init__(params, lr, **kwargs)
+
+    @staticmethod
+    def _wide(shape) -> str | None:
+        m, n = shape
+        return "out" if m > n else "in" if n > m else None
+
+    def _refactor(self, params: list[torch.Tensor], group: dict) -> None:
+        super()._refactor(params, group)                                   # narrow sides and square matrices
+        dt, eps = group["compute_dtype"], group["eps"]
+        by_shape: dict[tuple, list] = defaultdict(list)
+        for p in params:
+            if self._wide(p.shape) and len(self._units(p)) == 1:
+                by_shape[tuple(p.shape)].append(p)
+        for shape, ps in by_shape.items():
+            side = self._wide(shape)
+            W = torch.stack([p.detach().to(dt) for p in ps])
+            A = torch.stack([self.state[p]["cov"].matrix.to(device=p.device, dtype=dt) for p in ps])
+            D = torch.stack([self.state[p]["cov_backward"].matrix.to(device=p.device, dtype=dt) for p in ps])
+            Wt = W.transpose(-1, -2)
+            if side == "out":
+                B, C = D, W @ A @ Wt
+            else:
+                B, C = A, Wt @ D @ W
+            Q = _orth_basis(W, side)
+            Pr, lam, f, H = stiefel_basis(B, C, Q, eps)
+            for j, p in enumerate(ps):
+                self.state[p]["stiefel"] = (Pr[j], lam[j], f[j], H[j])
+
+    @torch.no_grad()
+    def _rotate(self, active: list[torch.Tensor], group: dict) -> None:
+        st_ps = [p for p in active if "stiefel" in self.state[p]]
+        rest = [p for p in active if "stiefel" not in self.state[p]]
+        if rest:
+            super()._rotate(rest, group)
+        if not st_ps:
+            return
+        dt, beta1, lr = group["compute_dtype"], group["beta1"], group["lr"]
+        by_shape: dict[tuple, list] = defaultdict(list)
+        for p in st_ps:
+            by_shape[tuple(p.shape)].append(p)
+        for shape, ps in by_shape.items():
+            side = self._wide(shape)
+            W = torch.stack([p.detach().to(dt) for p in ps])
+            Gw = torch.stack([p.grad.detach().to(dt) for p in ps])
+            Wt = W.transpose(-1, -2)
+            a, b = Wt @ Gw, Gw @ Wt
+            g_in, g_out = 0.5 * (a - a.transpose(-1, -2)), 0.5 * (b - b.transpose(-1, -2))
+            sts = [self.state[p] for p in ps]
+            if beta1 > 0.0:
+                for k, st in enumerate(sts):
+                    st.setdefault("m_in", torch.zeros_like(g_in[k])); st.setdefault("m_out", torch.zeros_like(g_out[k]))
+                ms = [st["m_in"] for st in sts] + [st["m_out"] for st in sts]
+                torch._foreach_mul_(ms, beta1)
+                torch._foreach_add_(ms, list(g_in.unbind(0)) + list(g_out.unbind(0)), alpha=1.0 - beta1)
+                g_in = torch.stack([st["m_in"] for st in sts]); g_out = torch.stack([st["m_out"] for st in sts])
+            # narrow side: the ordinary basis solve
+            nb = [st["bases"][0 if side == "out" else 1] for st in sts]
+            Gn = g_in if side == "out" else g_out
+            P = torch.stack([x.P for x in nb]); den = torch.stack([x.denominator for x in nb]); Pt = P.transpose(-1, -2)
+            Xn = skew(P @ ((Pt @ Gn @ P) / den) @ Pt)
+            # wide side: Stiefel form
+            Gwd = g_out if side == "out" else g_in
+            Pr = torch.stack([st["stiefel"][0] for st in sts]); lam = torch.stack([st["stiefel"][1] for st in sts])
+            f = torch.stack([st["stiefel"][2] for st in sts]); H = torch.stack([st["stiefel"][3] for st in sts])
+            Q = _orth_basis(W, side)
+            L, Mt = stiefel_direction(Gwd, Pr, lam, f, H, Q)
+            # sigma = max over the two sides, warm power iteration
+            fresh = any("v_wide" not in st or st["since_refactor"] == 0 for st in sts)
+            it = group["angle_warmup"] if fresh else group["angle_iters"]
+            vn = None if any("v_narrow" not in st for st in sts) else torch.stack([st["v_narrow"] for st in sts])
+            sn, vn = spectral_norm(Xn, it, vn)
+            vw = None if any("v_wide" not in st for st in sts) else torch.stack([st["v_wide"] for st in sts])
+            sw, vw = _factored_norm(L, Mt, vw, it)
+            for k, st in enumerate(sts):
+                st["v_narrow"], st["v_wide"] = vn[k], vw[k]
+            c = (lr / torch.maximum(sn, sw).clamp_min(1e-30)).reshape(-1, 1, 1)
+            # narrow Cayley by Newton-Schulz in Z - I (as Turbo), wide by Woodbury
+            A_n = 0.5 * c * Xn
+            eye = torch.eye(A_n.shape[-1], dtype=dt, device=A_n.device)
+            if group["retraction"] == "ns_delta" and lr <= group["ns_guard"]:
+                z = -A_n
+                for _ in range(group["ns_iters"]):
+                    r = A_n + z + A_n @ z
+                    z = z - r - z @ r
+                Rn = eye + 2.0 * z
+            else:
+                E = eye.expand_as(A_n)
+                Rn = torch.linalg.solve(E + A_n, E - A_n)
+            k2 = L.shape[-1]
+            K = torch.eye(k2, dtype=dt, device=L.device) + 0.5 * c * (Mt @ L)
+            if side == "out":
+                W1 = W @ Rn                                                   # in side (narrow)
+                W2 = W1 - c * (L @ torch.linalg.solve(K, Mt @ W1))          # out side (wide) by Woodbury
+            else:
+                W1 = Rn @ W                                                   # out side (narrow)
+                W2 = W1 - c * ((W1 @ L) @ torch.linalg.solve(K, Mt))        # in side (wide)
+            for k, p in enumerate(ps):
+                p.copy_(W2[k].to(p.dtype))
+                self.state[p]["step"] += 1
+                self.state[p]["since_refactor"] += 1
