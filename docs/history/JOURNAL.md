@@ -7302,3 +7302,19 @@ Cosmetics done the same day: every result table numbered in order (Tables 1-15; 
 6/7/9/10/11, the FLOPs table is 8), 4.4 (batching) and 4.5 (sigma) swapped to follow Table 6's chain, Proposition 4
 and 4.7 use Psi for a generic skew matrix (Omega stays Pion's generators), Cay(cX) in Algorithm 1, the budget-curve
 exponent is gamma (c stays the step coefficient).
+
+## 2026-11-05 (night) — five overlooked items, all approved
+
+1. Peak angle at 15000 steps was chosen in the Q-whole setting; at 3000 the optimum moved above 0.2. Rows 138-140:
+   15000 steps at 0.025 / 0.1 / 0.2 (0.05 is s15000). If 0.1 wins, decide whether the long runs are redone.
+2. Step-time fairness: the dead rho block costs a forward on every logged step for both arms; Pion's 0.468 s is an old
+   run on old code. Plan: one timing job on one node, sequentially Pion, every chain stage and Fast's candidate forms,
+   600 steps each, no evaluation, logging every 1000 steps — once Fast's form is settled (items 3-4, TF32).
+3. torch.compile / CUDA graphs re-tested now that the step is matrix products: scripts/probes/step_compile_check.py.
+4. bf16 F^-1 (Turbo's) as a Fast option, fisher_dtype="bf16"; rows 141-142 check the 0.010 rule at 3000 and 15000.
+5. Newton-Schulz instead of the exact solve at large angles: iterations by angle (ns_iterations: 2 up to 0.2, 3 up
+   to 0.4, 4 up to 0.8; exact solve only above 1.8). Two iterations at 0.4 had left a 2.6e-6 orthogonality error per
+   step. Runs at <= 0.2 are unchanged; the six Fast runs above 0.2 made with the old code are redone (16, 41, 43, 46,
+   49, 50; ngd_ns_guard's default moved to 1.8, so they land in new directories). The empirical-Fisher grid is the
+   direction grid (same configuration).
+Lesson recorded in memory: list what could make a campaign obsolete before launching it.
