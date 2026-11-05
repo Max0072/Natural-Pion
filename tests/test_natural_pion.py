@@ -392,3 +392,30 @@ def test_tf32_option_runs_and_keeps_the_spectrum(tf32):
         NaturalPionFast(_weights(52), tf32="x")
     with pytest.raises(ValueError):
         NaturalPionTurbo(_weights(52), tf32="all")
+
+
+def test_newton_schulz_iterations_follow_the_angle():
+    from ngd_pion.natural_pion import ns_iterations
+    assert ns_iterations(0.05, 2) == 2 and ns_iterations(0.2, 2) == 2
+    assert ns_iterations(0.4, 2) == 3 and ns_iterations(0.8, 2) == 4
+    assert ns_iterations(1.9, 2) is None
+
+
+@pytest.mark.parametrize("angle", [0.4, 0.8])
+def test_newton_schulz_at_large_angles_keeps_the_spectrum(angle):
+    params = _weights(54)
+    before = [torch.linalg.svdvals(p.detach().double()) for p in params]
+    _drive(NaturalPionFast(params, lr=angle, t_fac=5, stats_window=3), params, 20, 55, lambda t: angle)
+    for p, s0 in zip(params, before):
+        assert torch.allclose(torch.linalg.svdvals(p.detach().double()), s0, rtol=1e-5)
+
+
+def test_bf16_fisher_products_keep_the_spectrum_and_track_fp32():
+    a, b = _weights(56), _weights(56)
+    before = [torch.linalg.svdvals(p.detach().double()) for p in b]
+    ta = _drive(NaturalPionFast(a, lr=0.1, t_fac=5, stats_window=3), a, 20, 57, lambda t: 0.1)
+    tb = _drive(NaturalPionFast(b, lr=0.1, t_fac=5, stats_window=3, fisher_dtype="bf16"), b, 20, 57, lambda t: 0.1)
+    for p, s0 in zip(b, before):
+        assert torch.allclose(torch.linalg.svdvals(p.detach().double()), s0, rtol=1e-5)
+    for x, y in zip(ta[-1], tb[-1]):
+        assert (x - y).abs().max() < 0.05 * x.abs().max()

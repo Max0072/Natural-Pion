@@ -177,6 +177,13 @@ ROWS=(
 "tf32-all|$F|3000|0.2|0|0.9|||{\"tf32\":\"all\"}|"
 # 137 TF32 before the Cayley step at 15000 steps: the second point of Fast's acceptance rule (within 0.010)
 "tf32-upstream-15k|$F|15000|0.05|0|0.9|||{\"tf32\":\"upstream\"}|"
+# 138-140 the peak angle at 15000 steps in this setting (0.05 is row s15000)
+"theta15k-0.025|$F|15000|0.025|0|0.9||||"
+"theta15k-0.1|$F|15000|0.1|0|0.9||||"
+"theta15k-0.2|$F|15000|0.2|0|0.9||||"
+# 141-142 F^-1 products in bf16 (Fast's acceptance rule: within 0.010 at 3000 and 15000)
+"fisherbf16|$F|3000|0.2|0|0.9|||{\"fisher_dtype\":\"bf16\"}|"
+"fisherbf16-15k|$F|15000|0.05|0|0.9|||{\"fisher_dtype\":\"bf16\"}|"
 )
 IFS='|' read -r TAG OPT STEPS LR SEED B1 RET STATS KW EXTRA <<< "${ROWS[$SLURM_ARRAY_TASK_ID]}"
 case "$RET" in ""|cayley|ns|ns_delta|trunc) ;; *) echo "row $SLURM_ARRAY_TASK_ID: bad RETRACTION '$RET'"; exit 1 ;; esac

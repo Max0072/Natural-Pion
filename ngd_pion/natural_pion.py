@@ -41,6 +41,20 @@ from contextlib import nullcontext
 __all__ = ["NaturalPion", "NaturalPionFast", "NaturalPionTurbo", "NaturalPionStiefel", "BY_NAME", "default_of"]
 
 
+def ns_iterations(angle: float, minimum: int) -> int | None:
+    """Newton-Schulz iterations for (I + Psi)^-1, ||Psi||_2 = angle / 2, that make the Cayley step exact to fp32
+    round-off: after k iterations from Z0 = I - Psi the error is about (angle/2)^(2^(k+1)), so the smallest k >= minimum
+    with that below 2^-24 (2 up to angle 0.2, 3 up to 0.4, 4 up to 0.8). None where the iteration converges too
+    slowly to be worth it (angle / 2 >= 0.9): the exact solve then."""
+    x = float(angle) / 2.0
+    if x >= 0.9:
+        return None
+    k = minimum
+    while x ** (2 ** (k + 1)) > 2.0 ** -24:
+        k += 1
+    return k
+
+
 def _lmax(C: torch.Tensor, iters: int = 30) -> torch.Tensor:
     """Largest eigenvalue of symmetric PSD `C` (batched) by power iteration, shape (..., 1)."""
     v = torch.ones(*C.shape[:-1], 1, dtype=C.dtype, device=C.device)
@@ -69,8 +83,8 @@ class NaturalPion(torch.optim.Optimizer):
             (lam_i + lam_j)/2 becomes (lam_i + lam_j)/2 + damping * max. In the basis this is F + delta B X B,
             damping in the metric of the anchor factor. 0 (default) leaves only the floor `eps`.
         retraction: "cayley" solves (I + c/2 X) R = (I - c/2 X) exactly; "ns" computes the inverse by
-            `ns_iters` Newton-Schulz iterations (matrix products only), which is exact to fp32 round-off for
-            angles well below 1 and is used only while the scheduled angle is at most `ns_guard`, but rounds
+            Newton-Schulz iterations (matrix products only), at least `ns_iters` and as many as the step's largest
+            angle needs to be exact to fp32 round-off (`ns_iterations`); the exact solve above `ns_guard`. It rounds
             next to 1 with a positive bias in fp32 (kept to reproduce that measurement); "ns_delta" is the same
             iteration carried in Z - I, which removes the bias; "trunc" is
             Pion's retraction, the degree-2 truncated exponential I + A + A^2/2 with A = -c X, which is not
@@ -102,7 +116,7 @@ class NaturalPion(torch.optim.Optimizer):
         damping: float = 0.0,
         retraction: str = "cayley",
         ns_iters: int = 2,
-        ns_guard: float = 0.5,
+        ns_guard: float = 1.8,
         share_inputs: bool = False,
         stats_dtype: str = "fp32",
     ) -> None:
@@ -317,6 +331,10 @@ class NaturalPion(torch.optim.Optimizer):
         s_out, state["angle_v_out"] = spectral_norm(X_out, iters, state.get("angle_v_out"))
         return float(torch.maximum(s_in, s_out))
 
+    def _solve(self, P, Pt, G, den):
+        """`X = F^-1 G` in the basis: elementwise division by (lam_i + lam_j)/2, made exactly skew."""
+        return skew(P @ ((Pt @ G @ P) / den) @ Pt)
+
     def _correct(self, X, G, P, den, items, rows, group):
         """Hook after `X = F^-1 G` in the basis; the reference path uses the basis solution as it is."""
         return X
@@ -373,7 +391,7 @@ class NaturalPion(torch.optim.Optimizer):
                 den = den + group["damping"] * den.amax(dim=(-2, -1), keepdim=True)
             G = torch.stack([g for _, _, g, _ in items])
             Pt = P.transpose(-1, -2)
-            X = skew(P @ ((Pt @ G @ P) / den) @ Pt)
+            X = self._solve(P, Pt, G, den)
             X = self._correct(X, G, P, den, items, rows, group)
             for k, (i, slot, _, _) in enumerate(items):
                 rows[i][slot] = X[k]
@@ -388,6 +406,8 @@ class NaturalPion(torch.optim.Optimizer):
 
         # Cayley: R = (I + c/2 X)^-1 (I - c/2 X), exactly orthogonal for skew X
         self._tick("cayley")
+        angle = self._largest_angle(group)
+        iters = ns_iterations(angle, group["ns_iters"]) if angle <= group["ns_guard"] else None
         with self._retraction_precision():
             for n, items in solves.items():
                 X = torch.stack([x for *_, x in items])
@@ -399,22 +419,22 @@ class NaturalPion(torch.optim.Optimizer):
                 if group["retraction"] == "trunc":
                     A = -(half + half) * X                       # -c X: Cay(cX) and exp(-cX) agree to second order
                     R = eye + A + 0.5 * (A @ A)
-                elif group["retraction"] == "ns_delta" and self._largest_angle(group) <= group["ns_guard"]:
+                elif group["retraction"] == "ns_delta" and iters is not None:
                     # The same Newton-Schulz iteration carried in the correction z = Z - I: residual r = M Z - I =
                     # A + z + A z, and Z (I - r) gives z <- z - r - z r. Nothing is rounded next to 1, which in "ns"
                     # biases R^T R - I positive by ~1e-6 per side per step in fp32 (the trained spectrum grew 1.1%
                     # over 3000 steps). R = I + 2 z.
                     A = half * X
                     z = -A
-                    for _ in range(group["ns_iters"]):
+                    for _ in range(iters):
                         r = A + z + A @ z
                         z = z - r - z @ r
                     R = eye + 2.0 * z
-                elif group["retraction"] == "ns" and self._largest_angle(group) <= group["ns_guard"]:
+                elif group["retraction"] == "ns" and iters is not None:
                     # Cay = 2 (I + A)^-1 - I; Newton-Schulz Z <- Z (2I - M Z) from Z0 = I - A, residual A^2 squaring
                     A = half * X
                     M, Z = eye + A, eye - A
-                    for _ in range(group["ns_iters"]):
+                    for _ in range(iters):
                         Z = Z @ (2.0 * eye - M @ Z)
                     R = 2.0 * Z - eye
                 else:
@@ -468,7 +488,7 @@ class NaturalPionFast(NaturalPion):
                  retraction: str = "ns_delta", stats_dtype: str = "bf16", batch_sigma: bool = True,
                  share_root: bool = True, direction: str = "natural", length: str = "spectral", sides: str = "joint", planes: str = "scaled",
                  attn_mult: float = 1.0, a_window: int | None = None, d_window: int | None = None, a_every: int = 1,
-                 tf32: str = "off", **kwargs) -> None:
+                 tf32: str = "off", fisher_dtype: str = "fp32", **kwargs) -> None:
         super().__init__(params, lr, t_fac=t_fac, stats_window=stats_window, beta_a=beta_a, beta_d=beta_d,
                          share_inputs=share_inputs, retraction=retraction, stats_dtype=stats_dtype, **kwargs)
         # Ablation switches (Section 5.4); every default is the method itself.
@@ -506,9 +526,21 @@ class NaturalPionFast(NaturalPion):
         if tf32 not in ("off", "upstream", "all"):
             raise ValueError(f"tf32 must be off, upstream or all, got {tf32!r}")
         self.tf32 = tf32
+        # fisher_dtype "bf16": the four products of F^-1 in bf16 (as Turbo), the result made exactly skew in fp32, so the
+        # Cayley step still rotates; only the direction is approximated
+        if fisher_dtype not in ("fp32", "bf16"):
+            raise ValueError(f"fisher_dtype must be fp32 or bf16, got {fisher_dtype!r}")
+        self.fisher_dtype = fisher_dtype
 
     def _step_precision(self):
         return exact_fp32() if self.tf32 == "off" else tf32_matmul()
+
+    def _solve(self, P, Pt, G, den):
+        if self.fisher_dtype != "bf16":
+            return super()._solve(P, Pt, G, den)
+        Pb, Ptb = P.to(torch.bfloat16), Pt.to(torch.bfloat16)
+        Y = ((Ptb @ G.to(torch.bfloat16) @ Pb).float() / den).to(torch.bfloat16)
+        return skew((Pb @ Y @ Ptb).float())
 
     def _retraction_precision(self):
         return exact_fp32() if self.tf32 == "upstream" else nullcontext()
@@ -909,7 +941,8 @@ class NaturalPionTurbo(NaturalPionFast):
         for k in range(n_u):
             cay[x_in[k].shape[0]].append((r_in, k, x_in[k]))
             cay[x_out[k].shape[0]].append((r_out, k, x_out[k]))
-        use_ns = group["retraction"] == "ns_delta" and lr <= group["ns_guard"]
+        iters = ns_iterations(lr, group["ns_iters"]) if lr <= group["ns_guard"] else None
+        use_ns = group["retraction"] == "ns_delta" and iters is not None
         for n, items in cay.items():
             X = torch.stack([x for _, _, x in items])
             idx = torch.tensor([k for _, k, _ in items], device=X.device)
@@ -917,7 +950,7 @@ class NaturalPionTurbo(NaturalPionFast):
             eye = torch.eye(n, dtype=X.dtype, device=X.device)
             if use_ns:
                 z = -A
-                for _ in range(group["ns_iters"]):
+                for _ in range(iters):
                     r = A + z + A @ z
                     z = z - r - z @ r
                 R = eye + 2.0 * z
@@ -1153,9 +1186,10 @@ class NaturalPionStiefel(NaturalPionTurbo):
             self._tick("Cayley + apply")
             A_n = 0.5 * c * Xn
             eye = torch.eye(A_n.shape[-1], dtype=dt, device=A_n.device)
-            if group["retraction"] == "ns_delta" and lr <= group["ns_guard"]:
+            iters = ns_iterations(lr, group["ns_iters"]) if lr <= group["ns_guard"] else None
+            if group["retraction"] == "ns_delta" and iters is not None:
                 z = -A_n
-                for _ in range(group["ns_iters"]):
+                for _ in range(iters):
                     r = A_n + z + A_n @ z
                     z = z - r - z @ r
                 Rn = eye + 2.0 * z
@@ -1164,11 +1198,11 @@ class NaturalPionStiefel(NaturalPionTurbo):
                 Rn = torch.linalg.solve(E + A_n, E - A_n)
             k2 = L.shape[-1]
             Bk = 0.5 * c * (Mt @ L)                                         # K = I + Bk, 2k x 2k
-            if group["retraction"] == "ns_delta" and lr <= group["ns_guard"]:
+            if group["retraction"] == "ns_delta" and iters is not None:
                 # K^-1 by Newton-Schulz in the correction form (Section 4.8), on the 2k x 2k core: Bk has the
                 # small eigenvalues of (c/2) X', so two iterations are exact to fp32
                 z = -Bk
-                for _ in range(group["ns_iters"]):
+                for _ in range(iters):
                     r = Bk + z + Bk @ z
                     z = z - r - z @ r
                 Kinv = torch.eye(k2, dtype=dt, device=L.device) + z

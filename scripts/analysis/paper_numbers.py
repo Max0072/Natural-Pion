@@ -449,7 +449,8 @@ derive("peak_d", lambda a, b: a - b, ("peak_np", "peak_pion"), "peak_np - peak_p
 
 # 3.1: the true Fisher (D from targets drawn from the model) against the empirical one, best of three angles each
 vbest("fisher_true", grid("fisher-mc", ("0.1", "0.2", "0.4")))
-vbest("fisher_empirical", ["fisher-emp-0.1", "s3000", "fisher-emp-0.4", "dir-nat-mom-0.8"])
+# the empirical Fisher is the method itself: its angle grid is the direction grid with momentum
+vbest("fisher_empirical", ["dir-nat-mom-0.1", "s3000", "dir-nat-mom-0.4", "dir-nat-mom-0.8"])
 
 # 3.4 / 4.8: retractions (3000 steps angle 0.2; 15000 steps angle 0.05)
 vval("ret_cayley_3000", "ret-cayley")

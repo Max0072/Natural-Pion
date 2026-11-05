@@ -342,7 +342,9 @@ class RunConfig:
     # what it is worth instead of assuming it.
     ngd_retraction: str = "cayley"   # cayley | ns
     ngd_ns_iters: int = 2
-    ngd_ns_guard: float = 0.5
+    # Natural Pion: Newton-Schulz takes as many iterations as the angle needs for fp32 exactness
+    # (natural_pion.ns_iterations); the exact solve only above this angle, where it converges too slowly.
+    ngd_ns_guard: float = 1.8
     # `power` is the warm power iteration, `svd` the exact `matrix_norm` that
     # once cost 69.5 s of a 73.5 s step, `off` skips it. The angle is read by
     # the instrument and by the Newton-Schulz guard, never by the step.

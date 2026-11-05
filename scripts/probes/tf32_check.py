@@ -4,7 +4,7 @@
    tf32_check, but with the Cayley step computed by Newton-Schulz in Z - I (the method) instead of an exact solve; at
    angles 1e-2 and 0.1. Reported: max_i |s_i / s_i0 - 1| after 200 steps, fp32 vs TF32 (the exact solve for reference).
 2. Time: seconds per optimizer step of NaturalPionFast on the shapes of LLaMA-60M (synthetic statistics and gradients,
-   query projection per head) with tf32 = off / upstream / all.
+   query projection per head) with tf32 = off / upstream / all, F^-1 in bf16, and bf16 F^-1 with TF32 upstream.
 
     python scripts/probes/tf32_check.py      # writes runs-record/probes/tf32_check.json
 """
@@ -61,12 +61,13 @@ def drift():
 def timing():
     H, F, L, N = 512, 1376, 8, 131072 // 2
     g = torch.Generator(device="cpu").manual_seed(0)
-    for mode in ("off", "upstream", "all"):
+    for mode, kw in (("off", {}), ("upstream", {"tf32": "upstream"}), ("all", {"tf32": "all"}),
+                     ("bf16F", {"fisher_dtype": "bf16"}), ("bf16F_upstream", {"fisher_dtype": "bf16", "tf32": "upstream"})):
         ps = []
         for _ in range(L):
             for shape in [(H, H)] * 4 + [(F, H), (F, H), (H, F)]:
                 ps.append(torch.nn.Parameter((torch.randn(*shape, generator=g) * 0.02).to(DEV)))
-        opt = NaturalPionFast(ps, lr=0.2, tf32=mode, row_blocks={id(p): 8 for p in ps[0::7]})
+        opt = NaturalPionFast(ps, lr=0.2, row_blocks={id(p): 8 for p in ps[0::7]}, **kw)
         gen = torch.Generator(device=DEV).manual_seed(1)
         xa = torch.randn(N, H, device=DEV, generator=gen); xf = torch.randn(N, F, device=DEV, generator=gen)
         dH = torch.randn(N, H, device=DEV, generator=gen) / N; dF = torch.randn(N, F, device=DEV, generator=gen) / N
@@ -83,7 +84,7 @@ def timing():
             if t >= 25:
                 ts.append(time.perf_counter() - t0)
         OUT[f"sps_{mode}"] = sum(ts) / len(ts)
-        print(f"tf32={mode:9s} {OUT[f'sps_{mode}']:.4f} s per optimizer step (with refreshes, mean over 100)", flush=True)
+        print(f"{mode:15s} {OUT[f'sps_{mode}']:.4f} s per optimizer step (with refreshes, mean over 100)", flush=True)
 
 
 if __name__ == "__main__":
