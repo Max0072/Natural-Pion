@@ -7298,3 +7298,7 @@ floors, cost, theta_0, K-FAC measurement); outcome prose without numbers cut; re
 sorted, six added and cited (AdamW, LLaMA, RoPE, SwiGLU, RMSNorm, Megatron-LM), C4 cited. flops.py and
 optimizer_step_bench.py count the query projection per head (60M FLOP ratio stays 1.09). Not done: numbering of the
 small inline tables, notation overloads (Omega, sigma, c), swapping 4.4 and 4.5.
+Cosmetics done the same day: every result table numbered in order (Tables 1-15; the old 2/2b/3/4/5 are now
+6/7/9/10/11, the FLOPs table is 8), 4.4 (batching) and 4.5 (sigma) swapped to follow Table 6's chain, Proposition 4
+and 4.7 use Psi for a generic skew matrix (Omega stays Pion's generators), Cay(cX) in Algorithm 1, the budget-curve
+exponent is gamma (c stays the step coefficient).

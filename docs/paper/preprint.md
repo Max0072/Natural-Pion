@@ -287,7 +287,7 @@ $$c_t = \frac{\theta_t}{\sigma}, \qquad \sigma = \max\big(\|X_{\mathrm{in}}\|_2,
 
 so the fastest rotation plane of every matrix turns by $2\arctan(\theta_t/2) \approx \theta_t$ radians
 at step $t$. $\sigma$ is computed by power iteration on $X^\top X$, warm-started from the previous step's vector
-(Section 4.4). Because $2\arctan(\cdot/2) < \pi$, no Cayley step turns any plane by $\pi$ or more,
+(Section 4.5). Because $2\arctan(\cdot/2) < \pi$, no Cayley step turns any plane by $\pi$ or more,
 however large $c$ is: an outsized step saturates instead of overshooting.
 
 **Corollary (the angle bounds the change of $W$).** With $c_t = \theta_t/\sigma$,
@@ -312,16 +312,16 @@ Two design choices, each tested in Section 5.4:
 
 ### 3.4 Retraction and exact spectrum preservation
 
-**Proposition 4.** For skew $\Omega$, the Cayley map $R = (I + \Omega)^{-1}(I - \Omega)$ is orthogonal
-for every scale of $\Omega$. Hence $R_{\mathrm{out}} W R_{\mathrm{in}}$ has exactly the singular values
-of $W$. The degree-2 truncated exponential $T = I + \Omega + \Omega^2/2$ satisfies
-$T^\top T = I + \Omega^4/4$.
+**Proposition 4.** For skew $\Psi$, the Cayley map $R = (I + \Psi)^{-1}(I - \Psi)$ is orthogonal
+for every scale of $\Psi$. Hence $R_{\mathrm{out}} W R_{\mathrm{in}}$ has exactly the singular values
+of $W$. The degree-2 truncated exponential $T = I + \Psi + \Psi^2/2$ satisfies
+$T^\top T = I + \Psi^4/4$.
 
-*Proof.* The eigenvalues of a real skew $\Omega$ are $\pm i\sigma_k$, so those of $I + \Omega$ are
-$1 \pm i\sigma_k \neq 0$ and $I + \Omega$ is invertible. $I + \Omega$ and $I - \Omega$ commute, and
-$(I \pm \Omega)^\top = I \mp \Omega$, so
-$R^\top R = (I + \Omega)(I - \Omega)^{-1}(I + \Omega)^{-1}(I - \Omega) = I$. For $T$, expand with
-$\Omega^\top = -\Omega$: the odd and quadratic terms cancel, leaving $\Omega^4/4$. $\square$
+*Proof.* The eigenvalues of a real skew $\Psi$ are $\pm i\sigma_k$, so those of $I + \Psi$ are
+$1 \pm i\sigma_k \neq 0$ and $I + \Psi$ is invertible. $I + \Psi$ and $I - \Psi$ commute, and
+$(I \pm \Psi)^\top = I \mp \Psi$, so
+$R^\top R = (I + \Psi)(I - \Psi)^{-1}(I + \Psi)^{-1}(I - \Psi) = I$. For $T$, expand with
+$\Psi^\top = -\Psi$: the odd and quadratic terms cancel, leaving $\Psi^4/4$. $\square$
 
 **What the retraction must do.** Stay orthogonal to round-off at 0.05–0.2 rad, on every matrix and every
 step. Pion's angles are smaller and uneven: typical block {{pion_angle_block_median:.2g}} rad per step (p90/p10
@@ -359,7 +359,7 @@ every step t:
     X_out <- P_out [ (P_out^T M_out P_out) / K_out ] P_out^T
     sigma <- max(||X_in||_2, ||X_out||_2)                           power iteration, warm-started, 50 iterations
     c     <- theta_t / sigma
-    W     <- Cay(c X_out) W Cay(c X_in),   Cay(Z) = (I + Z/2)^-1 (I - Z/2)
+    W     <- Cay(c X_out) W Cay(c X_in),   Cay(cX) = (I + cX/2)^-1 (I - cX/2)
 ```
 
 Embedding, output head and normalization gains use AdamW, as in Pion. The rotated matrices get no
@@ -398,6 +398,8 @@ The bases $(P, \lambda)$ are recomputed every $T_{\mathrm{fac}}$ steps instead o
 between, $F^{-1}$ uses the last bases with the current $W$, $G$ and momentum (the standard amortisation
 of K-FAC).
 
+*Table 2. Refresh cadence, each row at its best angle.*
+
 | refresh | momentum | val | s / step |
 |---|---|---|---|
 | every step | none | {{tf1_nomom:.4f}} | {{tf1_nomom_sps:.2f}} |
@@ -417,6 +419,8 @@ which is 6 of every 25 steps, and shorten the EMA of $A$ from 0.95 to 0.5 so tha
 it: an observation more than 6 steps old then carries less than 2% of the weight. The EMA of $D$ is 0.5
 throughout.
 
+*Table 3. Statistics windows ($T_{\mathrm{fac}} = 25$, angle 0.2).*
+
 | change ($T_{\mathrm{fac}} = 25$) | EMA of $A$ / $D$ | val | s / step |
 |---|---|---|---|
 | both every step (reference) | 0.95 / 0.5 | {{win_ref:.4f}} | {{win_ref_sps:.3f}} |
@@ -429,7 +433,13 @@ throughout.
 The largest change from the reference is {{win_maxdev:.3f}}; we take the cheapest option. ($A$ every second step uses $0.95^2$ to keep
 its time constant.)
 
-### 4.4 Fewer and batched power iterations for $\sigma$
+### 4.4 Batching by shape
+
+The 56 rotated matrices come in a few shapes. $F^{-1}$ and the Cayley solves are run as one batched call
+per size instead of one call per matrix. Only round-off changes:
+{{batch_val:.4f}} against {{win_adlast6:.4f}}. The step goes from {{win_adlast6_sps:.3f}} s to **{{batch_sps:.3f}} s**.
+
+### 4.5 Fewer and batched power iterations for $\sigma$
 
 The exact spectral norm (`matrix_norm(X, 2)`) would take {{svd_share_of_step:.0%}} of the optimizer step on these
 shapes; power iteration on $X^\top X$ costs matrix-vector products only, {{power_speedup:.0f}}x less. Cold, it converges
@@ -438,13 +448,7 @@ relative error is {{power_cold_1:.1%}} after one iteration, {{power_cold_5:.1%}}
 Warm-started from the previous step's vector, one iteration reaches {{power_warm_1:.0e}}. Algorithm 1 runs 50 warm
 iterations every step; between refreshes $X$ changes little, so Natural Pion Fast runs 2, and 50 only right after a
 refresh, when $X$ jumps. Batched over matrices of one size, with $c$ kept on the GPU (no host synchronisation per
-matrix), $\sigma$ costs {{bench_new_sigma:.3f}} s per optimizer step against {{bench_old_sigma:.3f}} s (Table 2b).
-
-### 4.5 Batching by shape
-
-The 56 rotated matrices come in a few shapes. $F^{-1}$ and the Cayley solves are run as one batched call
-per size instead of one call per matrix. Only round-off changes:
-{{batch_val:.4f}} against {{win_adlast6:.4f}}. The step goes from {{win_adlast6_sps:.3f}} s to **{{batch_sps:.3f}} s**.
+matrix), $\sigma$ costs {{bench_new_sigma:.3f}} s per optimizer step against {{bench_old_sigma:.3f}} s (Table 7).
 
 ### 4.6 Cheaper statistics
 
@@ -462,7 +466,7 @@ vectors is still a gram, so $A$ stays positive semidefinite, and the rounding ad
 relative size about $(2^{-8})^2 \approx 1.5 \cdot 10^{-5}$, far below the floor $10^{-4} \lambda_{\max}$. We round
 activations and output gradients to bf16 and multiply them with fp32 accumulation and an fp32 result.
 
-*Seed 0, both with one $A$ per input:*
+*Table 4. Statistics inputs (seed 0, one $A$ per input).*
 
 | statistics | val, 3 000 steps | val, 15 000 steps | s / step |
 |---|---|---|---|
@@ -473,20 +477,20 @@ bf16 inputs save {{stats_bf16_saving:.3f}} s per step.
 
 ### 4.7 The Cayley solve by Newton–Schulz
 
-$\mathrm{Cay} = 2(I + \Omega)^{-1} - I$ with $\Omega = \tfrac c2 X$, and $(I + \Omega)^{-1}$ can be computed by Newton–Schulz,
-$Z \leftarrow Z(2I - (I + \Omega)Z)$ from $Z_0 = I - \Omega$, with matrix products only. After two iterations the error is
-$2(I+\Omega)^{-1}\Omega^8$: {{ns_err_02:.0e}} at angle 0.2, {{ns_err_04:.0e}} at 0.4, {{ns_err_08:.0e}} at 0.8 (fp64).
+$\mathrm{Cay} = 2(I + \Psi)^{-1} - I$ with $\Psi = \tfrac c2 X$, and $(I + \Psi)^{-1}$ can be computed by Newton–Schulz,
+$Z \leftarrow Z(2I - (I + \Psi)Z)$ from $Z_0 = I - \Psi$, with matrix products only. After two iterations the error is
+$2(I+\Psi)^{-1}\Psi^8$: {{ns_err_02:.0e}} at angle 0.2, {{ns_err_04:.0e}} at 0.4, {{ns_err_08:.0e}} at 0.8 (fp64).
 
 In fp32 this standard form is biased: entries next to 1 lose their low bits, always in the same direction, and
 $\|W\|_F^2$, which a rotation keeps, grows by a median {{diag_ns_step:.1e}} per training step (exact solve
-{{diag_cayley_step:.1e}}; `scripts/probes/ns_diag.py`). Carried in $Y = Z - I$ from $Y_0 = -\Omega$ (residual
-$E = \Omega + Y + \Omega Y$, $Y \leftarrow Y - E - YE$, rotation $I + 2Y$) nothing is next to 1, with the same number of
+{{diag_cayley_step:.1e}}; `scripts/probes/ns_diag.py`). Carried in $Y = Z - I$ from $Y_0 = -\Psi$ (residual
+$E = \Psi + Y + \Psi Y$, $Y \leftarrow Y - E - YE$, rotation $I + 2Y$) nothing is next to 1, with the same number of
 products. Over random rotations ($1376 \times 1376$, angle 0.05), $\operatorname{tr}(R^\top R - I)/n$ averages
 {{rb_solve_mean:+.1e}} for the exact solve ({{rb_solve_z:.0f}} standard errors from zero), {{rb_ns_mean:+.1e}} for standard
 Newton–Schulz and {{rb_ns_delta_mean:+.1e}} ({{rb_ns_delta_z:.1f}} standard errors) in this form
 (`scripts/probes/retraction_bias.py`).
 
-*Natural Pion Fast with each retraction, seed 0. First column: change of $\|W\|_F^2$ over 200 steps of a bare
+*Table 5. Retractions: Natural Pion Fast with each, seed 0. First column: change of $\|W\|_F^2$ over 200 steps of a bare
 $1376 \times 1376$ rotation at angle 0.05 (`scripts/probes/ns_rounding.py`). Drift: $\max_i |s_i - s_i^0| / \max_i s_i^0$
 after 3 000 training steps, median / worst over the rotated matrices (`scripts/probes/retraction_drift.py`).*
 
@@ -499,21 +503,21 @@ after 3 000 training steps, median / worst over the rotated matrices (`scripts/p
 
 ### 4.8 Summary
 
-*Table 2. From Algorithm 1 to Natural Pion Fast.*
+*Table 6. From Algorithm 1 to Natural Pion Fast.*
 
 | step | s / step | val (3 000 steps, seed 0) |
 |---|---|---|
 | Algorithm 1 | {{tf1_mom_sps:.2f}} | {{tf1_mom:.4f}} |
 | refresh every 25 steps (4.2) | {{tf25_mom_sps:.3f}} | {{tf25_mom:.4f}} |
 | + statistics only before a refresh (4.3) | {{win_adlast6_sps:.3f}} | {{win_adlast6:.4f}} |
-| + batching by shape (4.5) | {{batch_sps:.3f}} | {{batch_val:.4f}} |
-| **+ batched $\sigma$, one $A$ per input, Newton–Schulz Cayley, bf16 statistics (4.4, 4.6, 4.7)**: Natural Pion Fast | **{{v2_sps:.3f}}** | **{{v2_3000_s0:.4f}}** |
+| + batching by shape (4.4) | {{batch_sps:.3f}} | {{batch_val:.4f}} |
+| **+ batched $\sigma$, one $A$ per input, Newton–Schulz Cayley, bf16 statistics (4.5, 4.6, 4.7)**: Natural Pion Fast | **{{v2_sps:.3f}}** | **{{v2_3000_s0:.4f}}** |
 | Pion | {{pion3000_sps:.3f}} | {{pion3000_s0:.4f}} |
 
-*Table 2b. The optimizer step alone, by part (s; synthetic statistics on the shapes of the model, GPU-synchronised
+*Table 7. The optimizer step alone, by part (s; synthetic statistics on the shapes of the model, GPU-synchronised
 timers; `scripts/probes/optimizer_step_bench.py`).*
 
-| part | after 4.5 | Natural Pion Fast |
+| part | after 4.4 | Natural Pion Fast |
 |---|---|---|
 | statistics $A$, $D$ | {{bench_old_statistics:.3f}} | {{bench_new_statistics:.3f}} |
 | basis refresh (per step) | {{bench_old_refresh:.3f}} | {{bench_new_refresh:.3f}} |
@@ -543,10 +547,11 @@ Section 5.2, which evaluate every 2 000 steps, give {{v2_full_sps:.3f}} s and {{
 
 ### 4.9 Cost in floating-point operations
 
-Seconds depend on the GPU and on the implementation; operations do not. Optimizer FLOPs per step as a share
-of the model's forward and backward pass ($6 \times$ tokens $\times$ matrix parameters, plus attention; statistics over
-the first micro-batch;
-`scripts/analysis/flops.py`, eigendecompositions counted at $9n^3$):
+Seconds depend on the GPU and on the implementation; operations do not. Table 8 counts them (model:
+$6 \times$ tokens $\times$ matrix parameters, plus attention; statistics over the first micro-batch; eigendecompositions
+at $9n^3$; `scripts/analysis/flops.py`).
+
+*Table 8. Optimizer FLOPs per step as a share of the model's forward and backward pass.*
 
 | | LLaMA-60M |
 |---|---|
@@ -560,7 +565,7 @@ $F^{-1}$ and Cayley cost $O(n^3)$ per matrix and step against the model's $O(Nn^
 grows with width at a fixed batch. With data parallelism the forward and backward pass divides among the GPUs;
 the optimizer's matrices must be divided among them too (one GPU per matrix), or, replicated on every GPU as
 Pion's step is, their share grows with the number of GPUs. Statistics are the largest term in FLOPs but run on tensor cores in bf16; eigendecompositions are the
-smallest but latency-bound, which is why Table 2b and this table rank the parts differently.
+smallest but latency-bound, which is why Tables 7 and 8 rank the parts differently.
 
 ---
 
@@ -583,9 +588,9 @@ smallest but latency-bound, which is why Table 2b and this table rank the parts 
 truncated exponential, bilateral update, lr $10^{-3}$ with a cosine schedule; the other parameters use AdamW as
 in the table above, the same for both methods. The Pion paper chose lr $10^{-3}$ from
 $\{10^{-4}, 5\cdot10^{-4}, 10^{-3}, 5\cdot10^{-3}, 10^{-2}\}$. We checked it in our setting up to 19 200 steps
-(Table 3) and did not re-tune it at full length.
+(Table 9) and did not re-tune it at full length.
 
-*Table 3. Pion learning rate (validation loss, seed 0).*
+*Table 9. Pion learning rate (validation loss, seed 0).*
 
 | Pion steps | 5e-4 | 1e-3 | 2e-3 | 4e-3 |
 |---|---|---|---|---|
@@ -600,7 +605,7 @@ The peak angle $\theta_0$ is 0.2 at 3 000 steps and 0.05 from 9 000 steps on; 0.
 
 ### 5.2 Main result
 
-*Table 4. Equal number of steps (seed 0 unless marked). Gap = val(Pion) - val(Natural Pion).*
+*Table 10. Equal number of steps (seed 0 unless marked). Gap = val(Pion) - val(Natural Pion).*
 
 | steps | Pion | Natural Pion | gap |
 |---|---|---|---|
@@ -615,12 +620,12 @@ At 3 000 steps the smallest per-seed gap is {{v2_gap3000_min:.3f}}.
 ### 5.3 Steps to reach Pion's loss
 
 Every run below has its own full cosine schedule ending at its budget $B$, so no loss is read off the middle of
-a schedule. For each method the final validation loss is fitted as $L(B) = a + bB^{-c}$ ({{budget_n_pion}} Pion budgets,
+a schedule. For each method the final validation loss is fitted as $L(B) = a + bB^{-\gamma}$ (fitted constants $a$, $b$, $\gamma$) ({{budget_n_pion}} Pion budgets,
 {{budget_n_np}} Natural Pion budgets, four seeds where available; worst residual {{budget_resid:.4f}}), and the saving at Pion's
 loss $L$ is $B_{\mathrm{Pion}} / B_{\mathrm{NP}}(L)$, with $B_{\mathrm{NP}}$ from the fit or from linear interpolation in $\log B$
 between Natural Pion's budgets (`scripts/analysis/budget_fit.py`).
 
-*Table 5. Steps saved at Pion's loss (mean over seeds where there are four): fit / interpolation.*
+*Table 11. Steps saved at Pion's loss (mean over seeds where there are four): fit / interpolation.*
 
 | Pion steps | Pion val | saving |
 |---|---|---|
@@ -646,6 +651,8 @@ and 0.4 ({{dir_fisher_mom:.4f}}).
 **The direction: natural gradient against the raw generator.** Best angle of each grid. Same normalisation,
 retraction and schedule; only $X = F^{-1}G$ against $X = G$ changes.
 
+*Table 12. The direction.*
+
 | | no momentum | Lie momentum 0.9 |
 |---|---|---|
 | $X = F^{-1}G$ | {{dir_fisher_nomom:.4f}} | {{dir_fisher_mom:.4f}} |
@@ -660,6 +667,8 @@ over the steps after 1 000). $F$ in the quadratic-model and Fisher-norm rules is
 the current statistics; with a fresh basis $\langle G, X\rangle = \langle X, FX\rangle$, so the quadratic-model rule
 differs from a fixed $c$ only as far as the basis has gone stale since the last refresh.
 
+*Table 13. The length rule.*
+
 | length rule | val | angle spread |
 |---|---|---|
 | spectral, after $F^{-1}$: $c = \theta/\sigma(F^{-1}G)$ (the method) | {{dir_fisher_mom:.4f}} | {{angle_spread_spectral:.2g}} |
@@ -673,6 +682,8 @@ RMS rule minus spectral rule over four seeds: {{rms_gap_s0:+.3f}}, {{rms_gap_s1:
 
 **Regularisation of the Fisher.** The default is a relative floor $\varepsilon = 10^{-4}$ ({{v2_3000_s0:.4f}}).
 
+*Table 14. Regularisation of the Fisher.*
+
 | floor $\varepsilon$ (no damping) | $10^{-6}$ | $10^{-5}$ | $10^{-3}$ | $10^{-2}$ |
 |---|---|---|---|---|
 | val | {{reg_eps_1e-6:.4f}} | {{reg_eps_1e-5:.4f}} | {{reg_eps_1e-3:.4f}} | {{reg_eps_1e-2:.4f}} |
@@ -684,6 +695,8 @@ RMS rule minus spectral rule over four seeds: {{rms_gap_s0:+.3f}}, {{rms_gap_s1:
 The best alternative differs from the default by {{reg_best_other_d:+.3f}}.
 
 **Other choices.** Single runs against the reference ({{v2_3000_s0:.4f}}) unless stated.
+
+*Table 15. Other choices.*
 
 | change | val |
 |---|---|
@@ -749,7 +762,7 @@ reports modest gains over its truncated exponential; at Natural Pion's angles it
 
 ## 7 Limitations
 
-* **Scale.** One model size (60M) and one data set. The full-length comparison is one seed; Table 4 gives four
+* **Scale.** One model size (60M) and one data set. The full-length comparison is one seed; Table 10 gives four
   seeds at 3 000 steps.
 * **One code base.** Our Pion ends {{pion_vs_paper:.3f}} above the Pion paper's training loss; we compare within our
   setting only.
