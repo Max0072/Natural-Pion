@@ -20,8 +20,8 @@ the layer's inputs and $S$ that of its output gradients pulled back through $W$.
 eigendecomposition per side inverts this operator exactly. Second, the natural gradient is a good
 direction with a bad scale: its magnitude varies over orders of magnitude between layers. We keep the
 direction and set the length so that every matrix turns its fastest rotation plane by the same scheduled
-angle. Third, a Cayley retraction keeps Pion's invariant, to {{rd_ns_delta_med:.0e}} of each matrix's scale when computed as in
-Section 4.8, where Pion's truncated exponential drifts by {{rd_trunc_med:.0e}}. A fast
+angle. Third, these angles are large, so the rotation must be exact at large angles: a Cayley retraction, computed
+as in Section 4.8, keeps the spectrum to {{rd_ns_delta_med:.0e}} of each matrix's scale. A fast
 form of the method costs {{flops_60M_ratio:.2f}}x Pion's floating-point operations per step ({{fast2_ratio:.2f}}x its time on one GPU in
 our implementation).
 
@@ -68,8 +68,8 @@ provides.
    fixed step size, $F^{-1}G$ reaches only {{len_fixed:.4f}}, against {{dir_fisher_nomom:.4f}} with the angle (Section 5.4).
 4. **A retraction that is exact at large angles.** Natural Pion turns every matrix by up to 0.05–0.2 rad per step (the peak of its schedule).
    After 3 000 steps the Cayley transform has moved the spectrum by {{rd_cayley_med:.1e}} of each
-   matrix's scale, Pion's truncated exponential by {{rd_trunc_med:.1e}}, and Cayley computed by Newton–Schulz in
-   correction form by {{rd_ns_delta_med:.1e}} (Sections 3.4, 4.8).
+   matrix's scale, and by {{rd_ns_delta_med:.1e}} when computed by Newton–Schulz in correction form; the degree-2 truncated
+   exponential, accurate at the small angles Pion takes, moves it by {{rd_trunc_med:.1e}} at ours (Sections 3.4, 4.8).
 5. **A fast form.** Amortised refreshes, statistics collected only where they are read, a warm and batched
    power iteration, batching, a Newton–Schulz Cayley solve and bf16 statistics take the step from
    {{tf1_mom_sps:.2f}} s to {{fast2_sps:.3f}} s (Pion: {{pion3000_sps:.3f}} s). Each change is measured separately for time and loss;
@@ -591,13 +591,13 @@ of the model's forward and backward pass ($6 \times$ tokens $\times$ matrix para
 the first micro-batch;
 `scripts/analysis/flops.py`, eigendecompositions counted at $9n^3$):
 
-| | LLaMA-60M | 1.3B (Pion's) |
-|---|---|---|
-| Pion | {{flops_60M_pion:.1%}} | {{flops_1_3B_pion:.1%}} |
-| Natural Pion Fast | {{flops_60M_np:.1%}} | {{flops_1_3B_np:.1%}} |
-| of which statistics / $F^{-1}$ / Cayley / refresh | {{flops_60M_part_statistics:.1%}} / {{flops_60M_part_Finv:.1%}} / {{flops_60M_part_Cayley:.1%}} / {{flops_60M_part_refresh:.1%}} | {{flops_1_3B_part_statistics:.1%}} / {{flops_1_3B_part_Finv:.1%}} / {{flops_1_3B_part_Cayley:.1%}} / {{flops_1_3B_part_refresh:.1%}} |
-| of which generators and rotation (as Pion) | {{flops_60M_shared:.1%}} | {{flops_1_3B_shared:.1%}} |
-| step, Natural Pion Fast / Pion | {{flops_60M_ratio:.2f}} | {{flops_1_3B_ratio:.2f}} |
+| | LLaMA-60M |
+|---|---|
+| Pion | {{flops_60M_pion:.1%}} |
+| Natural Pion Fast | {{flops_60M_np:.1%}} |
+| of which statistics / $F^{-1}$ / Cayley / refresh | {{flops_60M_part_statistics:.1%}} / {{flops_60M_part_Finv:.1%}} / {{flops_60M_part_Cayley:.1%}} / {{flops_60M_part_refresh:.1%}} |
+| of which generators and rotation (as Pion) | {{flops_60M_shared:.1%}} |
+| step, Natural Pion Fast / Pion | {{flops_60M_ratio:.2f}} |
 
 $F^{-1}$ and Cayley cost $O(n^3)$ per matrix and step against the model's $O(Nn^2)$ for $N$ tokens, so their share
 grows with width at a fixed batch. With data parallelism the forward and backward pass divides among the GPUs;
@@ -854,9 +854,9 @@ reports modest gains over its truncated exponential; at Natural Pion's angles it
   curvature (median of three layers of a trained model): the independence of $x$ and $\delta$ fails by more
   than an order of magnitude in scale. This is consistent with Section 3.3: we keep the direction of
   $F^{-1}G$ but not its length.
-* **Cost.** {{flops_60M_ratio:.2f}}x Pion's step FLOPs at 60M, {{flops_1_3B_ratio:.2f}}x at 1.3B (Section 4.11): statistics grow like the
-  model ($O(Nn^2)$), $F^{-1}$, Cayley and the refresh like $O(n^3)$ per matrix. On several GPUs the matrices have to
-  be divided among them to keep that share.
+* **Cost.** {{flops_60M_ratio:.2f}}x Pion's step FLOPs at 60M (Section 4.11): statistics grow like the model ($O(Nn^2)$),
+  $F^{-1}$, Cayley and the refresh like $O(n^3)$ per matrix, so the share grows with width. On several GPUs the
+  matrices have to be divided among them to keep that share.
 
 **Future work.** Reinforcement learning from verifiable rewards, where a step costs minutes of
 generation and the step efficiency of Section 5.3 is the relevant measure. The natural policy gradient
