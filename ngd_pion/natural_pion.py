@@ -1085,20 +1085,30 @@ class NaturalPionStiefel(NaturalPionTurbo):
                 E = eye.expand_as(A_n)
                 Rn = torch.linalg.solve(E + A_n, E - A_n)
             k2 = L.shape[-1]
-            K = torch.eye(k2, dtype=dt, device=L.device) + 0.5 * c * (Mt @ L)
-            prev = torch.backends.cuda.preferred_linalg_library()
-            try:    # MAGMA's batched solve is meant for small matrices; K is 2k x 2k
-                if L.is_cuda:
-                    torch.backends.cuda.preferred_linalg_library("cusolver")
-                if side == "out":
-                    W1 = W @ Rn                                               # in side (narrow)
-                    W2 = W1 - c * (L @ torch.linalg.solve(K, Mt @ W1))      # out side (wide) by Woodbury
-                else:
-                    W1 = Rn @ W                                               # out side (narrow)
-                    W2 = W1 - c * ((W1 @ L) @ torch.linalg.solve(K, Mt))    # in side (wide): W1 L K^-1 Mt
-            finally:
-                if L.is_cuda:
-                    torch.backends.cuda.preferred_linalg_library(prev)
+            Bk = 0.5 * c * (Mt @ L)                                         # K = I + Bk, 2k x 2k
+            if group["retraction"] == "ns_delta" and lr <= group["ns_guard"]:
+                # K^-1 by Newton-Schulz in the correction form (Section 4.8), on the 2k x 2k core: Bk has the
+                # small eigenvalues of (c/2) X', so two iterations are exact to fp32
+                z = -Bk
+                for _ in range(group["ns_iters"]):
+                    r = Bk + z + Bk @ z
+                    z = z - r - z @ r
+                Kinv = torch.eye(k2, dtype=dt, device=L.device) + z
+            else:
+                prev = torch.backends.cuda.preferred_linalg_library()
+                try:    # MAGMA's batched solve is meant for small matrices
+                    if L.is_cuda:
+                        torch.backends.cuda.preferred_linalg_library("cusolver")
+                    Kinv = torch.linalg.inv(torch.eye(k2, dtype=dt, device=L.device) + Bk)
+                finally:
+                    if L.is_cuda:
+                        torch.backends.cuda.preferred_linalg_library(prev)
+            if side == "out":
+                W1 = W @ Rn                                                   # in side (narrow)
+                W2 = W1 - c * (L @ (Kinv @ (Mt @ W1)))                       # out side (wide) by Woodbury
+            else:
+                W1 = Rn @ W                                                   # out side (narrow)
+                W2 = W1 - c * ((W1 @ L) @ (Kinv @ Mt))                       # in side (wide)
             for k, p in enumerate(ps):
                 p.copy_(W2[k].to(p.dtype))
                 self.state[p]["step"] += 1
