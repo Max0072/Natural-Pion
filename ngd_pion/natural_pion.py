@@ -51,10 +51,10 @@ def drop_kernel(X: torch.Tensor, W: torch.Tensor, side: str) -> torch.Tensor:
     orthonormal basis of that column space and N = I - Q Q^T, return X - N X N, i.e. Q Q^T X + X Q Q^T - Q Q^T X Q Q^T.
     In side (m < n): the same with the row space. Skew in, skew out; X' W = X W (out) and W X' = W X (in) exactly."""
     if side == "out":
-        L = torch.linalg.cholesky(W.transpose(-1, -2) @ W)                  # n x n, the small side
+        L = torch.linalg.cholesky_ex(W.transpose(-1, -2) @ W)[0]            # n x n, small side; _ex: no host sync
         Q = torch.linalg.solve_triangular(L, W.transpose(-1, -2), upper=False).transpose(-1, -2)   # W L^-T, m x n
     else:
-        L = torch.linalg.cholesky(W @ W.transpose(-1, -2))                  # m x m
+        L = torch.linalg.cholesky_ex(W @ W.transpose(-1, -2))[0]            # m x m
         Q = torch.linalg.solve_triangular(L, W, upper=False).transpose(-1, -2)                      # W^T L^-T, n x m
     QX = Q.transpose(-1, -2) @ X
     XQ = X @ Q
@@ -497,13 +497,19 @@ class NaturalPionFast(NaturalPion):
         if self.cg_iters:
             X = self._cg(X, G, P, den, items, rows, group)
         if self.drop_kernel:
-            out = []
+            groups: dict[tuple, list] = defaultdict(list)          # (side, shape of W) -> [(slot in X, row)]
             for k, (i, slot, _, _) in enumerate(items):
-                W = rows[i][1]
-                m, n = W.shape
-                wide = (slot == 3 and m > n) or (slot == 2 and n > m)
-                out.append(drop_kernel(X[k], W, "out" if slot == 3 else "in") if wide else X[k])
-            X = torch.stack(out)
+                m, n = rows[i][1].shape
+                if slot == 3 and m > n:
+                    groups[("out", m, n)].append((k, i))
+                elif slot == 2 and n > m:
+                    groups[("in", m, n)].append((k, i))
+            if groups:
+                X = X.clone()
+                for (side, _, _), members in groups.items():
+                    ks = torch.tensor([k for k, _ in members], device=X.device)
+                    W = torch.stack([rows[i][1] for _, i in members])
+                    X[ks] = drop_kernel(X[ks], W, side)
         return X
 
     def _cg(self, X, G, P, den, items, rows, group):
