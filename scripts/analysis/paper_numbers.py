@@ -597,8 +597,10 @@ if vf and info(vf[0])["done"]:
     put("v2_full", i["val"], "npv2/s73242")
     put("v2_full_wall", i["wall"], "npv2/s73242, wall")
     put("v2_gap_full", NUM["pion_full"] - i["val"], "pion_full - v2_full")
+    put("v2_full_sps", i["wall"] / 73242, "npv2/s73242 wall / steps")
+    put("v2_full_ratio", NUM["v2_full_sps"] / NUM["pion_sps"], "v2_full_sps / pion_sps")
 else:
-    for k in ("v2_full", "v2_full_wall", "v2_gap_full"):
+    for k in ("v2_full", "v2_full_wall", "v2_gap_full", "v2_full_sps", "v2_full_ratio"):
         missing(k, "v2_perhead.sbatch task 11 (73 242 steps)")
 try:
     put("v2_sps", sps("npv2/s3000/*", 0), "npv2/s3000 seed 0 (RTX)")

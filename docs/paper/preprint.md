@@ -108,8 +108,7 @@ Pion steps along $-G_{\mathrm{in}}$ and $-G_{\mathrm{out}}$ with three further i
 * **A truncated exponential retraction** $e^{\Omega} \approx I + \Omega + \Omega^2/2$.
 
 Both rotations are applied at every step (the *bilateral* update; Pion also describes an alternating
-variant, which it finds slightly worse at 60M). The query projection is rotated per attention head: each
-head's block of rows is treated as a separate matrix. Embeddings, the output head and normalization
+variant, which it finds slightly worse at 60M). Embeddings, the output head and normalization
 gains are trained by AdamW. Only the 2-D weights inside the transformer blocks are rotated.
 
 **Why preserve the spectrum.** It fixes every weight's spectral norm without weight decay or
@@ -579,8 +578,8 @@ and the momentum). The runs of Section 5 were made with the form of 4.6 ({{batch
 [^cost]: Seconds per step are wall-clock time over steps of 3 000-step runs on RTX PRO 6000 (Natural Pion
 Fast {{fast2_sps:.3f}} s; the form of 4.6 {{batch_sps:.3f}} s) and of the 3 840-step Pion run ({{pion3000_sps:.3f}} s), all evaluating
 every 500 steps; Algorithm 1 is the 3 000-step run with momentum ({{tf1_mom_sps:.2f}} s). The full-length runs of
-Section 5.2 of the earlier form (the query projection rotated whole), which evaluate every 2 000 steps, give
-{{np_sps:.3f}} s and {{pion_sps:.3f}} s, a ratio of {{cost_ratio:.2f}}.
+Section 5.2, which evaluate every 2 000 steps, give {{v2_full_sps:.3f}} s and {{pion_sps:.3f}} s, a ratio of
+{{v2_full_ratio:.2f}}.
 
 ### 4.11 Cost in floating-point operations
 
@@ -621,7 +620,7 @@ smallest but latency-bound, which is why Table 2b and this table rank the parts 
 | hardware | one NVIDIA RTX PRO 6000 Blackwell per run; B200 where marked |
 
 **Baseline.** Pion in its published configuration: Lie momentum 0.9, RMS scale 0.2, truncated
-exponential, query matrix split per head, bilateral update, lr $10^{-3}$ with a cosine schedule. The
+exponential, bilateral update, lr $10^{-3}$ with a cosine schedule. The
 Pion paper chose lr $10^{-3}$ from $\{10^{-4}, 5\cdot10^{-4}, 10^{-3}, 5\cdot10^{-3}, 10^{-2}\}$. We
 checked it in our setting (Table 3). $10^{-3}$ is best at 19 200 steps. At 3 840 steps $2\cdot10^{-3}$
 is better by {{pion_lr_3840_better:.3f}}.
@@ -629,7 +628,7 @@ is better by {{pion_lr_3840_better:.3f}}.
 All comparisons are within one code base and one data pipeline. In our setting Pion ends at a training loss
 of {{pion_full_train:.4f}} (validation {{pion_full:.4f}}); the Pion paper reports 3.3575 in its own Megatron-LM setting.
 
-**Natural Pion.** Natural Pion Fast (Algorithm 2) with the query projection rotated per head, as Pion does:
+**Natural Pion.** Natural Pion Fast (Algorithm 2):
 $T_{\mathrm{fac}} = 25$; $A$ and $D$ accumulated (EMA 0.5) over the 6 steps before each refresh, one $A$ per input
 tensor; Lie momentum 0.9; $\varepsilon = 10^{-4}$; cosine schedule on $\theta$ down to $10^{-5}$. The peak angle
 $\theta_0$ is 0.2 at 3 000 steps and 0.05 from 9 000 steps on. The best peak falls with the horizon; 0.05 was chosen
@@ -899,7 +898,6 @@ where the backward signal is strongest, the opposite of what curvature prescribe
 | momentum | Lie, 0.9 | Lie, 0.9 |
 | curvature | $T_{\mathrm{fac}}$ 25; $A$, $D$ EMA 0.5 over the 6 steps before a refresh; floor $10^{-4}$ | - |
 | retraction | Cayley: exact fp32 solve (Section 5); Newton–Schulz in $Z - I$ (Natural Pion Fast) | truncated exponential, degree 2 |
-| query projection | rotated whole (per head: Section 5.1) | rotated per head |
 | update | both sides every step | both sides every step |
 | other parameters | AdamW 8e-3, (0.9, 0.95), wd 0.1, cosine | same |
 | gradient clipping | 1.0 | 1.0 |

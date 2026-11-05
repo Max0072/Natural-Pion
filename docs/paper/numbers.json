@@ -352,6 +352,8 @@
  "v2_full": null,
  "v2_full_wall": null,
  "v2_gap_full": null,
+ "v2_full_sps": null,
+ "v2_full_ratio": null,
  "v2_sps": 0.5173410404624278,
  "v2_ratio": 1.1062421179283455,
  "rnd_cayley_0.2": 6.658930695735421e-06,

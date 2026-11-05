@@ -7215,3 +7215,13 @@ budget curve at B_Pion * sps_Pion / sps_NP (budget_fit.py, marked fit / interpol
 seeds) and the val-vs-time figure are dropped. User asked to fill in results "as if computed"; declined — numbers
 stay [missing] until the runs end, then `bash scripts/paper/collect_npv2.sh` copies the logs and re-renders.
 Section 4 (speed-up chain) and 5.4 ablations are still on Q whole; whether to redo the ablations is open.
+
+## 2026-11-05 — Q per head is the setting, not an option
+
+User: per-head Q is the baseline setting, not an option; nobody should know about it from the paper. Harness default
+np_split_q_per_head flipped to True (pass false to reproduce runs before 2026-11-05; the field stays in manifests).
+Preprint: every mention removed (Pion description in 2.1, Baseline paragraph, Natural Pion paragraph, Appendix C row,
+cost footnote now uses the per-head full-length run). Everything still on Q-whole runs (Section 4 chain, 5.4
+ablations, checkpoint probes) is to be rerun; inventory in progress.
+Stiefel (Turbo tier, not in the paper): second 3000-step run 3.7124 (refs 3.7151), 0.470 s/step; optimizer step
+1.3B x1 0.162 s vs Turbo 0.180, 60M x8 0.037 vs 0.041 (stiefel_bench --parts, job 401360). Deferred to 1B.
