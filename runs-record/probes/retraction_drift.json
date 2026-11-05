@@ -1,4 +1,31 @@
 {
+ "cayley": {
+  "checkpoint": "npv2x/ret-cayley/natural-pion-fast-lr0.2-s0-2b16df5c41/checkpoint.pt",
+  "setting": "v2",
+  "units": 112,
+  "rel_median": 0.0003863901671221637,
+  "scaled_median": 0.0003640318903583309,
+  "scaled_max": 0.0004456270874375561,
+  "signed_mean": 0.00036053286152257143
+ },
+ "ns": {
+  "checkpoint": "npv2x/ret-ns/natural-pion-fast-lr0.2-s0-c55b7e6da5/checkpoint.pt",
+  "setting": "v2",
+  "units": 112,
+  "rel_median": 0.0046221621651825195,
+  "scaled_median": 0.004355727643447163,
+  "scaled_max": 0.017064625149819816,
+  "signed_mean": 0.0073510231205939644
+ },
+ "trunc": {
+  "checkpoint": "npv2x/ret-trunc/natural-pion-fast-lr0.2-s0-727981b1d3/checkpoint.pt",
+  "setting": "v2",
+  "units": 112,
+  "rel_median": 0.0014574345708961989,
+  "scaled_median": 0.0005758334198780386,
+  "scaled_max": 0.0029668430454959467,
+  "signed_mean": 0.001094151624879877
+ },
  "ns_delta": {
   "checkpoint": "npv2/s3000/natural-pion-fast-lr0.2-s0-d44725584d/checkpoint.pt",
   "setting": "v2",

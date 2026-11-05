@@ -1,0 +1,15 @@
+{"event": "start", "steps": 3000, "time": 1793879432.7417161}
+{"event": "corpus", "tokens": 10007773709, "passes": 0.039}
+{"step": 0, "lr": 0.2, "train_loss": 10.49241018295288, "wall": 8.1, "tokens_per_sec": 16180, "tokens_per_sec_window": null, "peak_gb": 42.1, "pred_drop": 0.0, "rho": NaN}
+{"step": 23, "lr": 0.19997099718168915, "train_loss": 7.399374961853027, "wall": 19.2, "tokens_per_sec": 163913, "tokens_per_sec_window": 271826, "peak_gb": 42.92, "pred_drop": 0.0, "rho": NaN}
+{"step": 46, "lr": 0.19988400555086705, "train_loss": 6.674641132354736, "wall": 30.8, "tokens_per_sec": 200332, "tokens_per_sec_window": 260794, "peak_gb": 42.92, "pred_drop": 0.0, "rho": NaN}
+{"step": 69, "lr": 0.19973907557010623, "train_loss": 6.073227882385254, "wall": 42.2, "tokens_per_sec": 217195, "tokens_per_sec_window": 262317, "peak_gb": 42.92, "pred_drop": 0.0, "rho": NaN}
+{"step": 92, "lr": 0.19953629131116818, "train_loss": 5.785686254501343, "wall": 53.7, "tokens_per_sec": 226789, "tokens_per_sec_window": 262016, "peak_gb": 42.92, "pred_drop": 0.0, "rho": NaN}
+{"step": 115, "lr": 0.19927577040623493, "train_loss": 5.574359893798828, "wall": 65.3, "tokens_per_sec": 232874, "tokens_per_sec_window": 261211, "peak_gb": 42.92, "pred_drop": 0.0, "rho": NaN}
+{"step": 138, "lr": 0.19895766397967207, "train_loss": 5.3981616497039795, "wall": 76.8, "tokens_per_sec": 237110, "tokens_per_sec_window": 261059, "peak_gb": 42.92, "pred_drop": 0.0, "rho": NaN}
+{"step": 161, "lr": 0.19858215656036401, "train_loss": 5.235613822937012, "wall": 88.4, "tokens_per_sec": 240297, "tokens_per_sec_window": 261547, "peak_gb": 42.92, "pred_drop": 0.0, "rho": NaN}
+{"step": 184, "lr": 0.19814946597467115, "train_loss": 5.076168060302734, "wall": 99.9, "tokens_per_sec": 242729, "tokens_per_sec_window": 261360, "peak_gb": 42.92, "pred_drop": 0.0, "rho": NaN}
+{"step": 207, "lr": 0.19765984322007216, "train_loss": 4.939493656158447, "wall": 111.4, "tokens_per_sec": 244663, "tokens_per_sec_window": 261412, "peak_gb": 42.92, "pred_drop": 0.0, "rho": NaN}
+{"step": 230, "lr": 0.19711357231956408, "train_loss": 4.8700621128082275, "wall": 123.0, "tokens_per_sec": 246158, "tokens_per_sec_window": 260552, "peak_gb": 42.92, "pred_drop": 0.0, "rho": NaN}
+{"step": 253, "lr": 0.1965109701569046, "train_loss": 4.824608564376831, "wall": 134.6, "tokens_per_sec": 247390, "tokens_per_sec_window": 260489, "peak_gb": 42.92, "pred_drop": 0.0, "rho": NaN}
+{"step": 276, "lr": 0.1958523862927925, "train_loss": 4.7643842697143555, "wall": 146.1, "tokens_per_sec": 248472, "tokens_per_sec_window": 261081, "peak_gb": 42.92, "pred_drop": 0.0, "rho": NaN}
