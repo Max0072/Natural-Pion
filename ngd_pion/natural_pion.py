@@ -44,6 +44,23 @@ from .linalg import exact_fp32, is_identity, skew, spectral_norm
 __all__ = ["NaturalPion", "NaturalPionFast", "NaturalPionTurbo"]
 
 
+def drop_kernel(X: torch.Tensor, W: torch.Tensor, side: str) -> torch.Tensor:
+    """Remove from the generator X the block that cannot move a rectangular W.
+
+    Out side of W (m x n, m > n): rotations inside the complement of W's column space leave W unchanged. With Q an
+    orthonormal basis of that column space and N = I - Q Q^T, return X - N X N, i.e. Q Q^T X + X Q Q^T - Q Q^T X Q Q^T.
+    In side (m < n): the same with the row space. Skew in, skew out; X' W = X W (out) and W X' = W X (in) exactly."""
+    if side == "out":
+        L = torch.linalg.cholesky(W.transpose(-1, -2) @ W)                  # n x n, the small side
+        Q = torch.linalg.solve_triangular(L, W.transpose(-1, -2), upper=False).transpose(-1, -2)   # W L^-T, m x n
+    else:
+        L = torch.linalg.cholesky(W @ W.transpose(-1, -2))                  # m x m
+        Q = torch.linalg.solve_triangular(L, W, upper=False).transpose(-1, -2)                      # W^T L^-T, n x m
+    QX = Q.transpose(-1, -2) @ X
+    XQ = X @ Q
+    return Q @ QX + XQ @ Q.transpose(-1, -2) - Q @ (QX @ Q) @ Q.transpose(-1, -2)
+
+
 def _lmax(C: torch.Tensor, iters: int = 30) -> torch.Tensor:
     """Largest eigenvalue of symmetric PSD `C` (batched) by power iteration, shape (..., 1)."""
     v = torch.ones(*C.shape[:-1], 1, dtype=C.dtype, device=C.device)
@@ -455,7 +472,7 @@ class NaturalPionFast(NaturalPion):
     def __init__(self, params, lr: float = 0.05, *, t_fac: int = 25, stats_window: int | None = 6,
                  beta_a: float = 0.5, beta_d: float = 0.5, share_inputs: bool = True,
                  retraction: str = "ns_delta", batch_sigma: bool = True, share_root: bool = True,
-                 async_refresh: bool = True, cg_iters: int = 0, **kwargs) -> None:
+                 async_refresh: bool = True, cg_iters: int = 0, drop_kernel: bool = False, **kwargs) -> None:
         super().__init__(params, lr, t_fac=t_fac, stats_window=stats_window, beta_a=beta_a, beta_d=beta_d,
                          share_inputs=share_inputs, retraction=retraction, **kwargs)
         self.batch_sigma = batch_sigma
@@ -470,12 +487,26 @@ class NaturalPionFast(NaturalPion):
         if cg_iters < 0:
             raise ValueError("cg_iters must be >= 0")
         self.cg_iters = cg_iters
+        # drop_kernel: on the wide side of a rectangular matrix, remove the block of X that cannot move W before sigma
+        # and Cayley (it inflated sigma by a median 1.07, up to 1.39 on down projections; kernel_block.py)
+        self.drop_kernel = drop_kernel
         self._side = None
         self._pending = None
 
     def _correct(self, X, G, P, den, items, rows, group):
-        if not self.cg_iters:
-            return X
+        if self.cg_iters:
+            X = self._cg(X, G, P, den, items, rows, group)
+        if self.drop_kernel:
+            out = []
+            for k, (i, slot, _, _) in enumerate(items):
+                W = rows[i][1]
+                m, n = W.shape
+                wide = (slot == 3 and m > n) or (slot == 2 and n > m)
+                out.append(drop_kernel(X[k], W, "out" if slot == 3 else "in") if wide else X[k])
+            X = torch.stack(out)
+        return X
+
+    def _cg(self, X, G, P, den, items, rows, group):
         eps = group["eps"]
         Bs, Cs = [], []
         for i, slot, _, _ in items:

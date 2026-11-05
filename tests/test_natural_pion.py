@@ -281,3 +281,28 @@ def test_sketch_is_exact_at_full_rank_and_low_rank_below():
         full.observe(chunk); sk.observe(chunk); lo.observe(chunk)
     assert torch.allclose(sk.matrix, full.matrix, rtol=1e-4, atol=1e-5)
     assert torch.linalg.matrix_rank(lo.matrix, rtol=1e-5) == 3
+
+
+
+def test_drop_kernel_removes_only_the_invisible_block():
+    from ngd_pion.natural_pion import drop_kernel
+    from ngd_pion.linalg import skew
+    g = torch.Generator().manual_seed(37)
+    W = torch.randn(12, 5, generator=g, dtype=torch.float64)
+    X = skew(torch.randn(12, 12, generator=g, dtype=torch.float64))
+    Y = drop_kernel(X, W, "out")
+    assert torch.allclose(Y, -Y.T)
+    assert torch.allclose(Y @ W, X @ W)                     # same action on W
+    K = torch.linalg.svd(W, full_matrices=True)[0][:, 5:]
+    assert (K.T @ Y @ K).abs().max() < 1e-10                # the invisible block is gone
+    Wi = torch.randn(5, 12, generator=g, dtype=torch.float64)
+    Yi = drop_kernel(X, Wi, "in")
+    assert torch.allclose(Wi @ Yi, Wi @ X)
+
+
+def test_drop_kernel_keeps_the_spectrum():
+    ps = _weights(39)
+    s0 = [torch.linalg.svdvals(p.detach().double()) for p in ps]
+    _drive(NaturalPionFast(ps, lr=0.2, t_fac=5, stats_window=2, drop_kernel=True), ps, 20, 40, _cosine)
+    for p, s in zip(ps, s0):
+        assert torch.allclose(torch.linalg.svdvals(p.detach().double()), s, rtol=1e-4)
