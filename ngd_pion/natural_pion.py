@@ -168,9 +168,9 @@ class NaturalPion(torch.optim.Optimizer):
                     return group
         raise KeyError("parameter is not held by this optimizer")
 
-    def _collecting(self, param: torch.Tensor) -> bool:
-        """Whether this step's statistics are ever read: always before the first basis, then only inside
-        the window that precedes a rebuild."""
+    def _collecting(self, param: torch.Tensor, kind: str = "a") -> bool:
+        """Whether this step's statistic `kind` ("a": input moment, "d": output-gradient moment) is ever read:
+        always before the first basis, then only inside the window that precedes a rebuild."""
         group = self._group_of(param)
         window = group["stats_window"]
         state = self.state[param]
@@ -191,7 +191,7 @@ class NaturalPion(torch.optim.Optimizer):
 
     def observe(self, param: torch.Tensor, x: torch.Tensor) -> None:
         """Activations entering the layer that owns `param` (forward pre-hook)."""
-        if not self._collecting(param):
+        if not self._collecting(param, "a"):
             return
         beta = self._group_of(param)["beta_a"]
         last = self._last_input
@@ -209,7 +209,7 @@ class NaturalPion(torch.optim.Optimizer):
         """Gradient at the layer's output (backward hook). Scaled by the token count squared: the loss is a
         mean, so autograd's `delta` carries `1/N`, and the Fisher of a mean loss is the mean of per-token
         outer products."""
-        if not self._collecting(param):
+        if not self._collecting(param, "d"):
             return
         flat = delta.detach().reshape(-1, delta.shape[-1])
         self._stat(param, "cov_backward", self._group_of(param)["beta_d"]).observe(
@@ -341,6 +341,11 @@ class NaturalPion(torch.optim.Optimizer):
         """Hook after `X = F^-1 G` in the basis; the reference path uses the basis solution as it is."""
         return X
 
+    def _largest_angle(self, group: dict) -> float:
+        """The largest rotation angle of this step, which decides whether Newton-Schulz may stand in for the exact
+        Cayley solve: theta itself, since c = theta / sigma turns every matrix by theta."""
+        return group["lr"]
+
     def _scales(self, rows: list, group: dict) -> list:
         """`c = theta / sigma` per rotated unit, one power iteration per matrix (the reference path)."""
         cs = []
@@ -405,7 +410,7 @@ class NaturalPion(torch.optim.Optimizer):
             if group["retraction"] == "trunc":
                 A = -(half + half) * X                       # -c X: Cay(cX) and exp(-cX) agree to second order
                 R = eye + A + 0.5 * (A @ A)
-            elif group["retraction"] == "ns_delta" and group["lr"] <= group["ns_guard"]:
+            elif group["retraction"] == "ns_delta" and self._largest_angle(group) <= group["ns_guard"]:
                 # The same Newton-Schulz iteration carried in the correction z = Z - I: residual r = M Z - I =
                 # A + z + A z, and Z (I - r) gives z <- z - r - z r. Nothing is rounded next to 1, which in "ns"
                 # biases R^T R - I positive by ~1e-6 per side per step in fp32 (the trained spectrum grew 1.1%
@@ -416,7 +421,7 @@ class NaturalPion(torch.optim.Optimizer):
                     r = A + z + A @ z
                     z = z - r - z @ r
                 R = eye + 2.0 * z
-            elif group["retraction"] == "ns" and group["lr"] <= group["ns_guard"]:
+            elif group["retraction"] == "ns" and self._largest_angle(group) <= group["ns_guard"]:
                 # Cay = 2 (I + A)^-1 - I; Newton-Schulz Z <- Z (2I - M Z) from Z0 = I - A, residual A^2 squaring
                 A = half * X
                 M, Z = eye + A, eye - A
@@ -472,9 +477,39 @@ class NaturalPionFast(NaturalPion):
     def __init__(self, params, lr: float = 0.05, *, t_fac: int = 25, stats_window: int | None = 6,
                  beta_a: float = 0.5, beta_d: float = 0.5, share_inputs: bool = True,
                  retraction: str = "ns_delta", batch_sigma: bool = True, share_root: bool = True,
-                 async_refresh: bool = False, cg_iters: int = 0, drop_kernel: bool = False, **kwargs) -> None:
+                 async_refresh: bool = False, cg_iters: int = 0, drop_kernel: bool = False,
+                 direction: str = "natural", length: str = "spectral", sides: str = "joint", planes: str = "scaled",
+                 attn_mult: float = 1.0, a_window: int | None = None, d_window: int | None = None, a_every: int = 1,
+                 **kwargs) -> None:
         super().__init__(params, lr, t_fac=t_fac, stats_window=stats_window, beta_a=beta_a, beta_d=beta_d,
                          share_inputs=share_inputs, retraction=retraction, **kwargs)
+        # Ablation switches (Section 5.4); every default is the method itself.
+        #   direction  "natural": X = F^-1 G | "raw": X = G
+        #   length     "spectral": c = theta / sigma(X) | "before": theta / sigma(G) | "rms": the RMS of W X_in + X_out W
+        #              is theta, as in Pion | "fisher": theta / sqrt(<X, F X>) | "quad": theta min(1, <G, X> / <X, F X>)
+        #              | "fixed": c = theta.  F here is the Fisher at the current W and statistics.
+        #   sides      "joint": one c for both sides, from the larger sigma | "each": each side by its own
+        #   planes     "scaled": X as it is | "equal": every plane of X turned by theta (polar factor, one SVD per side)
+        #   attn_mult  the angle of the square (attention) matrices times this
+        #   a_window, d_window   steps before a rebuild in which A, D are fed (default: stats_window); a_every: A every
+        #              n-th step only
+        if direction not in ("natural", "raw"):
+            raise ValueError(f"direction must be natural or raw, got {direction!r}")
+        if length not in ("spectral", "before", "rms", "fisher", "quad", "fixed"):
+            raise ValueError(f"unknown length rule {length!r}")
+        if sides not in ("joint", "each") or planes not in ("scaled", "equal"):
+            raise ValueError("sides must be joint or each, planes scaled or equal")
+        if sides == "each" and length not in ("spectral", "before"):
+            raise ValueError("sides='each' is defined for the spectral rules only")
+        if planes == "equal" and (length != "spectral" or sides != "joint"):
+            raise ValueError("planes='equal' sets the length itself: use it with length='spectral', sides='joint'")
+        if attn_mult <= 0.0 or a_every < 1:
+            raise ValueError("attn_mult must be positive and a_every at least 1")
+        self.direction, self.length, self.sides, self.planes = direction, length, sides, planes
+        self.attn_mult, self.a_window, self.d_window, self.a_every = attn_mult, a_window, d_window, a_every
+        self._ablated = (length, sides, planes, attn_mult) != ("spectral", "joint", "scaled", 1.0)
+        self.angles: dict[int, float] | None = None    # realised angle per matrix, on the ablated length path
+        self._gens: dict[tuple, torch.Tensor] = {}
         self.batch_sigma = batch_sigma
         self.share_root = share_root
         # A refresh is read only by the next step's rotation, so on a GPU it runs on a side stream, overlapping the
@@ -493,7 +528,23 @@ class NaturalPionFast(NaturalPion):
         self._side = None
         self._pending = None
 
+    def _collecting(self, param: torch.Tensor, kind: str = "a") -> bool:
+        window = self.a_window if kind == "a" else self.d_window
+        if window is None and (kind == "d" or self.a_every == 1):
+            return super()._collecting(param, kind)
+        group, state = self._group_of(param), self.state[param]
+        if "bases" not in state:
+            return True
+        if window is None:
+            window = group["stats_window"]
+        inside = window is None or state["since_refactor"] >= group["t_fac"] - window
+        return inside and (kind == "d" or state.get("step", 0) % self.a_every == 0)
+
     def _correct(self, X, G, P, den, items, rows, group):
+        if self.direction == "raw":
+            X = G
+        if self.length in ("before", "quad"):            # the generators, for the rules that read them
+            self._gens.update({(i, slot): G[k] for k, (i, slot, _, _) in enumerate(items)})
         if self.cg_iters:
             X = self._cg(X, G, P, den, items, rows, group)
         if self.drop_kernel:
@@ -602,6 +653,8 @@ class NaturalPionFast(NaturalPion):
     def _scales(self, rows: list, group: dict) -> list:
         """The power iteration batched by (side size, iterations); `c` stays on the device, so the step makes no
         host synchronisation for it. Same estimate as the reference path up to the round-off of batched products."""
+        if self._ablated:
+            return self._ablated_scales(rows, group)
         if not self.batch_sigma:
             return super()._scales(rows, group)
         n = len(rows)
@@ -626,6 +679,85 @@ class NaturalPionFast(NaturalPion):
                 sig[side, k] = s_[j]
         c = group["lr"] / sig.amax(dim=0).clamp_min(1e-30)
         return list(c.unbind(0))
+
+
+    def _largest_angle(self, group: dict) -> float:
+        if self._ablated and self.angles:                  # the length rules set the angle themselves
+            return max(self.angles.values())
+        return super()._largest_angle(group)
+
+    def _fisher_quadratic(self, p, W, r, whole, X_in, X_out):
+        """<X, F X> summed over both sides, F at the current W with the statistics as last collected."""
+        st = self.state[p]
+        A = st["cov"].matrix.to(W.dtype)
+        D = st["cov_backward"].matrix.to(W.dtype)
+        if not whole:
+            D = D[r, r]
+        Wt = W.transpose(-1, -2)
+        S, V = Wt @ D @ W, W @ A @ Wt
+        F_in = 0.5 * (S @ X_in @ A + A @ X_in @ S)
+        F_out = 0.5 * (V @ X_out @ D + D @ X_out @ V)
+        return (X_in * F_in).sum() + (X_out * F_out).sum()
+
+    def _ablated_scales(self, rows: list, group: dict) -> list:
+        """The length rules of Section 5.4, one matrix at a time. Each side's X is scaled in place to the step it
+        takes (c_in X_in, c_out X_out) and the returned c is 1. Records the realised angle per matrix."""
+        gens, self._gens = self._gens, {}
+        self.angles = {}
+        cs = []
+        for i, (p, W, X_in, X_out, b, r, whole) in enumerate(rows):
+            st = self._unit_state(self.state[p], b)
+            st["since_refactor"] = self.state[p]["since_refactor"]
+            theta = group["lr"] * (self.attn_mult if p.shape[0] == p.shape[1] else 1.0)
+            if self.planes == "equal":
+                X_in, X_out = _polar_skew(X_in), _polar_skew(X_out)
+                c_in = c_out = theta
+                angle = theta
+            else:
+                fresh = "angle_v_in" not in st or st["since_refactor"] == 0
+                it = group["angle_warmup"] if fresh else group["angle_iters"]
+                s_in, st["angle_v_in"] = spectral_norm(X_in, it, st.get("angle_v_in"))
+                s_out, st["angle_v_out"] = spectral_norm(X_out, it, st.get("angle_v_out"))
+                s_in, s_out = float(s_in), float(s_out)
+                if self.length == "before":
+                    g_in, g_out = gens[(i, 2)], gens[(i, 3)]
+                    s_in_g, st["g_v_in"] = spectral_norm(g_in, it, st.get("g_v_in"))
+                    s_out_g, st["g_v_out"] = spectral_norm(g_out, it, st.get("g_v_out"))
+                    ref_in, ref_out = float(s_in_g), float(s_out_g)
+                else:
+                    ref_in, ref_out = s_in, s_out
+                if self.length in ("spectral", "before"):
+                    if self.sides == "each":
+                        c_in, c_out = theta / max(ref_in, 1e-30), theta / max(ref_out, 1e-30)
+                    else:
+                        c_in = c_out = theta / max(ref_in, ref_out, 1e-30)
+                elif self.length == "rms":
+                    m, n = W.shape
+                    rms = float(torch.linalg.matrix_norm(W @ X_in + X_out @ W)) / (m * n) ** 0.5
+                    c_in = c_out = theta / max(rms, 1e-30)
+                elif self.length == "fixed":
+                    c_in = c_out = theta
+                else:
+                    curv = float(self._fisher_quadratic(p, W, r, whole, X_in, X_out))
+                    if self.length == "fisher":
+                        c_in = c_out = theta / max(curv, 1e-30) ** 0.5
+                    else:
+                        quad = float((gens[(i, 2)] * X_in).sum() + (gens[(i, 3)] * X_out).sum())
+                        c_in = c_out = theta * min(1.0, quad / max(curv, 1e-30))
+                angle = max(c_in * s_in, c_out * s_out)
+            rows[i][2], rows[i][3] = c_in * X_in, c_out * X_out
+            self.angles[id(p)] = max(self.angles.get(id(p), 0.0), angle)
+            cs.append(1.0)
+        return cs
+
+
+def _polar_skew(X: torch.Tensor) -> torch.Tensor:
+    """The polar factor of skew X, kept skew: X = U S V^T goes to U V^T on the planes above round-off (1e-6 of the
+    largest), so every plane of X turns by the same angle."""
+    U, S, Vh = torch.linalg.svd(X, full_matrices=False)
+    keep = (S > 1e-6 * S.amax().clamp_min(1e-30)).to(X.dtype)
+    Y = (U * keep) @ Vh
+    return 0.5 * (Y - Y.transpose(-1, -2))
 
 
 class NaturalPionTurbo(NaturalPionFast):

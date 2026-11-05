@@ -344,3 +344,74 @@ def test_stiefel_optimizer_keeps_the_spectrum_and_moves():
     for p, s, w in zip(ps, s0, w0):
         assert torch.allclose(torch.linalg.svdvals(p.detach().double()), s, rtol=1e-4)
         assert (p.detach() - w).abs().max() > 1e-3
+
+
+# --- ablation switches of NaturalPionFast (Section 5.4); defaults are the method -------------------------------
+
+def test_ablated_length_path_with_default_rule_is_the_method():
+    """The per-matrix length path, run with the default rule, takes the method's step (round-off only)."""
+    a, b = _weights(40), _weights(40)
+    oa = NaturalPionFast(a, lr=0.2, t_fac=5, stats_window=2, row_blocks={id(a[1]): 4})
+    ob = NaturalPionFast(b, lr=0.2, t_fac=5, stats_window=2, row_blocks={id(b[1]): 4})
+    ob._ablated = True
+    for x, y in zip(_drive(oa, a, 30, 41, _cosine)[-1], _drive(ob, b, 30, 41, _cosine)[-1]):
+        assert torch.allclose(x, y, rtol=1e-4, atol=1e-5), (x - y).abs().max()
+
+
+@pytest.mark.parametrize("opts", [dict(direction="raw"), dict(length="before"), dict(length="rms"),
+                                  dict(length="fisher"), dict(length="quad"), dict(length="fixed"),
+                                  dict(sides="each"), dict(planes="equal"), dict(attn_mult=2.0),
+                                  dict(a_window=3, d_window=1), dict(stats_window=None, a_every=2)])
+def test_ablations_keep_the_spectrum_and_move(opts):
+    params = _weights(42)
+    spectra = lambda: [torch.linalg.svdvals(b.double()) for p in params                 # the split matrix: per block
+                       for b in (p.detach().chunk(4) if p is params[1] else [p.detach()])]
+    before, start = spectra(), [p.detach().clone() for p in params]
+    _drive(NaturalPionFast(params, lr=0.05, t_fac=5, row_blocks={id(params[1]): 4}, **{"stats_window": 3, **opts}),
+           params, 25, 43, lambda t: 0.05)
+    for s0, s1 in zip(before, spectra()):
+        assert torch.allclose(s0, s1, rtol=1e-4), (s0 - s1).abs().max()
+    for p, w0 in zip(params, start):
+        assert (p.detach() - w0).abs().max() > 1e-4
+
+
+def test_realised_angle_under_each_rule():
+    """Spectral and polar steps turn every matrix by theta; the fixed rule does not."""
+    for opts, even in ((dict(sides="each"), True), (dict(planes="equal"), True), (dict(length="fixed"), False)):
+        params = _weights(44)
+        opt = NaturalPionFast(params, lr=0.05, t_fac=5, stats_window=3, **opts)
+        _drive(opt, params, 3, 45, lambda t: 0.05)
+        angles = list(opt.angles.values())
+        assert len(angles) == len(params)
+        if even:
+            assert all(abs(a - 0.05) < 1e-3 for a in angles), angles
+        else:
+            assert max(angles) / min(angles) > 1.5, angles
+
+
+def test_attention_multiplier_scales_square_matrices_only():
+    params = _weights(46)
+    opt = NaturalPionFast(params, lr=0.05, t_fac=5, stats_window=3, attn_mult=2.0)
+    _drive(opt, params, 3, 47, lambda t: 0.05)
+    for p in params:
+        want = 0.1 if p.shape[0] == p.shape[1] else 0.05
+        assert abs(opt.angles[id(p)] - want) < 2e-3, (p.shape, opt.angles[id(p)])
+
+
+def test_separate_statistics_windows():
+    params = _weights(48)
+    opt = NaturalPionFast(params, lr=0.1, t_fac=10, stats_window=None, beta_a=0.9, d_window=3, a_every=2)
+    _drive(opt, params, 1, 49, lambda t: 0.1)
+    p, st = params[0], opt.state[params[0]]
+    st["since_refactor"], st["step"] = 2, 3
+    assert not opt._collecting(p, "a") and not opt._collecting(p, "d")    # odd step; outside D's window
+    st["since_refactor"], st["step"] = 8, 4
+    assert opt._collecting(p, "a") and opt._collecting(p, "d")
+
+
+def test_ablation_arguments_are_checked():
+    params = _weights(50)
+    for bad in (dict(direction="x"), dict(length="x"), dict(sides="each", length="rms"),
+                dict(planes="equal", length="fixed"), dict(attn_mult=0.0), dict(a_every=0)):
+        with pytest.raises(ValueError):
+            NaturalPionFast(params, **bad)

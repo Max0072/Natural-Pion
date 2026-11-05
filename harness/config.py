@@ -121,6 +121,13 @@ class RunConfig:
     train_steps: int = 73242        # TOTAL_TOKENS / GLOBAL_BATCH / 256 = 9.6e9/512/256
     lr_min: float = 1e-5
     warmup_steps: int = 0
+    # Shape of the rotation optimizer's schedule (AdamW always keeps the cosine): cosine | constant | linear |
+    # warmcos (linear up over the first 20%, then cosine) | wsd (flat, then linear to lr_min over the last
+    # `wsd_decay` of the steps). Out of the hash at the defaults.
+    schedule: str = "cosine"
+    wsd_decay: float = 0.2
+    # Natural Pion: time each part of the optimizer step (GPU-synchronised) into profile.json. Slows the run.
+    np_profile: bool = False
     weight_decay: float = 0.1
     grad_clip: float = 1.0
 
@@ -472,7 +479,7 @@ class RunConfig:
     out_dir: str = "runs"
 
     _EXCLUDED = ("data_path", "val_path", "local_cache_dir", "eval_every", "eval_batches",
-                 "log_every", "micro_batch", "out_dir")
+                 "log_every", "micro_batch", "out_dir", "np_profile")
 
     @property
     def tokens_per_step(self) -> int:
@@ -489,6 +496,10 @@ class RunConfig:
             d.pop(key, None)
         if not d.get("np_damping"):
             d.pop("np_damping", None)
+        if d.get("schedule") == "cosine":
+            d.pop("schedule", None)
+        if d.get("schedule") != "wsd":
+            d.pop("wsd_decay", None)
         if d.get("np_retraction") == "cayley":
             d.pop("np_retraction", None)
         if d.get("np_stats_dtype") == "fp32":

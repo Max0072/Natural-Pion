@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH -o logs/%x-%A_%a.out
 #SBATCH -e logs/%x-%A_%a.err
-# Sections 3-4 and the flag-only part of 5.4 redone in the paper's setting (user, 2026-11-05): query projection per
+# Sections 3-4 and 5.4 redone in the paper's setting (user, 2026-11-05): query projection per
 # head (always, as in Pion), Natural Pion Fast = ns_delta retraction + bf16 statistics unless the row varies them.
 # Algorithm 1 = natural-pion (t_fac 1, statistics every step, exact Cayley, fp32). Rows:
 #   TAG | OPTIMIZER | STEPS | ANGLE | SEED | BETA1 | RETRACTION | STATS | NP_KWARGS | EXTRA
@@ -61,6 +61,73 @@ ROWS=(
 "win-adlast6|$A|3000|0.2|0|0.9|cayley|fp32|{\"t_fac\":25,\"stats_window\":6,\"beta_a\":0.5}|"
 "win-betad09|$A|3000|0.2|0|0.9|cayley|fp32|{\"t_fac\":25,\"beta_d\":0.9}|"
 "win-betad095|$A|3000|0.2|0|0.9|cayley|fp32|{\"t_fac\":25,\"beta_d\":0.95}|"
+# 39-49 direction (5.4): X = F^-1 G against X = G, without and with momentum; angle grid (0.2 with momentum = npv2)
+"dir-nat-nomom-0.1|$F|3000|0.1|0|0|ns_delta|bf16||"
+"dir-nat-nomom-0.2|$F|3000|0.2|0|0|ns_delta|bf16||"
+"dir-nat-nomom-0.4|$F|3000|0.4|0|0|ns_delta|bf16||"
+"dir-nat-mom-0.1|$F|3000|0.1|0|0.9|ns_delta|bf16||"
+"dir-nat-mom-0.4|$F|3000|0.4|0|0.9|ns_delta|bf16||"
+"dir-raw-nomom-0.1|$F|3000|0.1|0|0|ns_delta|bf16|{\"direction\":\"raw\"}|"
+"dir-raw-nomom-0.2|$F|3000|0.2|0|0|ns_delta|bf16|{\"direction\":\"raw\"}|"
+"dir-raw-nomom-0.4|$F|3000|0.4|0|0|ns_delta|bf16|{\"direction\":\"raw\"}|"
+"dir-raw-mom-0.1|$F|3000|0.1|0|0.9|ns_delta|bf16|{\"direction\":\"raw\"}|"
+"dir-raw-mom-0.2|$F|3000|0.2|0|0.9|ns_delta|bf16|{\"direction\":\"raw\"}|"
+"dir-raw-mom-0.4|$F|3000|0.4|0|0.9|ns_delta|bf16|{\"direction\":\"raw\"}|"
+# 50-74 length rules (5.4): five-point angle grid each, x2 apart, centred on the old optimum
+"len-before-3e-6|$F|3000|3e-6|0|0.9|ns_delta|bf16|{\"length\":\"before\"}|"
+"len-before-1e-5|$F|3000|1e-5|0|0.9|ns_delta|bf16|{\"length\":\"before\"}|"
+"len-before-3e-5|$F|3000|3e-5|0|0.9|ns_delta|bf16|{\"length\":\"before\"}|"
+"len-before-1e-4|$F|3000|1e-4|0|0.9|ns_delta|bf16|{\"length\":\"before\"}|"
+"len-before-3e-4|$F|3000|3e-4|0|0.9|ns_delta|bf16|{\"length\":\"before\"}|"
+"len-rms-6e-4|$F|3000|6e-4|0|0.9|ns_delta|bf16|{\"length\":\"rms\"}|"
+"len-rms-1.2e-3|$F|3000|1.2e-3|0|0.9|ns_delta|bf16|{\"length\":\"rms\"}|"
+"len-rms-2.4e-3|$F|3000|2.4e-3|0|0.9|ns_delta|bf16|{\"length\":\"rms\"}|"
+"len-rms-4.8e-3|$F|3000|4.8e-3|0|0.9|ns_delta|bf16|{\"length\":\"rms\"}|"
+"len-rms-9.6e-3|$F|3000|9.6e-3|0|0.9|ns_delta|bf16|{\"length\":\"rms\"}|"
+"len-fisher-2.4e-3|$F|3000|2.4e-3|0|0.9|ns_delta|bf16|{\"length\":\"fisher\"}|"
+"len-fisher-4.8e-3|$F|3000|4.8e-3|0|0.9|ns_delta|bf16|{\"length\":\"fisher\"}|"
+"len-fisher-9.6e-3|$F|3000|9.6e-3|0|0.9|ns_delta|bf16|{\"length\":\"fisher\"}|"
+"len-fisher-1.9e-2|$F|3000|1.9e-2|0|0.9|ns_delta|bf16|{\"length\":\"fisher\"}|"
+"len-fisher-3.8e-2|$F|3000|3.8e-2|0|0.9|ns_delta|bf16|{\"length\":\"fisher\"}|"
+"len-quad-1e-3|$F|3000|1e-3|0|0.9|ns_delta|bf16|{\"length\":\"quad\"}|"
+"len-quad-2e-3|$F|3000|2e-3|0|0.9|ns_delta|bf16|{\"length\":\"quad\"}|"
+"len-quad-4e-3|$F|3000|4e-3|0|0.9|ns_delta|bf16|{\"length\":\"quad\"}|"
+"len-quad-8e-3|$F|3000|8e-3|0|0.9|ns_delta|bf16|{\"length\":\"quad\"}|"
+"len-quad-1.6e-2|$F|3000|1.6e-2|0|0.9|ns_delta|bf16|{\"length\":\"quad\"}|"
+"len-fixed-5e-4|$F|3000|5e-4|0|0.9|ns_delta|bf16|{\"length\":\"fixed\"}|"
+"len-fixed-1e-3|$F|3000|1e-3|0|0.9|ns_delta|bf16|{\"length\":\"fixed\"}|"
+"len-fixed-2e-3|$F|3000|2e-3|0|0.9|ns_delta|bf16|{\"length\":\"fixed\"}|"
+"len-fixed-4e-3|$F|3000|4e-3|0|0.9|ns_delta|bf16|{\"length\":\"fixed\"}|"
+"len-fixed-8e-3|$F|3000|8e-3|0|0.9|ns_delta|bf16|{\"length\":\"fixed\"}|"
+# 75-80 each side by its own sigma; attention angle multiplier
+"sides-each-0.1|$F|3000|0.1|0|0.9|ns_delta|bf16|{\"sides\":\"each\"}|"
+"sides-each-0.2|$F|3000|0.2|0|0.9|ns_delta|bf16|{\"sides\":\"each\"}|"
+"attn-x0.25|$F|3000|0.2|0|0.9|ns_delta|bf16|{\"attn_mult\":0.25}|"
+"attn-x0.5|$F|3000|0.2|0|0.9|ns_delta|bf16|{\"attn_mult\":0.5}|"
+"attn-x2|$F|3000|0.2|0|0.9|ns_delta|bf16|{\"attn_mult\":2}|"
+"attn-x4|$F|3000|0.2|0|0.9|ns_delta|bf16|{\"attn_mult\":4}|"
+# 81-91 schedule of the angle (AdamW keeps its cosine): best of three angles; warmup-stable-decay
+"sched-constant-0.05|$F|3000|0.05|0|0.9|ns_delta|bf16||--schedule constant"
+"sched-constant-0.1|$F|3000|0.1|0|0.9|ns_delta|bf16||--schedule constant"
+"sched-constant-0.2|$F|3000|0.2|0|0.9|ns_delta|bf16||--schedule constant"
+"sched-linear-0.1|$F|3000|0.1|0|0.9|ns_delta|bf16||--schedule linear"
+"sched-linear-0.2|$F|3000|0.2|0|0.9|ns_delta|bf16||--schedule linear"
+"sched-linear-0.4|$F|3000|0.4|0|0.9|ns_delta|bf16||--schedule linear"
+"sched-warmcos-0.1|$F|3000|0.1|0|0.9|ns_delta|bf16||--schedule warmcos"
+"sched-warmcos-0.2|$F|3000|0.2|0|0.9|ns_delta|bf16||--schedule warmcos"
+"sched-warmcos-0.4|$F|3000|0.4|0|0.9|ns_delta|bf16||--schedule warmcos"
+"sched-wsd-0.2|$F|3000|0.2|0|0.9|ns_delta|bf16||--schedule wsd --wsd-decay 0.2"
+"sched-wsd-0.1|$F|3000|0.2|0|0.9|ns_delta|bf16||--schedule wsd --wsd-decay 0.1"
+# 92-93 every plane of X turned by the same angle (polar step)
+"planes-equal-0.1|$F|3000|0.1|0|0.9|ns_delta|bf16|{\"planes\":\"equal\"}|"
+"planes-equal-0.2|$F|3000|0.2|0|0.9|ns_delta|bf16|{\"planes\":\"equal\"}|"
+# 94-96 statistics windows (4.3) on the T_fac = 25 form of the chain (statistics every step, EMA 0.95 / 0.5)
+"win-dlast6|$F|3000|0.2|0|0.9|cayley|fp32|{\"t_fac\":25,\"stats_window\":null,\"beta_a\":0.95,\"beta_d\":0.5,\"share_inputs\":false,\"batch_sigma\":false,\"share_root\":false,\"d_window\":6}|"
+"win-alast6|$F|3000|0.2|0|0.9|cayley|fp32|{\"t_fac\":25,\"stats_window\":null,\"beta_a\":0.95,\"beta_d\":0.5,\"share_inputs\":false,\"batch_sigma\":false,\"share_root\":false,\"a_window\":6}|"
+"win-aevery2|$F|3000|0.2|0|0.9|cayley|fp32|{\"t_fac\":25,\"stats_window\":null,\"beta_a\":0.9025,\"beta_d\":0.5,\"share_inputs\":false,\"batch_sigma\":false,\"share_root\":false,\"a_every\":2}|"
+# 97-98 profile of the optimizer step by part (Table 1): Algorithm 1 and its T_fac = 25 form, 400 steps
+"prof-alg1|$A|3000|0.2|0|0.9|cayley|fp32||--max-steps 400 --np-profile true"
+"prof-tf25|$A|3000|0.2|0|0.9|cayley|fp32|{\"t_fac\":25}|--max-steps 400 --np-profile true"
 )
 IFS='|' read -r TAG OPT STEPS LR SEED B1 RET STATS KW EXTRA <<< "${ROWS[$SLURM_ARRAY_TASK_ID]}"
 EV=500; [ "$STEPS" -gt 3000 ] && EV=1000

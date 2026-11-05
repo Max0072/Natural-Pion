@@ -53,7 +53,7 @@ __all__ = ["build_optimizers", "lr_at", "train"]
 DIAGNOSED = (NGDPion, ShampooPion)
 
 
-def lr_at(step: int, cfg: RunConfig, base: float | None = None) -> float:
+def lr_at(step: int, cfg: RunConfig, base: float | None = None, shape: str = "cosine") -> float:
     """Cosine decay to `lr_min`. Their script warms up over zero steps.
 
     `base` overrides the peak so a second optimizer can share the schedule's
@@ -68,7 +68,20 @@ def lr_at(step: int, cfg: RunConfig, base: float | None = None) -> float:
         return peak * (step + 1) / cfg.warmup_steps
     progress = (step - cfg.warmup_steps) / max(1, cfg.train_steps - cfg.warmup_steps)
     progress = min(1.0, max(0.0, progress))
-    return floor + 0.5 * (peak - floor) * (1.0 + math.cos(math.pi * progress))
+    if shape == "cosine":
+        return floor + 0.5 * (peak - floor) * (1.0 + math.cos(math.pi * progress))
+    if shape == "constant":
+        return peak
+    if shape == "linear":
+        return floor + (peak - floor) * (1.0 - progress)
+    if shape == "warmcos":
+        if progress < 0.2:
+            return peak * (step + 1) / (0.2 * cfg.train_steps)
+        return floor + 0.5 * (peak - floor) * (1.0 + math.cos(math.pi * (progress - 0.2) / 0.8))
+    if shape == "wsd":
+        start = 1.0 - cfg.wsd_decay
+        return peak if progress < start else floor + (peak - floor) * (1.0 - progress) / cfg.wsd_decay
+    raise ValueError(f"unknown schedule {shape!r}")
 
 
 # Two names for NGD-Pion, and the split is about provenance rather than taste.
@@ -141,6 +154,8 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
                                           ns_guard=cfg.ngd_ns_guard, stats_dtype=cfg.np_stats_dtype,
                                           **(json.loads(cfg.np_kwargs) if cfg.np_kwargs else {}))
         recorder = attach(linears, rot)
+        if cfg.np_profile:
+            rot.profile = {}
     elif cfg.optimizer in NGD_IMPLEMENTATIONS:
         kw = {}
         if cfg.optimizer in ("ngd-pion", "ngd-pion-op", "ngd-pion-pow"):
@@ -536,12 +551,12 @@ def train(
     rho_window: list[float] = []
     held_window: list[float] = []
     for step in range(first, steps):
-        lr = lr_at(step, cfg)
+        lr = lr_at(step, cfg, shape=cfg.schedule)
         # Two schedules when `adamw_lr` is set, one when it is not. Sharing the
         # rate is their published design and stays the default; decoupling is
         # what makes a sweep over `lr` a sweep over the rotational optimizer
         # rather than over AdamW.
-        adamw_lr = lr if not cfg.adamw_lr else lr_at(step, cfg, cfg.adamw_lr)
+        adamw_lr = lr_at(step, cfg) if not cfg.adamw_lr else lr_at(step, cfg, cfg.adamw_lr)
         if rot is not None:
             for group in rot.param_groups:
                 group["lr"] = lr
@@ -729,6 +744,11 @@ def train(
             # `curv_exact` without the smoothed value the step divides by.
             if rot is not None and "lam" in rot.param_groups[0]:
                 row["lam"] = float(rot.param_groups[0]["lam"])
+            # realised rotation angle per matrix, where a length rule other than the spectral one sets it
+            angles = sorted((getattr(rot, "angles", None) or {}).values())
+            if angles:
+                q = lambda f: angles[min(len(angles) - 1, int(f * len(angles)))]
+                row["angle_p10"], row["angle_p50"], row["angle_p90"] = q(0.1), q(0.5), q(0.9)
             if rot is not None and "lr_scale" in rot.param_groups[0]:
                 row["lr_scale"] = float(rot.param_groups[0]["lr_scale"])
             if isinstance(rot, DIAGNOSED):
@@ -749,6 +769,8 @@ def train(
             lock.touch()
 
     log.close()
+    if rot is not None and getattr(rot, "profile", None):
+        (out / "profile.json").write_text(json.dumps({"steps": steps - first, "seconds": rot.profile}, indent=1))
     if diagnostics is not None:
         diagnostics.close()
     lock.release()

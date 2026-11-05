@@ -7225,3 +7225,15 @@ cost footnote now uses the per-head full-length run). Everything still on Q-whol
 ablations, checkpoint probes) is to be rerun; inventory in progress.
 Stiefel (Turbo tier, not in the paper): second 3000-step run 3.7124 (refs 3.7151), 0.470 s/step; optimizer step
 1.3B x1 0.162 s vs Turbo 0.180, 60M x8 0.037 vs 0.041 (stiefel_bench --parts, job 401360). Deferred to 1B.
+
+## 2026-11-05 — 5.4 ablations on Natural Pion Fast, one class
+
+User: ablations move onto the final form; no new classes ("не дублировать fast"), everything unified. The switches
+are constructor options of NaturalPionFast, each default the method: direction (natural | raw), length (spectral |
+before | rms | fisher | quad | fixed; F at the current W for fisher/quad), sides (joint | each), planes (scaled | equal
+= polar), attn_mult, a_window / d_window / a_every. The length rules scale each side's X to its step and record the
+realised angle per matrix (logged as angle_p10/p50/p90). Newton-Schulz now gives way to the exact solve by the
+realised angle (`_largest_angle`; the reference class returns theta, unchanged). The angle schedule is a harness
+field (`schedule`: cosine | constant | linear | warmcos | wsd, `wsd_decay`; AdamW keeps the cosine), and
+`np_profile` writes profile.json. All 5.4 and 4.x reruns are rows of scripts/paper/v2_rest.sbatch (0-98).
+Length-rule grids are five points x2 apart around the old optima; an optimum at a grid edge gets a second wave.

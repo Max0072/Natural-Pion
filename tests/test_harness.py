@@ -780,3 +780,15 @@ def test_diagnostic_forward_leaves_the_covariance_alone():
     assert any(
         not torch.equal(before[key], unguarded[key]) for key in before
     ), "an unguarded forward left `A` untouched, so the guard is pinning nothing"
+
+
+def test_rotation_schedules():
+    from harness.config import RunConfig
+    from harness.train import lr_at
+    cfg = RunConfig(lr=0.2, train_steps=1000, schedule="wsd", wsd_decay=0.2)
+    for shape, start, mid, end in (("cosine", 0.2, 0.1, 1e-5), ("constant", 0.2, 0.2, 0.2),
+                                   ("linear", 0.2, 0.1, 1e-5), ("wsd", 0.2, 0.2, 1e-5)):
+        got = [lr_at(t, cfg, shape=shape) for t in (0, 500, 1000)]
+        assert abs(got[0] - start) < 1e-3 and abs(got[1] - mid) < 1e-3 and abs(got[2] - end) < 1e-3, (shape, got)
+    assert lr_at(0, cfg, shape="warmcos") < 0.01 and abs(lr_at(200, cfg, shape="warmcos") - 0.2) < 1e-3
+    assert "schedule" not in RunConfig().scientific_fields() and "wsd_decay" in cfg.scientific_fields()
