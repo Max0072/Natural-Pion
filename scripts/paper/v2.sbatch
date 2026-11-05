@@ -159,8 +159,36 @@ ROWS=(
 "init-pl3|$F|3000|0.2|3|0.9|||--init-pl-alpha 3"
 "init-pl3-15k|$F|15000|0.05|0|0.9|||--init-pl-alpha 3"
 "init-pl3-73242|$F|73242|0.05|0|0.9|||--init-pl-alpha 3"
+# 124-129 second wave: seeds 1-3 at the best angle of a grid (submit with --dependency=afterany:<grid job>)
+"alg1-mom-seeds|$A|3000|best:alg1-mom|1|0.9||||"
+"alg1-mom-seeds|$A|3000|best:alg1-mom|2|0.9||||"
+"alg1-mom-seeds|$A|3000|best:alg1-mom|3|0.9||||"
+"len-rms-seeds|$F|3000|best:len-rms|1|0.9||{\"length\":\"rms\"}|"
+"len-rms-seeds|$F|3000|best:len-rms|2|0.9||{\"length\":\"rms\"}|"
+"len-rms-seeds|$F|3000|best:len-rms|3|0.9||{\"length\":\"rms\"}|"
 )
 IFS='|' read -r TAG OPT STEPS LR SEED B1 RET STATS KW EXTRA <<< "${ROWS[$SLURM_ARRAY_TASK_ID]}"
+# ANGLE "best:<prefix>": the angle of the best finished run among the tags <prefix>-<angle> (seed 0), read from their
+# logs at start; refuses if any of them is unfinished. Submit such rows with --dependency=afterany:<the grid's job>.
+if [ "${LR#best:}" != "$LR" ]; then
+    LR=$(python3 - "${LR#best:}" <<'PY'
+import glob, json, sys
+prefix, best, todo = sys.argv[1], None, []
+for m in glob.glob(f"/onyx/data/p330/runs/npv2*/{prefix}-*/*/manifest.json"):
+    c = json.load(open(m))["config"]
+    if c["seed"] != 0:
+        continue
+    vals = [json.loads(l) for l in open(m.replace("manifest.json", "log.jsonl")) if '"val_loss"' in l]
+    if not vals or vals[-1]["step"] < c["train_steps"] - 1:
+        todo.append(m.split("/")[-3]); continue
+    if best is None or vals[-1]["val_loss"] < best[0]:
+        best = (vals[-1]["val_loss"], c["lr"])
+if todo or best is None:
+    sys.exit(f"grid {prefix}: unfinished {todo or 'all'}")
+print(best[1])
+PY
+) || { echo "cannot resolve the angle of $TAG"; exit 1; }
+fi
 EV=500; [ "$STEPS" -gt 3000 ] && EV=1000; [ "$STEPS" -gt 15000 ] && EV=2000
 OPT_ARGS=()
 [ -n "$RET" ] && OPT_ARGS+=(--np-retraction "$RET")
