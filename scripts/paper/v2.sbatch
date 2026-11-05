@@ -147,27 +147,30 @@ ROWS=(
 # 111 statistics precision at 15000 steps (4.7)
 "stats-fp32-15k|$F|15000|0.05|0|0.9||fp32||"
 # 112-123 the initial spectrum (Appendix D): power-law exponent alpha, flat, orthogonal; alpha 3 over seeds, 15000, full length
-"init-pl2|$F|3000|0.2|0|0.9|||--init-pl-alpha 2"
-"init-pl2.5|$F|3000|0.2|0|0.9|||--init-pl-alpha 2.5"
-"init-pl3|$F|3000|0.2|0|0.9|||--init-pl-alpha 3"
-"init-pl4|$F|3000|0.2|0|0.9|||--init-pl-alpha 4"
-"init-pl5|$F|3000|0.2|0|0.9|||--init-pl-alpha 5"
-"init-flat|$F|3000|0.2|0|0.9|||--init-pl-alpha inf"
-"init-orth|$F|3000|0.2|0|0.9|||--init orthogonal"
-"init-pl3|$F|3000|0.2|1|0.9|||--init-pl-alpha 3"
-"init-pl3|$F|3000|0.2|2|0.9|||--init-pl-alpha 3"
-"init-pl3|$F|3000|0.2|3|0.9|||--init-pl-alpha 3"
-"init-pl3-15k|$F|15000|0.05|0|0.9|||--init-pl-alpha 3"
-"init-pl3-73242|$F|73242|0.05|0|0.9|||--init-pl-alpha 3"
+"init-pl2|$F|3000|0.2|0|0.9||||--init-pl-alpha 2"
+"init-pl2.5|$F|3000|0.2|0|0.9||||--init-pl-alpha 2.5"
+"init-pl3|$F|3000|0.2|0|0.9||||--init-pl-alpha 3"
+"init-pl4|$F|3000|0.2|0|0.9||||--init-pl-alpha 4"
+"init-pl5|$F|3000|0.2|0|0.9||||--init-pl-alpha 5"
+"init-flat|$F|3000|0.2|0|0.9||||--init-pl-alpha inf"
+"init-orth|$F|3000|0.2|0|0.9||||--init orthogonal"
+"init-pl3|$F|3000|0.2|1|0.9||||--init-pl-alpha 3"
+"init-pl3|$F|3000|0.2|2|0.9||||--init-pl-alpha 3"
+"init-pl3|$F|3000|0.2|3|0.9||||--init-pl-alpha 3"
+"init-pl3-15k|$F|15000|0.05|0|0.9||||--init-pl-alpha 3"
+"init-pl3-73242|$F|73242|0.05|0|0.9||||--init-pl-alpha 3"
 # 124-129 second wave: seeds 1-3 at the best angle of a grid (submit with --dependency=afterany:<grid job>)
 "alg1-mom-seeds|$A|3000|best:alg1-mom|1|0.9||||"
 "alg1-mom-seeds|$A|3000|best:alg1-mom|2|0.9||||"
 "alg1-mom-seeds|$A|3000|best:alg1-mom|3|0.9||||"
-"len-rms-seeds|$F|3000|best:len-rms|1|0.9||{\"length\":\"rms\"}|"
-"len-rms-seeds|$F|3000|best:len-rms|2|0.9||{\"length\":\"rms\"}|"
-"len-rms-seeds|$F|3000|best:len-rms|3|0.9||{\"length\":\"rms\"}|"
+"len-rms-seeds|$F|3000|best:len-rms|1|0.9|||{\"length\":\"rms\"}|"
+"len-rms-seeds|$F|3000|best:len-rms|2|0.9|||{\"length\":\"rms\"}|"
+"len-rms-seeds|$F|3000|best:len-rms|3|0.9|||{\"length\":\"rms\"}|"
 )
 IFS='|' read -r TAG OPT STEPS LR SEED B1 RET STATS KW EXTRA <<< "${ROWS[$SLURM_ARRAY_TASK_ID]}"
+case "$RET" in ""|cayley|ns|ns_delta|trunc) ;; *) echo "row $SLURM_ARRAY_TASK_ID: bad RETRACTION '$RET'"; exit 1 ;; esac
+case "$STATS" in ""|fp32|bf16) ;; *) echo "row $SLURM_ARRAY_TASK_ID: bad STATS '$STATS'"; exit 1 ;; esac
+case "$KW" in ""|"{"*"}") ;; *) echo "row $SLURM_ARRAY_TASK_ID: bad NP_KWARGS '$KW'"; exit 1 ;; esac
 # ANGLE "best:<prefix>": the angle of the best finished run among the tags <prefix>-<angle> (seed 0), read from their
 # logs at start; refuses if any of them is unfinished. Submit such rows with --dependency=afterany:<the grid's job>.
 if [ "${LR#best:}" != "$LR" ]; then
