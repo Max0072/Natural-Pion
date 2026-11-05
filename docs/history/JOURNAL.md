@@ -7183,3 +7183,12 @@ inflates sigma by a median 1.07, up to 1.39 on down projections, so those matric
 `drop_kernel` (X <- X - N X N, N the projector off W's columns/rows; X'W = XW exactly) under test at 3000 steps.
 
 async_refresh: bit-identical on a GPU but no time saved in training (0.498 s/step either way); off by default (user).
+
+## 2026-11-05 — drop_kernel: no effect; preprint updated to the current fast form
+
+drop_kernel (remove the invisible block of X on the wide side): 3.7227 against 3.7224 / 3.7228, +0.017 s/step.
+Not adopted; it shows the block can go without loss, which a reduced (Stiefel) out-side for 1B would rely on.
+Preprint: abstract cost now FLOPs (1.14x Pion per step at 60M) plus time on one GPU (1.06x); contribution 5,
+Section 4 intro, 4.4 (batched sigma), Table 2 (current form 0.498 s, 3.7224), Table 2b (optimizer by part),
+Algorithm 2, new 4.11 (FLOPs at 60M and 1.3B), Limitations (cost), Table 5 caption (one GPU type, form of 4.6).
+Section 5 keeps the runs of the 4.6 form; the current form matches its loss at 3000 and 15000 steps.

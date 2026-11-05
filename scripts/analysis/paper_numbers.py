@@ -498,6 +498,39 @@ if f.exists():
         put(f"rb_{tag}_z", d[tag]["z"], f"{f.name}: same, mean over its standard error")
 else:
     missing("rb_solve_mean", "python scripts/probes/retraction_bias.py")
+# the current fast form (one A per input, Newton-Schulz in Z - I, batched sigma, bf16 statistics)
+put("fast2_val", val("npfast2/s3000/*"), "npfast2/s3000")
+put("fast2_sps", sps("npfast2/s3000/*"), "npfast2/s3000 (RTX)")
+put("fast2_15k", val("npfast2/s15000/*"), "npfast2/s15000")
+put("fast2_ratio", NUM["fast2_sps"] / NUM["pion3000_sps"], "fast2_sps / pion3000_sps")
+# optimizer step alone, by part (scripts/probes/optimizer_step_bench.py, synchronised timers)
+f = R / "probes" / "optimizer_step_bench.json"
+if f.exists():
+    d = json.load(open(f))
+    put("bench_pion", d["pion"], f.name + ": Pion, whole optimizer step")
+    for tag, key in (("old", "fast_cayley_loop_parts"), ("new", "fast_nsdelta_batchsigma_bf16_parts")):
+        for part, v in d[key].items():
+            put(f"bench_{tag}_" + part.replace("^-1", "inv").replace("+", "_").replace(" ", "_").replace("(", "").replace(")", ""),
+                v, f"{f.name}: {key} {part}")
+    for tag in ("old", "new"):
+        put(f"bench_{tag}_shared", sum(NUM[f"bench_{tag}_{k}"] for k in ("generators_momentum", "apply_W")),
+            "generators+momentum + apply W")
+else:
+    missing("bench_pion", "scripts/probes/optimizer_step_bench.sbatch")
+# FLOP per step (scripts/analysis/flops.py)
+f = R / "probes" / "flops.json"
+if f.exists():
+    d = json.load(open(f))
+    for size in ("60M", "1.3B"):
+        tag = size.replace(".", "_")
+        put(f"flops_{tag}_pion", d[size]["pion_overhead"], f"{f.name}: Pion optimizer / model FLOP, {size}")
+        put(f"flops_{tag}_np", d[size]["np_overhead"], f"{f.name}: Natural Pion Fast optimizer / model FLOP, {size}")
+        put(f"flops_{tag}_ratio", d[size]["np_over_pion"], f"{f.name}: step FLOP, Natural Pion Fast / Pion, {size}")
+        for part, v in d[size]["natural_pion_fast"].items():
+            put(f"flops_{tag}_part_" + part.split(" ")[0].replace("^-1", "inv"), v / d[size]["model"],
+                f"{f.name}: {part} / model FLOP, {size}")
+else:
+    missing("flops_60M_np", "python scripts/analysis/flops.py")
 # rounding of the retractions on bare matrices (scripts/probes/ns_rounding.py)
 f = R / "probes" / "ns_rounding.json"
 if f.exists():

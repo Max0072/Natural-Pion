@@ -21,7 +21,8 @@ eigendecomposition per side inverts this operator exactly. Second, the natural g
 direction with a bad scale: its magnitude varies over orders of magnitude between layers. We keep the
 direction and set the length so that every matrix turns its fastest rotation plane by the same scheduled
 angle. Third, an exact Cayley retraction keeps Pion's invariant, which Pion's own truncated exponential lets drift. A fast
-form of the method costs {{cost_ratio_3000:.2f}}x Pion's time per step.
+form of the method costs {{flops_60M_ratio:.2f}}x Pion's floating-point operations per step ({{fast2_ratio:.2f}}x its time on one GPU in
+our implementation).
 
 ---
 
@@ -68,9 +69,10 @@ provides.
    After 3 000 steps the Cayley transform has moved the spectrum by {{rd_cayley_med:.1e}} of each
    matrix's scale, Pion's truncated exponential by {{rd_trunc_med:.1e}}, and Cayley computed by Newton–Schulz in
    correction form by {{rd_ns_delta_med:.1e}} (Sections 3.4, 4.8).
-5. **A fast form.** Amortised refreshes, statistics collected only where they are read, a warm power
-   iteration and batching take the step from {{tf1_mom_sps:.2f}} s to {{batch_sps:.3f}} s (Pion: {{pion3000_sps:.3f}} s). Each change is
-   measured separately for time and loss (Section 4).
+5. **A fast form.** Amortised refreshes, statistics collected only where they are read, a warm and batched
+   power iteration, batching, a Newton–Schulz Cayley solve and bf16 statistics take the step from
+   {{tf1_mom_sps:.2f}} s to {{fast2_sps:.3f}} s (Pion: {{pion3000_sps:.3f}} s). Each change is measured separately for time and loss;
+   the cost is also given in FLOPs (Section 4).
 6. **Experiments.** On LLaMA-60M / C4 at Pion's full 9.6B-token budget, Natural Pion is ahead of
    Pion at equal steps by {{gap_full_steps:.3f}} and at equal wall-clock time by {{gap_full_clock:.3f}} in validation loss. It is ahead
    on four of four seeds at two shorter horizons, and needs at least {{steps_ratio_min_lo:.2f}}x fewer steps. Ablations
@@ -391,7 +393,7 @@ setting tried (Section 5.4).
 ## 4 Making it fast: Natural Pion Fast
 
 Algorithm 1 costs {{tf1_mom_sps:.2f}} s per step in our setting, against Pion's {{pion3000_sps:.3f}} s. This section takes it to
-{{batch_sps:.3f}} s, one change at a time, and gives for each change what it saves and what it costs in loss. All
+{{fast2_sps:.3f}} s, one change at a time, and gives for each change what it saves and what it costs in loss. All
 numbers are at 3 000 steps, seed 0, Lie momentum 0.9, on RTX unless marked. Seconds per step are wall-clock time over steps of
 the training runs themselves, evaluation every 500 steps included for every method, unless marked as
 profiled.
@@ -462,7 +464,9 @@ cuSOLVER falls back to a slow path on $1376 \times 1376$ matrices. Power iterati
 matrix-vector products only, {{power_speedup:.0f}}x less. Cold power iteration converges badly on skew matrices,
 whose singular values come in equal pairs: on a random $512 \times 512$ skew matrix its relative error
 is {{power_cold_1:.1%}} after one iteration, {{power_cold_5:.1%}} after five and {{power_cold_20:.1%}} after twenty. Warm-started from the previous step's
-vector, one iteration reaches {{power_warm_1:.0e}}. We run 50 iterations after a refresh and 2 otherwise.
+vector, one iteration reaches {{power_warm_1:.0e}}. We run 50 iterations after a refresh and 2 otherwise. Batched over
+matrices of one size, with $c$ kept on the GPU (no host synchronisation per matrix), it costs {{bench_new_sigma:.3f}} s per optimizer
+step against {{bench_old_sigma:.3f}} s (Table 2b).
 
 ### 4.5 Computing only what the step uses
 
@@ -543,21 +547,59 @@ Natural Pion Fast uses the $Z - I$ form from here on; every run in Section 5 use
 | refresh every 25 steps (4.2) | {{tf25_mom_sps:.3f}} | {{tf25_mom:.4f}} |
 | + statistics only before a refresh (4.3) | {{win_adlast6_sps:.3f}} | {{win_adlast6:.4f}} |
 | + compute only what the step uses (4.5) | {{fast_sps:.3f}} | {{ref_tf25:.4f}} (bit-identical: {{fast_bit_identical}}) |
-| **+ batching by shape (4.6)**: Natural Pion Fast | **{{batch_sps:.3f}}** | **{{batch_val:.4f}}** |
+| + batching by shape (4.6) | {{batch_sps:.3f}} | {{batch_val:.4f}} |
+| **+ batched $\sigma$, one $A$ per input, Newton–Schulz Cayley, bf16 statistics (4.4, 4.7, 4.8)**: Natural Pion Fast | **{{fast2_sps:.3f}}** | **{{fast2_val:.4f}}** |
 | Pion | {{pion3000_sps:.3f}} | {{pion3000_s0:.4f}} |
+
+*Table 2b. The optimizer step alone, by part (s; synthetic statistics on the shapes of the model, GPU-synchronised
+timers; `scripts/probes/optimizer_step_bench.py`).*
+
+| part | after 4.6 | Natural Pion Fast |
+|---|---|---|
+| statistics $A$, $D$ | {{bench_old_statistics:.3f}} | {{bench_new_statistics:.3f}} |
+| basis refresh (per step) | {{bench_old_refresh:.3f}} | {{bench_new_refresh:.3f}} |
+| Cayley | {{bench_old_cayley:.3f}} | {{bench_new_cayley:.3f}} |
+| $F^{-1}$ | {{bench_old_Finv:.3f}} | {{bench_new_Finv:.3f}} |
+| $\sigma$ | {{bench_old_sigma:.3f}} | {{bench_new_sigma:.3f}} |
+| generators, momentum, rotation (as in Pion) | {{bench_old_shared:.3f}} | {{bench_new_shared:.3f}} |
+| **total** | {{bench_old_total_synchronised:.3f}} | **{{bench_new_total_synchronised:.3f}}** |
+| Pion, whole optimizer step | | {{bench_pion:.3f}} |
+
+Part of the optimizer's time overlaps the next step's host-side work, so the difference in training
+({{fast2_sps:.3f}} against {{pion3000_sps:.3f}} s) is smaller than in this table.
 
 **Algorithm 2: Natural Pion Fast.** It is Algorithm 1 with the bases refreshed every 25 steps; $A$ and
 $D$ accumulated (EMA 0.5) only in the 6 steps before a refresh; $\sigma$ by warm power iteration (2
-iterations, 50 after a refresh); $F^{-1}$ and Cayley batched by shape; one $A$ per input tensor. At 3 000 steps it is {{exact_vs_fast_3000:.3f}}
-behind Algorithm 1 over four seeds. At 15 000 steps it is level or ahead. It is {{speedup_vs_exact:.1f}}x faster per step
-and {{cost_ratio_3000:.2f}}x slower than Pion.[^cost] Its peak GPU memory is {{peak_np:.1f}} GB against Pion's {{peak_pion:.1f}} GB (+{{peak_d:.1f}} GB for $A$, $D$, the bases
-and the momentum). All results in Section 5 use it.
+iterations, 50 after a refresh, batched); $F^{-1}$ batched by shape; Cayley by Newton–Schulz in $Z - I$; one $A$ per input
+tensor, its inputs and those of $D$ in bf16 with fp32 accumulation. At 3 000 steps the form of 4.6 is {{exact_vs_fast_3000:.3f}}
+behind Algorithm 1 over four seeds, and at 15 000 steps level or ahead; the final form matches it ({{fast2_val:.4f}} against
+{{batch_val:.4f}} at 3 000 steps, {{fast2_15k:.4f}} against {{np15k:.4f}} at 15 000). It is {{fast2_ratio:.2f}}x slower than Pion per step
+on our GPU.[^cost] Its peak GPU memory is {{peak_np:.1f}} GB against Pion's {{peak_pion:.1f}} GB (+{{peak_d:.1f}} GB for $A$, $D$, the bases
+and the momentum). The runs of Section 5 were made with the form of 4.6 ({{batch_sps:.3f}} s per step), before 4.7–4.8.
 
 [^cost]: One number per quantity throughout: seconds per step are wall-clock time over steps of 3 000-
 step runs (Natural Pion Fast, {{batch_sps:.3f}} s) and the 3 840-step Pion run ({{pion3000_sps:.3f}} s), both
 evaluating every 500 steps; Algorithm 1 is the 3 000-step run with momentum ({{tf1_mom_sps:.2f}} s). The
 full-length runs, which evaluate every 2 000 steps, give {{np_sps:.3f}} s and {{pion_sps:.3f}} s, a ratio of
 {{cost_ratio:.2f}}; their wall times are the ones in Table 4.
+
+### 4.11 Cost in floating-point operations
+
+Seconds depend on the GPU and on the implementation; operations do not. Optimizer FLOPs per step as a share
+of the model's forward and backward pass ($6 \times$ tokens $\times$ matrix parameters, plus attention;
+`scripts/analysis/flops.py`, eigendecompositions counted at $9n^3$):
+
+| | LLaMA-60M | 1.3B (Pion's) |
+|---|---|---|
+| Pion | {{flops_60M_pion:.1%}} | {{flops_1_3B_pion:.1%}} |
+| Natural Pion Fast | {{flops_60M_np:.1%}} | {{flops_1_3B_np:.1%}} |
+| of which statistics / $F^{-1}$ / Cayley / refresh | {{flops_60M_part_statistics:.1%}} / {{flops_60M_part_Finv:.1%}} / {{flops_60M_part_Cayley:.1%}} / {{flops_60M_part_refresh:.1%}} | {{flops_1_3B_part_statistics:.1%}} / {{flops_1_3B_part_Finv:.1%}} / {{flops_1_3B_part_Cayley:.1%}} / {{flops_1_3B_part_refresh:.1%}} |
+| step, Natural Pion Fast / Pion | {{flops_60M_ratio:.2f}} | {{flops_1_3B_ratio:.2f}} |
+
+$F^{-1}$ and Cayley cost $O(n^3)$ per matrix and step against the model's $O(Tn^2)$ for $T$ tokens, so their share
+grows with width at a fixed batch; on several GPUs they divide among them, the forward and backward pass does
+not. Statistics are the largest term in FLOPs but run on tensor cores in bf16; eigendecompositions are the
+smallest but latency-bound, which is why Table 2b and this table rank the parts differently.
 
 ---
 
@@ -625,8 +667,8 @@ re-tuned.
 
 ![Validation loss against wall-clock time.](figures/preprint/val_vs_time.png)
 
-*Table 5. Equal wall-clock time, four seeds. Gap = val(Pion) - val(Natural Pion); positive means Natural
-Pion is ahead. Pion runs as many steps as fit in Natural Pion's time.*
+*Table 5. Equal wall-clock time on one GPU type (RTX PRO 6000) with the form of 4.6, four seeds. Gap = val(Pion) -
+val(Natural Pion); positive means Natural Pion is ahead. Pion runs as many steps as fit in Natural Pion's time.*
 
 | budget | Pion steps | Natural Pion steps | seed 0 | seed 1 | seed 2 | seed 3 | mean |
 |---|---|---|---|---|---|---|---|
@@ -804,8 +846,8 @@ reports modest gains over its truncated exponential; at Natural Pion's angles it
   curvature (median of three layers of a trained model): the independence of $x$ and $\delta$ fails by more
   than an order of magnitude in scale. This is consistent with Section 3.3: we keep the direction of
   $F^{-1}G$ but not its length.
-* **Cost.** $O(n^3)$ eigendecompositions every $T_{\mathrm{fac}}$ steps and a Cayley solve every step.
-  At 60M the step is {{cost_ratio_3000:.2f}}x Pion's. For larger matrices the refresh must be amortised or distributed.
+* **Cost.** $F^{-1}$, Cayley and the refresh are $O(n^3)$ per matrix: {{flops_60M_ratio:.2f}}x Pion's step FLOPs at 60M,
+  {{flops_1_3B_ratio:.2f}}x at 1.3B (Section 4.11). At scale they have to be divided among GPUs.
 * **Steps-to-loss** (at least {{steps_ratio_min_lo:.2f}}x) is a lower bound from mid-schedule crossings, not a measured ratio with
   fitted schedules.
 
