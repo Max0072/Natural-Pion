@@ -144,6 +144,21 @@ ROWS=(
 "s30000|$F|30000|0.05|0|0.9|||"
 "s45000|$F|45000|0.05|0|0.9|||"
 "s73242|$F|73242|0.05|0|0.9|||"
+# 111 statistics precision at 15000 steps (4.7)
+"stats-fp32-15k|$F|15000|0.05|0|0.9||fp32||"
+# 112-123 the initial spectrum (Appendix D): power-law exponent alpha, flat, orthogonal; alpha 3 over seeds, 15000, full length
+"init-pl2|$F|3000|0.2|0|0.9|||--init-pl-alpha 2"
+"init-pl2.5|$F|3000|0.2|0|0.9|||--init-pl-alpha 2.5"
+"init-pl3|$F|3000|0.2|0|0.9|||--init-pl-alpha 3"
+"init-pl4|$F|3000|0.2|0|0.9|||--init-pl-alpha 4"
+"init-pl5|$F|3000|0.2|0|0.9|||--init-pl-alpha 5"
+"init-flat|$F|3000|0.2|0|0.9|||--init-pl-alpha inf"
+"init-orth|$F|3000|0.2|0|0.9|||--init orthogonal"
+"init-pl3|$F|3000|0.2|1|0.9|||--init-pl-alpha 3"
+"init-pl3|$F|3000|0.2|2|0.9|||--init-pl-alpha 3"
+"init-pl3|$F|3000|0.2|3|0.9|||--init-pl-alpha 3"
+"init-pl3-15k|$F|15000|0.05|0|0.9|||--init-pl-alpha 3"
+"init-pl3-73242|$F|73242|0.05|0|0.9|||--init-pl-alpha 3"
 )
 IFS='|' read -r TAG OPT STEPS LR SEED B1 RET STATS KW EXTRA <<< "${ROWS[$SLURM_ARRAY_TASK_ID]}"
 EV=500; [ "$STEPS" -gt 3000 ] && EV=1000; [ "$STEPS" -gt 15000 ] && EV=2000
