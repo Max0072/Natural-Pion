@@ -888,26 +888,25 @@ class NaturalPionTurbo(NaturalPionFast):
             self.state[p]["since_refactor"] += 1
 
 
-def stiefel_basis(B: torch.Tensor, C: torch.Tensor, Q: torch.Tensor, eps: float):
+def stiefel_basis(B: torch.Tensor, Cq: torch.Tensor, Q: torch.Tensor, eps: float):
     """The wide side of a rectangular matrix without its invisible block (batched).
 
-    The side has size s, the other side k < s; B (s x s) is this side's moment, C (s x s) the gram of rank k
-    (W A W^T on the out side, W^T D W on the in side) and Q (s x k) an orthonormal basis of the k directions W
-    occupies on this side. The pencil (B_f, C) with C unfloored has k eigenvalues Lam in the range of C and s - k
-    zeros (floored to f = eps * max Lam); the zero-zero block of F^-1 is the one that cannot move W. Returns
-    (P_r, lam_r, f, H): P_r (s x k) the range part of the basis, lam_r floored, H = B_f^-1 - P_r P_r^T."""
+    The side has size s, the other side k < s; B (s x s) is this side's moment, Cq = Q^T C Q (k x k) the gram of
+    rank k (W A W^T on the out side, W^T D W on the in side) seen in Q (s x k), an orthonormal basis of the k
+    directions W occupies on this side. The pencil (B_f, C) with C unfloored has k eigenvalues Lam in the range of C
+    and s - k zeros (floored to f = eps * max Lam); the zero-zero block of F^-1 is the one that cannot move W.
+    Returns (P_r, lam_r, f, H): P_r (s x k) the range part of the basis, lam_r floored, H = B_f^-1 - P_r P_r^T.
+    One eigendecomposition of size s; the rest is k x k."""
     wb, Ub = safe_eigh(B)
     wb = floor_eigenvalues(wb, eps)
     E = (Ub * (1.0 / wb).unsqueeze(-2)) @ Ub.transpose(-1, -2)            # B_f^-1
-    Qt = Q.transpose(-1, -2)
-    Cq = Qt @ C @ Q
     wc, Uc = safe_eigh(0.5 * (Cq + Cq.transpose(-1, -2)))
     Ch = (Uc * wc.clamp_min(0).sqrt().unsqueeze(-2)) @ Uc.transpose(-1, -2)  # Cq^1/2
-    G = Qt @ E @ Q
-    S = Ch @ G @ Ch
+    EQ = E @ Q
+    S = Ch @ (Q.transpose(-1, -2) @ EQ) @ Ch
     lam, U = safe_eigh(0.5 * (S + S.transpose(-1, -2)))
     tiny = torch.finfo(lam.dtype).tiny
-    Pr = E @ Q @ Ch @ (U * lam.clamp_min(tiny).rsqrt().unsqueeze(-2))
+    Pr = EQ @ Ch @ (U * lam.clamp_min(tiny).rsqrt().unsqueeze(-2))
     lam_f = floor_eigenvalues(lam, eps)
     f = eps * lam.amax(dim=-1, keepdim=True)
     H = E - Pr @ Pr.transpose(-1, -2)
@@ -915,21 +914,22 @@ def stiefel_basis(B: torch.Tensor, C: torch.Tensor, Q: torch.Tensor, eps: float)
 
 
 def stiefel_direction(G: torch.Tensor, Pr, lam, f, H, Q: torch.Tensor):
-    """F^-1 G on the wide side without the invisible block, then projected off the current kernel; returns the
-    factors (L, Mt) with X' = L @ Mt, L = [Q, R2] (s x 2k), Mt = [Q^T X; Q^T] (2k x s). O(s^2 k), no s x s by s x s."""
+    """F^-1 G on the wide side without the invisible block, projected off the current kernel, as factors
+    X' = L @ Mt with L = [Q, R2] (s x 2k) and Mt = [Q^T X; Q^T] (2k x s). X itself is never formed: two products of
+    order s^2 k (G P_r and (P_r^T G) H), everything else s k^2."""
     GP = G @ Pr                                                            # s x k
     Prt = Pr.transpose(-1, -2)
     K = 0.5 * (lam.unsqueeze(-1) + lam.unsqueeze(-2))
-    T1 = Pr @ ((Prt @ GP) / K) @ Prt
-    delta = 2.0 / (lam + f)                                                # (.., k)
-    T2 = (Pr * delta.unsqueeze(-2)) @ ((-GP.transpose(-1, -2)) @ H)       # P_r D P_r^T G H
-    X = T1 + T2 - T2.transpose(-1, -2)
-    X = 0.5 * (X - X.transpose(-1, -2))
-    Qt = Q.transpose(-1, -2)
-    QX = Qt @ X                                                            # k x s
-    XQ = X @ Q                                                             # s x k
+    Y = (Prt @ GP) / K                                                     # k x k, skew
+    d = (2.0 / (lam + f)).unsqueeze(-1)                                    # k x 1
+    Z = (-GP.transpose(-1, -2)) @ H                                        # P_r^T G H, k x s
+    # X = P_r Y P_r^T + P_r D Z - Z^T D P_r^T  (D = diag d)
+    a = Q.transpose(-1, -2) @ Pr                                           # Q^T P_r, k x k
+    ZQ = Z @ Q                                                             # k x k
+    QX = a @ Y @ Prt + (a * d.transpose(-1, -2)) @ Z - ZQ.transpose(-1, -2) @ (d * Prt)          # Q^T X, k x s
+    XQ = Pr @ (Y @ a.transpose(-1, -2)) + Pr @ (d * ZQ) - Z.transpose(-1, -2) @ (d * a.transpose(-1, -2))  # X Q
     R2 = XQ - Q @ (QX @ Q)
-    return torch.cat([Q, R2], dim=-1), torch.cat([QX, Qt], dim=-2)
+    return torch.cat([Q, R2], dim=-1), torch.cat([QX, Q.transpose(-1, -2)], dim=-2)
 
 
 def _factored_norm(L, Mt, v, iters):
@@ -967,6 +967,25 @@ class NaturalPionStiefel(NaturalPionTurbo):
         m, n = shape
         return "out" if m > n else "in" if n > m else None
 
+    @staticmethod
+    def _placeholder(B: torch.Tensor):
+        """The wide side's slot in `bases`: never read (the Stiefel state replaces it), so nothing is computed."""
+        z = B.new_zeros(B.shape[:-2] + (1, 1))
+        return Basis(P=z, lam=z[..., 0], orthogonal=False)
+
+    def _stiefel_members(self, members) -> bool:
+        return all(len(self._units(p)) == 1 for p, *_ in members)
+
+    def _basis_out(self, D, gram_out, eps, members):
+        if self._wide(tuple(members[0][0].shape)) == "out" and self._stiefel_members(members):
+            return self._placeholder(D)
+        return super()._basis_out(D, gram_out, eps, members)
+
+    def _basis_in(self, A, gram_in, eps, members):
+        if self._wide(tuple(members[0][0].shape)) == "in" and self._stiefel_members(members):
+            return self._placeholder(A)
+        return super()._basis_in(A, gram_in, eps, members)
+
     def _refactor(self, params: list[torch.Tensor], group: dict) -> None:
         super()._refactor(params, group)                                   # narrow sides and square matrices
         dt, eps = group["compute_dtype"], group["eps"]
@@ -979,13 +998,15 @@ class NaturalPionStiefel(NaturalPionTurbo):
             W = torch.stack([p.detach().to(dt) for p in ps])
             A = torch.stack([self.state[p]["cov"].matrix.to(device=p.device, dtype=dt) for p in ps])
             D = torch.stack([self.state[p]["cov_backward"].matrix.to(device=p.device, dtype=dt) for p in ps])
-            Wt = W.transpose(-1, -2)
-            if side == "out":
-                B, C = D, W @ A @ Wt
-            else:
-                B, C = A, Wt @ D @ W
             Q = _orth_basis(W, side)
-            Pr, lam, f, H = stiefel_basis(B, C, Q, eps)
+            Qt = Q.transpose(-1, -2)
+            if side == "out":                                              # C = W A W^T, Cq = (Q^T W) A (W^T Q)
+                B, QW = D, Qt @ W
+                Cq = QW @ A @ QW.transpose(-1, -2)
+            else:                                                          # C = W^T D W, Cq = (W Q)^T D (W Q)
+                B, WQ = A, W @ Q
+                Cq = WQ.transpose(-1, -2) @ D @ WQ
+            Pr, lam, f, H = stiefel_basis(B, Cq, Q, eps)
             for j, p in enumerate(ps):
                 self.state[p]["stiefel"] = (Pr[j], lam[j], f[j], H[j])
 
@@ -1051,12 +1072,19 @@ class NaturalPionStiefel(NaturalPionTurbo):
                 Rn = torch.linalg.solve(E + A_n, E - A_n)
             k2 = L.shape[-1]
             K = torch.eye(k2, dtype=dt, device=L.device) + 0.5 * c * (Mt @ L)
-            if side == "out":
-                W1 = W @ Rn                                                   # in side (narrow)
-                W2 = W1 - c * (L @ torch.linalg.solve(K, Mt @ W1))          # out side (wide) by Woodbury
-            else:
-                W1 = Rn @ W                                                   # out side (narrow)
-                W2 = W1 - c * ((W1 @ L) @ torch.linalg.solve(K, Mt))        # in side (wide)
+            prev = torch.backends.cuda.preferred_linalg_library()
+            try:    # MAGMA's batched solve is meant for small matrices; K is 2k x 2k
+                if L.is_cuda:
+                    torch.backends.cuda.preferred_linalg_library("cusolver")
+                if side == "out":
+                    W1 = W @ Rn                                               # in side (narrow)
+                    W2 = W1 - c * (L @ torch.linalg.solve(K, Mt @ W1))      # out side (wide) by Woodbury
+                else:
+                    W1 = Rn @ W                                               # out side (narrow)
+                    W2 = W1 - c * ((W1 @ L) @ torch.linalg.solve(K, Mt))    # in side (wide): W1 L K^-1 Mt
+            finally:
+                if L.is_cuda:
+                    torch.backends.cuda.preferred_linalg_library(prev)
             for k, p in enumerate(ps):
                 p.copy_(W2[k].to(p.dtype))
                 self.state[p]["step"] += 1

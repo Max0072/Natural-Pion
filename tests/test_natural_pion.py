@@ -332,7 +332,7 @@ def test_stiefel_direction_equals_full_solve_without_the_invisible_block(side):
     X = skew(P @ ((P.T @ G @ P) / (0.5 * (lf[:, None] + lf[None, :]))) @ P.T)
     ref = drop_kernel(X, W, side)
     Q = _orth_basis(W, side)
-    L, Mt = stiefel_direction(G, *stiefel_basis(B, C, Q, eps), Q)
+    L, Mt = stiefel_direction(G, *stiefel_basis(B, Q.T @ C @ Q, Q, eps), Q)
     assert torch.allclose(L @ Mt, ref, rtol=1e-6, atol=1e-9 * ref.abs().max())
 
 
