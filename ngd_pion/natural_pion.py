@@ -1025,6 +1025,7 @@ class NaturalPionStiefel(NaturalPionTurbo):
         rest = [p for p in active if "stiefel" not in self.state[p]]
         if rest:
             super()._rotate(rest, group)
+            self._tick(None)
         if not st_ps:
             return
         dt, beta1, lr = group["compute_dtype"], group["beta1"], group["lr"]
@@ -1032,6 +1033,7 @@ class NaturalPionStiefel(NaturalPionTurbo):
         for p in st_ps:
             by_shape[tuple(p.shape)].append(p)
         for shape, ps in by_shape.items():
+            self._tick("generators+momentum")
             side = self._wide(shape)
             W = torch.stack([p.detach().to(dt) for p in ps])
             Gw = torch.stack([p.grad.detach().to(dt) for p in ps])
@@ -1047,6 +1049,7 @@ class NaturalPionStiefel(NaturalPionTurbo):
                 torch._foreach_add_(ms, list(g_in.unbind(0)) + list(g_out.unbind(0)), alpha=1.0 - beta1)
                 g_in = torch.stack([st["m_in"] for st in sts]); g_out = torch.stack([st["m_out"] for st in sts])
             # narrow side: the ordinary basis solve
+            self._tick("F^-1 narrow")
             nb = [st["bases"][0 if side == "out" else 1] for st in sts]
             Gn = g_in if side == "out" else g_out
             P = torch.stack([x.P for x in nb]); den = torch.stack([x.denominator for x in nb]); Pt = P.transpose(-1, -2)
@@ -1056,6 +1059,7 @@ class NaturalPionStiefel(NaturalPionTurbo):
             else:
                 Xn = skew(P @ ((Pt @ Gn @ P) / den) @ Pt)
             # wide side: Stiefel form
+            self._tick("F^-1 wide (Stiefel)")
             Gwd = g_out if side == "out" else g_in
             Pr = torch.stack([st["stiefel"][0] for st in sts]); lam = torch.stack([st["stiefel"][1] for st in sts])
             f = torch.stack([st["stiefel"][2] for st in sts]); H = torch.stack([st["stiefel"][3] for st in sts])
@@ -1063,6 +1067,7 @@ class NaturalPionStiefel(NaturalPionTurbo):
             L, Mt = stiefel_direction(Gwd, Pr, lam, f, H, Q,
                                       lowp=torch.bfloat16 if self.fisher_dtype == "bf16" else None)
             # sigma = max over the two sides, warm power iteration
+            self._tick("sigma")
             fresh = any("v_wide" not in st or st["since_refactor"] == 0 for st in sts)
             it = group["angle_warmup"] if fresh else group["angle_iters"]
             vn = None if any("v_narrow" not in st for st in sts) else torch.stack([st["v_narrow"] for st in sts])
@@ -1073,6 +1078,7 @@ class NaturalPionStiefel(NaturalPionTurbo):
                 st["v_narrow"], st["v_wide"] = vn[k], vw[k]
             c = (lr / torch.maximum(sn, sw).clamp_min(1e-30)).reshape(-1, 1, 1)
             # narrow Cayley by Newton-Schulz in Z - I (as Turbo), wide by Woodbury
+            self._tick("Cayley + apply")
             A_n = 0.5 * c * Xn
             eye = torch.eye(A_n.shape[-1], dtype=dt, device=A_n.device)
             if group["retraction"] == "ns_delta" and lr <= group["ns_guard"]:
@@ -1113,3 +1119,4 @@ class NaturalPionStiefel(NaturalPionTurbo):
                 p.copy_(W2[k].to(p.dtype))
                 self.state[p]["step"] += 1
                 self.state[p]["since_refactor"] += 1
+        self._tick(None)
