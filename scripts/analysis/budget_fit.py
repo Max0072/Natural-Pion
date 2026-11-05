@@ -46,11 +46,16 @@ PION = [
     (5300, [("stepnormclock/pion-lr0.001-s0-dbe147d5df", 0)]),
     (15000, [("ladder15k/pion-lr0.001-s0-f67fdad3e9", 0)]),
     (19200, [("stepnormfinal/pion19200/*", 0)] + [(f"{L}/pion19200-lr1e-3/*", s) for s in (1, 2, 3)]),
+    (30000, [(f"{L}/pion30000-lr1e-3/*", 0)]),
+    (45000, [(f"{L}/pion45000-lr1e-3/*", 0)]),
     (73242, [(f"{L}/pion73242-lr1e-3/*", 0)]),
 ]
 NP = [
     (3000, [("stepnormcombo/batch/*", 0)] + [("stepnormfinal/tf25/*", s) for s in (1, 2, 3)]),
+    (9000, [(f"{L}/ours9000-lr0.05/*", 0)]),
     (15000, [("stepnormfinal/tf25-15k-0.05/*", 0)] + [(f"{L}/ours15000-lr0.05/*", s) for s in (1, 2, 3)]),
+    (30000, [(f"{L}/ours30000-lr0.05/*", 0)]),
+    (45000, [(f"{L}/ours45000-lr0.05/*", 0)]),
     (56900, [(f"{L}/ours56900-lr0.05/*", 0)]),
     (73242, [(f"{L}/ours73242-lr0.05/*", 0)]),
 ]
