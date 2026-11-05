@@ -1,0 +1,7 @@
+{
+ "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+ "size": "1.3B",
+ "layers": 1,
+ "turbo": 0.1802225114777684,
+ "stiefel": 0.29594307170482353
+}
