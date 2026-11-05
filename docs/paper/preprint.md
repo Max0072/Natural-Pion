@@ -636,9 +636,14 @@ between Natural Pion's budgets (`scripts/analysis/budget_fit.py`).
 | 45 000 | {{budget_45000_L:.4f}} | {{budget_45000_pow:.2f}} / {{budget_45000_int:.2f}} |
 | 73 242 | {{budget_73242_L:.4f}} | {{budget_73242_pow:.2f}} / {{budget_73242_int:.2f}} |
 
-**Equal wall-clock time.** On one GPU a Natural Pion step costs {{v2_ratio:.2f}}x Pion's ({{v2_sps:.3f}} s against
-{{pion3000_sps:.3f}} s), so in the time of Pion's $B$ steps it takes $B/{{v2_ratio:.2f}}$. Read off the budget curve
-above, the gap to Pion at Pion's full-length wall-clock time is {{eqt_73242_gap:.3f}} (fit; {{eqt_73242_gap_int:.3f}} by
+Pion's targets are at its published learning rate $10^{-3}$. At short budgets $2\cdot10^{-3}$ is better (Table 9:
+{{pion_lr_3840_2e-3:.4f}} against {{pion_lr_3840_1e-3:.4f}} at 3 840 steps), so the savings at the shortest budgets are
+measured against a Pion that is not at its best learning rate there.
+
+**Equal wall-clock time.** On one GPU a Natural Pion step costs {{v2_ratio:.2f}}x Pion's in the 3 000-step runs
+({{v2_sps:.3f}} s against {{pion3000_sps:.3f}} s; {{v2_full_ratio:.2f}}x in the full-length runs), so in the time of Pion's $B$
+steps it takes $B/{{v2_ratio:.2f}}$. These are estimates read off the budget curve above, not separate runs: the gap
+to Pion at Pion's full-length wall-clock time is {{eqt_73242_gap:.3f}} (fit; {{eqt_73242_gap_int:.3f}} by
 interpolation), at 19 200 steps' time {{eqt_19200_gap:.3f}}, and at 3 840 steps' time {{eqt_3840_gap:.3f}}.
 
 ### 5.4 Ablations
@@ -766,8 +771,8 @@ reports modest gains over its truncated exponential; at Natural Pion's angles it
   seeds at 3 000 steps.
 * **One code base.** Our Pion ends {{pion_vs_paper:.3f}} above the Pion paper's training loss; we compare within our
   setting only.
-* **Exactness in practice.** In fp32 the exact Cayley solve changes the singular values by {{rd_cayley_signed:+.3%}} on
-  average over 3 000 steps, the Newton–Schulz form of Section 4.7 by {{rd_ns_delta_signed:+.3%}}.
+* **Exactness in practice.** In fp32 the exact Cayley solve changes the singular values by {{rd_cayley_signed:+.1e}} (relative) on
+  average over 3 000 steps, the Newton–Schulz form of Section 4.7 by {{rd_ns_delta_signed:+.1e}}.
 * **Only Pion as a baseline.** We compare against the published Pion configuration only, not against
   AdamW or Muon, and only on validation loss, not on downstream tasks.
 * **The peak angle depends on the horizon.** It is set per training length (Section 5.1), as a learning rate is.
@@ -828,7 +833,8 @@ instead of $O(m^3)$, since rotations outside $W$'s column space do not move it.
   at step 499 of a training run: thousands of negative eigenvalues over the 56 matrices). Rounding only the
   inputs (Section 4.6) does not. The $1/N$ that autograd puts on a
   mean loss is undone by scaling $D$ by $N^2$; Algorithm 1 is invariant to it anyway.
-* **Code.** `ngd_pion/natural_pion.py` (`NaturalPion`); every job and run record is listed in
+* **Code.** `ngd_pion/natural_pion.py`: `NaturalPion` is Algorithm 1, `NaturalPionFast` Algorithm 2, the method
+  of every experiment; every job and run record is listed in
   `scripts/paper/README.md` and `runs-record/`. Every measured number in this paper is computed from the run
   records by `scripts/analysis/paper_numbers.py` (the list, with sources, is `docs/paper/numbers.md`).
 
