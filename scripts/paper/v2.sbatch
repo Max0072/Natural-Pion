@@ -175,6 +175,8 @@ ROWS=(
 # 135-136 TF32 (scripts/probes/tf32_check.py): everything but the Cayley step, and everything
 "tf32-upstream|$F|3000|0.2|0|0.9|||{\"tf32\":\"upstream\"}|"
 "tf32-all|$F|3000|0.2|0|0.9|||{\"tf32\":\"all\"}|"
+# 137 TF32 before the Cayley step at 15000 steps: the second point of Fast's acceptance rule (within 0.010)
+"tf32-upstream-15k|$F|15000|0.05|0|0.9|||{\"tf32\":\"upstream\"}|"
 )
 IFS='|' read -r TAG OPT STEPS LR SEED B1 RET STATS KW EXTRA <<< "${ROWS[$SLURM_ARRAY_TASK_ID]}"
 case "$RET" in ""|cayley|ns|ns_delta|trunc) ;; *) echo "row $SLURM_ARRAY_TASK_ID: bad RETRACTION '$RET'"; exit 1 ;; esac
