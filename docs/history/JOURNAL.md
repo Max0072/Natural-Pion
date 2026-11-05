@@ -7168,3 +7168,18 @@ adopted. Option stays, off by default.
 
 **Alternate update, k-subspace rotation**: not pursued (alternate halves motion per step; the k-subspace would cut
 the small-lambda directions that dominate X).
+
+## 2026-11-05 — Nystrom sketch of the statistics: rejected for now; kernel block measured
+
+Turbo with A and D as Nystrom sketches (rank 64 / 128), 3000 steps: 3.9248 / 3.9034 against 3.7151 (+0.21 / +0.19),
+no speed or memory gain at 60M. The sketch keeps the top k directions and leaves the rest at the floor
+(1e-4 * lmax), but A has a real bulk spectrum; F^-1 divides by it, so those directions blow up in X. Idea for 1B
+(memory): fill the tail at tau = (tr A - tr A_k) / (n - k) ("spikes + isotropic noise") instead of the floor.
+Deferred to 1B (user).
+
+Kernel block (`scripts/probes/kernel_block.py`, npfast2 step-2500 checkpoint): on the wide side of the rectangular
+matrices (gate/up out, down in) X has a median 8.5% (up to 30%) of its norm in the block that cannot move W; it
+inflates sigma by a median 1.07, up to 1.39 on down projections, so those matrices turn less than theta. Option
+`drop_kernel` (X <- X - N X N, N the projector off W's columns/rows; X'W = XW exactly) under test at 3000 steps.
+
+async_refresh: bit-identical on a GPU but no time saved in training (0.498 s/step either way); off by default (user).
