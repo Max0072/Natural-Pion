@@ -539,6 +539,7 @@ else:
 f = R / "probes" / "budget_fit.json"
 if f.exists():
     d = json.load(open(f))
+if f.exists() and d.get("complete"):
     inside = {B: t for B, t in d["targets"].items() if t["interpolated"]}
     for B, t in inside.items():
         put(f"budget_{B}_L", t["L"], f"{f.name}: Pion val at {B} steps")
@@ -550,8 +551,60 @@ if f.exists():
     put("budget_resid", max(d["residual_max_pion"], d["residual_max_np"]), f"{f.name}: worst fit residual")
     put("budget_n_pion", len(d["pion"]["B"]), f"{f.name}: Pion budgets")
     put("budget_n_np", len(d["natural_pion"]["B"]), f"{f.name}: Natural Pion budgets")
+    for B, e in d["equal_time"].items():
+        put(f"eqt_{B}_steps", e["B_np"], f"{f.name}: Natural Pion steps in Pion's time at {B}")
+        put(f"eqt_{B}_L", e["L_np_powerlaw"], f"{f.name}: Natural Pion loss there, from the fit")
+        put(f"eqt_{B}_gap", e["gap_powerlaw"], f"{f.name}: Pion - Natural Pion at equal time, fit")
+        put(f"eqt_{B}_gap_int", e["gap_interp"], f"{f.name}: same, interpolation")
+        put(f"eqt_{B}_Lp", e["L_pion"], f"{f.name}: Pion at {B}")
 else:
-    missing("budget_lo", "python scripts/analysis/budget_fit.py")
+    for k in ["budget_lo", "budget_hi", "budget_resid", "budget_n_pion", "budget_n_np"] + \
+             [f"budget_{B}_{x}" for B in (5300, 15000, 19200, 30000, 45000, 73242) for x in ("L", "pow", "int")] + \
+             [f"eqt_{B}_{x}" for B in (3840, 19200, 73242) for x in ("steps", "L", "gap", "gap_int", "Lp")]:
+        missing(k, "python scripts/analysis/budget_fit.py (needs every npv2 run)")
+
+# Section 5 with the query projection per head (scripts/paper/v2_perhead.sbatch)
+def _v(pattern, seed=None):
+    try:
+        return val(pattern, seed)
+    except SystemExit:
+        return None
+V2 = {}
+for st in (3000, 15000):
+    vs = [_v(f"npv2/s{st}/*", sd) for sd in range(4)]
+    for sd, v in enumerate(vs):
+        (put(f"v2_{st}_s{sd}", v, f"npv2/s{st} seed {sd}") if v is not None
+         else missing(f"v2_{st}_s{sd}", f"v2_perhead.sbatch, {st} steps, seed {sd}"))
+    if all(v is not None for v in vs):
+        put(f"v2_{st}_mean", sum(vs) / 4, f"npv2/s{st}, seeds 0-3")
+    else:
+        missing(f"v2_{st}_mean", "all four seeds")
+p3 = [val("adamw2d/pion-lr0.001-s0-9e6e6d32f6")] + [val("seedshead/pion-lr0.001-*", sd) for sd in (1, 2, 3)]
+if NUM.get("v2_3000_mean") is not None:
+    put("v2_gap3000", NUM["pion3000_mean"] - NUM["v2_3000_mean"], "pion3000_mean - v2_3000_mean")
+    for sd in range(4):
+        put(f"v2_gap3000_s{sd}", p3[sd] - NUM[f"v2_3000_s{sd}"], f"Pion 3000 seed {sd} - v2 seed {sd}")
+    put("v2_gap3000_min", min(NUM[f"v2_gap3000_s{sd}"] for sd in range(4)), "smallest per-seed gap at 3000")
+else:
+    missing("v2_gap3000", "v2_3000_mean"); missing("v2_gap3000_min", "v2_3000_mean")
+if NUM.get("v2_15000_s0") is not None:
+    put("v2_gap15k", NUM["pion15k"] - NUM["v2_15000_s0"], "pion15k - v2_15000_s0 (seed 0)")
+else:
+    missing("v2_gap15k", "v2_15000_s0")
+vf = runs("npv2/s73242/*")
+if vf and info(vf[0])["done"]:
+    i = info(vf[0])
+    put("v2_full", i["val"], "npv2/s73242")
+    put("v2_full_wall", i["wall"], "npv2/s73242, wall")
+    put("v2_gap_full", NUM["pion_full"] - i["val"], "pion_full - v2_full")
+else:
+    for k in ("v2_full", "v2_full_wall", "v2_gap_full"):
+        missing(k, "v2_perhead.sbatch task 11 (73 242 steps)")
+try:
+    put("v2_sps", sps("npv2/s3000/*", 0), "npv2/s3000 seed 0 (RTX)")
+    put("v2_ratio", NUM["v2_sps"] / NUM["pion3000_sps"], "v2_sps / pion3000_sps")
+except SystemExit:
+    missing("v2_sps", "npv2/s3000 seed 0")
 # rounding of the retractions on bare matrices (scripts/probes/ns_rounding.py)
 f = R / "probes" / "ns_rounding.json"
 if f.exists():

@@ -50,15 +50,30 @@ PION = [
     (45000, [(f"{L}/pion45000-lr1e-3/*", 0)]),
     (73242, [(f"{L}/pion73242-lr1e-3/*", 0)]),
 ]
+# Natural Pion Fast with the query projection per head (scripts/paper/v2_perhead.sbatch). The earlier Q-whole points
+# (stepnormcombo, stepnormfinal, stepnormlong/ours*) are in git history (budget_fit.json before 2026-11-05 evening).
+V = "npv2"
 NP = [
-    (3000, [("stepnormcombo/batch/*", 0)] + [("stepnormfinal/tf25/*", s) for s in (1, 2, 3)]),
-    (9000, [(f"{L}/ours9000-lr0.05/*", 0)]),
-    (15000, [("stepnormfinal/tf25-15k-0.05/*", 0)] + [(f"{L}/ours15000-lr0.05/*", s) for s in (1, 2, 3)]),
-    (30000, [(f"{L}/ours30000-lr0.05/*", 0)]),
-    (45000, [(f"{L}/ours45000-lr0.05/*", 0)]),
-    (56900, [(f"{L}/ours56900-lr0.05/*", 0)]),
-    (73242, [(f"{L}/ours73242-lr0.05/*", 0)]),
+    (3000, [(f"{V}/s3000/*", s) for s in (0, 1, 2, 3)]),
+    (9000, [(f"{V}/s9000/*", 0)]),
+    (15000, [(f"{V}/s15000/*", s) for s in (0, 1, 2, 3)]),
+    (30000, [(f"{V}/s30000/*", 0)]),
+    (45000, [(f"{V}/s45000/*", 0)]),
+    (73242, [(f"{V}/s73242/*", 0)]),
 ]
+# equal wall-clock time is read off the Natural Pion curve: at Pion's B, Natural Pion has B * sps_pion / sps_np steps
+SPS_PION = ("stepnormfinal/pion3840/*", 0)
+SPS_NP = (f"{V}/s3000/*", 0)
+EQUAL_TIME = (3840, 19200, 73242)
+
+
+def sps_of(pattern: str, seed: int) -> float:
+    for d in sorted(R.glob(pattern)):
+        if json.load(open(d / "manifest.json"))["config"]["seed"] != seed:
+            continue
+        rows = [json.loads(l) for l in open(d / "log.jsonl") if '"wall"' in l]
+        return rows[-1]["wall"] / (rows[-1]["step"] + 1)
+    raise SystemExit(f"{pattern} seed {seed}: no run")
 
 
 def load(spec):
@@ -92,7 +107,14 @@ def inv_interp(B, y, Lt):
 
 
 def main():
-    pion, npn = load(PION), load(NP)
+    dst = R / "probes" / "budget_fit.json"
+    try:
+        pion, npn = load(PION), load(NP)
+        sps_p, sps_n = sps_of(*SPS_PION), sps_of(*SPS_NP)
+    except SystemExit as e:                         # a point is not finished: say so, do not keep stale numbers
+        dst.write_text(json.dumps({"complete": False, "missing": str(e)}, indent=1))
+        print("incomplete:", e)
+        return
     sd = float(np.median([v.std(ddof=1) for _, v in pion + npn if len(v) > 1]))
     Bp = np.array([B for B, _ in pion], float); yp = np.array([v.mean() for _, v in pion])
     Bn = np.array([B for B, _ in npn], float); yn = np.array([v.mean() for _, v in npn])
@@ -118,9 +140,22 @@ def main():
                                   "interpolated": bool(inside)}
         print(f"Pion {B:>6} steps  L={Lt:.4f}  saving {r_pow:.2f} (power law; 90% {np.percentile(rb,5):.2f}-"
               f"{np.percentile(rb,95):.2f})  {r_int:.2f} (interp)  {'inside' if inside else 'OUTSIDE'} NP range")
+    # equal wall-clock time from the curve
+    out["sps_pion"], out["sps_np"], out["equal_time"] = sps_p, sps_n, {}
+    for B in EQUAL_TIME:
+        Lp = float(dict(pion)[B].mean())
+        Beq = B * sps_p / sps_n
+        Lpow = float(fn[0] + fn[1] * Beq ** -fn[2])
+        lb, i = np.log(Bn), np.searchsorted(Bn, Beq)
+        Lint = float(np.interp(np.log(Beq), lb, yn)) if Bn[0] <= Beq <= Bn[-1] else float("nan")
+        out["equal_time"][str(B)] = {"L_pion": Lp, "B_np": Beq, "L_np_powerlaw": Lpow, "L_np_interp": Lint,
+                                     "gap_powerlaw": Lp - Lpow, "gap_interp": Lp - Lint}
+        print(f"equal time with Pion {B}: Natural Pion {Beq:,.0f} steps, L {Lpow:.4f} (fit) / {Lint:.4f} (interp), "
+              f"gap {Lp - Lpow:.3f} / {Lp - Lint:.3f}")
+    out["complete"] = True
     print("fits a,b,c:", [round(float(x), 4) for x in fp], [round(float(x), 4) for x in fn],
           "max residual", round(out["residual_max_pion"], 4), round(out["residual_max_np"], 4), "seed sd", round(sd, 4))
-    (R / "probes" / "budget_fit.json").write_text(json.dumps(out, indent=1))
+    dst.write_text(json.dumps(out, indent=1))
 
 
 if __name__ == "__main__":

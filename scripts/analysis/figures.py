@@ -20,8 +20,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 R = "runs-record/stepnormlong"
 SERIES = [  # label, log glob or path, colour, dash
     ("Pion, 73 242 steps", f"{R}/pion73242-lr1e-3/*/log.jsonl", "#2a78d6", "-"),
-    ("Natural Pion, 56 900 steps (Pion's wall time)", f"{R}/ours56900-lr0.05/*/log.jsonl", "#eb6834", "-"),
-    ("Natural Pion, 73 242 steps", f"{R}/ours73242-lr0.05/*/log.jsonl", "#1baf7a", "--"),
+    ("Natural Pion, 73 242 steps", "runs-record/npv2/s73242/*/log.jsonl", "#1baf7a", "-"),   # query per head
 ]
 MUON = ("Muon, 73 242 steps", None, "#eda100", "-.")
 INK, MUTED, GRID = "#1f1f1e", "#6b6a63", "#e4e3dd"
@@ -105,8 +104,7 @@ def main():
         pts = curve(args.muon)
         series.append((MUON[0], pts, MUON[2], MUON[3], pts[-1][0] < 73242))
     plot(series, 0, "optimizer steps (thousands)", out / "val_vs_steps.png", xscale=1000)
-    plot(series, 1, "wall-clock time, one RTX PRO 6000 (hours)", out / "val_vs_time.png", xscale=3600)
-    print("wrote", out / "val_vs_steps.png", out / "val_vs_time.png")
+    print("wrote", out / "val_vs_steps.png")
 
 
 if __name__ == "__main__":

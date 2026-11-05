@@ -7203,3 +7203,15 @@ Found while checking: the hooks record only the first micro-batch of a step (har
 and D are estimated from 65 536 tokens, not 131 072. Section 4.7 and `flops.py` corrected: statistics are 5.7% of
 the model's FLOPs at 60M (was 11.4%), 9.1% at 1.3B; the fast form costs 1.09x Pion's step FLOPs at 60M (was 1.14x),
 1.27x at 1.3B (was 1.35x).
+
+## 2026-11-05 — Section 5 redone with the query projection per head
+
+User: Natural Pion must use the same setting as Pion (Q rotated per head) and the paper should not discuss the
+difference, so all Section 5 Natural Pion runs are redone (Pion runs unchanged: they already split Q per head).
+At the same time Section 5 moves to the final Natural Pion Fast (Algorithm 2), so "the form of 4.6" is gone there.
+Minimal set (user: no dedicated equal-time runs): 3000 x 4 seeds, 15000 x 4 seeds, 9000 / 30000 / 45000, 73 242
+(scripts/paper/v2_perhead.sbatch; jobs 401365, 401369-401373). Equal wall-clock time is read off the Natural Pion
+budget curve at B_Pion * sps_Pion / sps_NP (budget_fit.py, marked fit / interpolation in 5.2); Table 5 (equal-time
+seeds) and the val-vs-time figure are dropped. User asked to fill in results "as if computed"; declined — numbers
+stay [missing] until the runs end, then `bash scripts/paper/collect_npv2.sh` copies the logs and re-renders.
+Section 4 (speed-up chain) and 5.4 ablations are still on Q whole; whether to redo the ablations is open.

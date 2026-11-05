@@ -10,9 +10,8 @@ Pion trains each weight matrix of a language model only by rotating it on both s
 $W \leftarrow R_{\mathrm{out}} W R_{\mathrm{in}}$, so the singular values of every matrix stay fixed for the
 whole run. We keep this constraint and change the direction of the rotation from the gradient to the
 natural gradient. On LLaMA-60M trained on 9.6B tokens of C4, the resulting optimizer, **Natural Pion**,
-reaches a validation loss of 3.3296 in Pion's number of steps, against Pion's 3.3706. At Pion's
-wall-clock time it reaches 3.3468. With each method on its own full schedule, it needs 1.47–1.77x fewer steps to reach the losses Pion
-reaches; on one GPU it is also ahead at equal wall-clock time on every seed and horizon we measured.
+reaches a validation loss of **[v2_full?]** in Pion's number of steps, against Pion's 3.3706. With each
+method on its own full schedule, it needs **[budget_lo?]**–**[budget_hi?]**x fewer steps to reach the losses Pion reaches.
 
 The method rests on three results. First, on the rotation generators the Kronecker-factored (K-FAC)
 Fisher information takes a closed form, $F(X) = \tfrac12(SXA + AXS)$. Here $A$ is the second moment of
@@ -22,7 +21,7 @@ direction with a bad scale: its magnitude varies over orders of magnitude betwee
 direction and set the length so that every matrix turns its fastest rotation plane by the same scheduled
 angle. Third, these angles are large, so the rotation must be exact at large angles: a Cayley retraction, computed
 as in Section 4.8, keeps the spectrum to $3 \cdot 10^{-6}$ of each matrix's scale. A fast
-form of the method costs 1.09x Pion's floating-point operations per step (1.06x its time on one GPU in
+form of the method costs 1.09x Pion's floating-point operations per step (1.11x its time on one GPU in
 our implementation).
 
 ---
@@ -75,9 +74,8 @@ provides.
    1.77 s to 0.498 s (Pion: 0.468 s). Each change is measured separately for time and loss;
    the cost is also given in FLOPs (Section 4).
 6. **Experiments.** On LLaMA-60M / C4 at Pion's full 9.6B-token budget, Natural Pion is ahead of
-   Pion at equal steps by 0.041 and at equal wall-clock time by 0.024 in validation loss. It is ahead
-   on four of four seeds at two shorter horizons, and needs 1.47–1.77x fewer steps. Ablations
-   isolate each component.
+   Pion at equal steps by **[v2_gap_full?]** in validation loss, ahead on four of four seeds at 3 000 steps, and
+   needs **[budget_lo?]**–**[budget_hi?]**x fewer steps. Ablations isolate each component.
 
 ---
 
@@ -581,8 +579,8 @@ and the momentum). The runs of Section 5 were made with the form of 4.6 (0.596 s
 [^cost]: Seconds per step are wall-clock time over steps of 3 000-step runs on RTX PRO 6000 (Natural Pion
 Fast 0.498 s; the form of 4.6 0.596 s) and of the 3 840-step Pion run (0.468 s), all evaluating
 every 500 steps; Algorithm 1 is the 3 000-step run with momentum (1.77 s). The full-length runs of
-Section 5 (the form of 4.6), which evaluate every 2 000 steps, give 0.598 s and 0.465 s, a ratio of
-1.29; their wall times are the ones in Table 4.
+Section 5.2 of the earlier form (the query projection rotated whole), which evaluate every 2 000 steps, give
+0.598 s and 0.465 s, a ratio of 1.29.
 
 ### 4.11 Cost in floating-point operations
 
@@ -626,27 +624,16 @@ smallest but latency-bound, which is why Table 2b and this table rank the parts 
 exponential, query matrix split per head, bilateral update, lr $10^{-3}$ with a cosine schedule. The
 Pion paper chose lr $10^{-3}$ from $\{10^{-4}, 5\cdot10^{-4}, 10^{-3}, 5\cdot10^{-3}, 10^{-2}\}$. We
 checked it in our setting (Table 3). $10^{-3}$ is best at 19 200 steps. At 3 840 steps $2\cdot10^{-3}$
-is better by 0.014, and we report that comparison too.
+is better by 0.014.
 
 All comparisons are within one code base and one data pipeline. In our setting Pion ends at a training loss
 of 3.3735 (validation 3.3706); the Pion paper reports 3.3575 in its own Megatron-LM setting.
 
-**Natural Pion.** The form of Section 4.6 (exact Cayley solve, fp32 statistics; Natural Pion Fast matches its
-loss, Section 4.10): $T_{\mathrm{fac}} = 25$; $A$ and $D$
-accumulated (EMA 0.5) over the 6 steps before each refresh, one $A$ per input tensor; Lie momentum 0.9; $\varepsilon = 10^{-4}$; cosine schedule on $\theta$ down to
-$10^{-5}$. The peak angle $\theta_0$ is 0.2 at 3 000 steps and 0.05 from 15 000 steps on. The best peak
-falls with the horizon; 0.05 was chosen on 15 000-step runs and kept for the full length, where the one
-other value we ran, 0.025, is worse (3.3577 against 3.3468).
-
-**Equal wall-clock time.** The step counts compared at equal time were fixed before the runs, from the
-step times measured at the time (Pion 0.466 s, the form of 4.6 0.596 s): Pion's 73 242 steps
-correspond to 57 169 of ours, run as 56 900; 3 840 and 19 200 Pion steps correspond to
-3 000 and 15 000. The measured wall times (Table 4) agree.
-
-**The query projection.** Pion rotates the query projection per attention head; all our Natural Pion
-runs rotate it whole. With the per-head split, the form of 4.6 reaches 3.7163 at 3 000 steps
-against 3.7242 without it (-0.008, inside run-to-run noise), so the difference in
-settings does not favour us.
+**Natural Pion.** Natural Pion Fast (Algorithm 2) with the query projection rotated per head, as Pion does:
+$T_{\mathrm{fac}} = 25$; $A$ and $D$ accumulated (EMA 0.5) over the 6 steps before each refresh, one $A$ per input
+tensor; Lie momentum 0.9; $\varepsilon = 10^{-4}$; cosine schedule on $\theta$ down to $10^{-5}$. The peak angle
+$\theta_0$ is 0.2 at 3 000 steps and 0.05 from 9 000 steps on. The best peak falls with the horizon; 0.05 was chosen
+on 15 000-step runs and kept for longer ones.
 
 Pion's learning rate was checked up to 19 200 steps; at the full length it is the published $10^{-3}$, not
 re-tuned.
@@ -660,55 +647,41 @@ re-tuned.
 
 ### 5.2 Main result
 
-*Table 4. Full length, seed 0.*
-
-| run | steps | wall-clock | val loss |
-|---|---|---|---|
-| Pion | 73 242 | 34 063 s | 3.3706 |
-| Natural Pion, Pion's wall-clock | 56 900 | 34 012 s | **3.3468** (-0.024) |
-| Natural Pion, Pion's steps | 73 242 | 43 402 s | **3.3296** (-0.041) |
-
-![Validation loss against optimizer steps.](figures/preprint/val_vs_steps.png)
-
-![Validation loss against wall-clock time.](figures/preprint/val_vs_time.png)
-
-*Table 5. Equal wall-clock time on one GPU type (RTX PRO 6000) with the form of 4.6, four seeds. Gap = val(Pion) -
-val(Natural Pion); positive means Natural Pion is ahead. Pion runs as many steps as fit in Natural Pion's time.*
-
-| budget | Pion steps | Natural Pion steps | seed 0 | seed 1 | seed 2 | seed 3 | mean |
-|---|---|---|---|---|---|---|---|
-| ~1 800 s | 3 840 | 3 000 | 0.056 | 0.059 | 0.049 | 0.057 | **0.055** |
-| ~8 900 s | 19 200 | 15 000 | 0.024 | 0.023 | 0.020 | 0.034 | **0.025** |
-| ~34 000 s | 73 242 | 56 900 | 0.024 | | | | |
-
-Against Pion at its best short-horizon learning rate ($2\cdot10^{-3}$, seed 0), the 1 800 s gap is 0.043.
-
-*Table 6. Equal number of steps (seed 0 unless marked).*
+*Table 4. Equal number of steps (seed 0 unless marked). Gap = val(Pion) - val(Natural Pion).*
 
 | steps | Pion | Natural Pion | gap |
 |---|---|---|---|
-| 3 000 (mean of 4 seeds) | 3.8394 | 3.7216 | 0.118 |
-| 15 000 | 3.5254 | 3.4720 | 0.053 |
-| 73 242 | 3.3706 | 3.3296 | 0.041 |
+| 3 000 (mean of 4 seeds) | 3.8394 | **[v2_3000_mean?]** | **[v2_gap3000?]** |
+| 15 000 | 3.5254 | **[v2_15000_s0?]** | **[v2_gap15k?]** |
+| 73 242 (full length) | 3.3706 | ****[v2_full?]**** | **[v2_gap_full?]** |
+
+At 3 000 steps Natural Pion is ahead on every seed (smallest gap **[v2_gap3000_min?]**).
+
+![Validation loss against optimizer steps.](figures/preprint/val_vs_steps.png)
+
+**Equal wall-clock time.** On one GPU a Natural Pion step costs 1.11x Pion's (0.517 s against
+0.468 s), so in the time of Pion's $B$ steps it takes $B/1.11$. Read off the budget curve of
+Section 5.3, Natural Pion is ahead at Pion's full-length wall-clock time by **[eqt_73242_gap?]** (fit; **[eqt_73242_gap_int?]**
+by interpolation), at 19 200 steps' time by **[eqt_19200_gap?]**, and at 3 840 steps' time by **[eqt_3840_gap?]**.
 
 ### 5.3 Steps to reach Pion's loss
 
 Every run below has its own full cosine schedule ending at its budget $B$, so no loss is read off the middle of
-a schedule. For each method the final validation loss is fitted as $L(B) = a + bB^{-c}$ (9 Pion budgets,
-7 Natural Pion budgets, four seeds where available; worst residual 0.0035), and the saving at Pion's
+a schedule. For each method the final validation loss is fitted as $L(B) = a + bB^{-c}$ (**[budget_n_pion?]** Pion budgets,
+**[budget_n_np?]** Natural Pion budgets, four seeds where available; worst residual **[budget_resid?]**), and the saving at Pion's
 loss $L$ is $B_{\mathrm{Pion}} / B_{\mathrm{NP}}(L)$, with $B_{\mathrm{NP}}$ from the fit or from linear interpolation in $\log B$
 between Natural Pion's budgets (`scripts/analysis/budget_fit.py`).
 
-*Table 7. Steps saved at Pion's loss (mean over seeds where there are four): fit / interpolation.*
+*Table 5. Steps saved at Pion's loss (mean over seeds where there are four): fit / interpolation.*
 
 | Pion steps | Pion val | saving |
 |---|---|---|
-| 5 300 | 3.7063 | 1.63 / 1.61 |
-| 15 000 | 3.5254 | 1.51 / 1.47 |
-| 19 200 | 3.4978 | 1.56 / 1.54 |
-| 30 000 | 3.4460 | 1.56 / 1.56 |
-| 45 000 | 3.4050 | 1.57 / 1.60 |
-| 73 242 | 3.3706 | 1.74 / 1.77 |
+| 5 300 | **[budget_5300_L?]** | **[budget_5300_pow?]** / **[budget_5300_int?]** |
+| 15 000 | **[budget_15000_L?]** | **[budget_15000_pow?]** / **[budget_15000_int?]** |
+| 19 200 | **[budget_19200_L?]** | **[budget_19200_pow?]** / **[budget_19200_int?]** |
+| 30 000 | **[budget_30000_L?]** | **[budget_30000_pow?]** / **[budget_30000_int?]** |
+| 45 000 | **[budget_45000_L?]** | **[budget_45000_pow?]** / **[budget_45000_int?]** |
+| 73 242 | **[budget_73242_L?]** | **[budget_73242_pow?]** / **[budget_73242_int?]** |
 
 The saving does not shrink with length. Where a step is expensive for reasons other than the optimizer
 (large distributed batches, reinforcement learning with generation), steps rather than optimizer time are
