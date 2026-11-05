@@ -17,16 +17,18 @@
 #   (eigh) instead of shifted: the control for the shift on the long horizon (user doubted it)
 #   13, 14 Turbo defaults with a warm refresh: a full one every 4th refresh (100 steps) / only the first
 #   (task 10 is the reference). PREDICTION: 13 within 0.010 of task 10, 14 within 0.020
+#   15, 16 Turbo defaults with A and D as Nystrom sketches of rank 64 / 128 (statistics O(T n k)); reference task 10.
+#   PREDICTION: 128 within 0.010, 64 within 0.020
 #   9 C shifted + B^-1/2 by Newton-Schulz: one eigendecomposition per side left (without T_fac 50, which costs 0.017)
 # PREDICTION: each of 1-6 within 0.010 of task 0; 7 within 0.020.
 #   sbatch -x rtx6003,rtx6004 --array=0-7%4 scripts/paper/natural_pion_turbo.sbatch
 REPO="${REPO:-$DATA_p330/Natural-Pion}"; SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"; DATA="${DATA:-$DATA_p330/c4}"
 T=$SLURM_ARRAY_TASK_ID
-TAG=(exact fisherbf16 stride4 stride8 cshift nsroot tfac50 all window1 cshift_nsroot default default15k default15k_floor warm4 warmonly)
+TAG=(exact fisherbf16 stride4 stride8 cshift nsroot tfac50 all window1 cshift_nsroot default default15k default15k_floor warm4 warmonly sketch64 sketch128)
 KW=('{}' '{"fisher_dtype": "bf16"}' '{"stats_stride": 4}' '{"stats_stride": 8}' '{"c_floor": "shift"}'
     '{"inv_root": "ns"}' '{"t_fac": 50}'
     '{"fisher_dtype": "bf16", "stats_stride": 4, "c_floor": "shift", "inv_root": "ns", "t_fac": 50}'
-    '{"stats_window": 1}' '{"c_floor": "shift", "inv_root": "ns"}' '__default__' '__default__' '__default__{"c_floor": "eigh"}' '__default__{"warm_refresh": 4}' '__default__{"warm_refresh": 1000000}')
+    '{"stats_window": 1}' '{"c_floor": "shift", "inv_root": "ns"}' '__default__' '__default__' '__default__{"c_floor": "eigh"}' '__default__{"warm_refresh": 4}' '__default__{"warm_refresh": 1000000}' '__default__{"stats_sketch": 64}' '__default__{"stats_sketch": 128}')
 # tasks 0-9 were run with the earlier exact defaults spelled out by the kwargs above; tasks 10-11 run the
 # 2026-11-05 Turbo defaults (bf16 F^-1, shifted C, NS root, window 1) at 3000 and 15000 steps
 STEPS=3000; LR=0.2; EV=500

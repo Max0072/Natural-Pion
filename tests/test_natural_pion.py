@@ -242,7 +242,7 @@ def test_batched_sigma_matches_the_loop():
 @pytest.mark.parametrize("opts", [dict(fisher_dtype="bf16"), dict(stats_stride=4), dict(c_floor="shift"),
                                   dict(inv_root="ns"), dict(c_floor="shift", inv_root="ns", fisher_dtype="bf16"),
                                   dict(c_floor="shift", inv_root="ns", fisher_dtype="bf16", stats_window=1),
-                                  dict(warm_refresh=3), dict(warm_refresh=10**6)])
+                                  dict(warm_refresh=3), dict(warm_refresh=10**6), dict(stats_sketch=4)])
 def test_turbo_approximations_stay_behind_the_cayley_gate(opts):
     """Whatever the approximation upstream, X is skew at the gate, so every spectrum is kept; the step still moves."""
     ps = _weights(29)
@@ -269,3 +269,15 @@ def test_cg_correction_keeps_the_spectrum_and_reduces_the_residual():
     wb = _drive(NaturalPionFast(b, lr=0.2, t_fac=5, stats_window=2, cg_iters=0), b, 10, 34, _cosine)[-1]
     for x, y in zip(wa, wb):
         assert torch.equal(x, y)
+
+
+
+def test_sketch_is_exact_at_full_rank_and_low_rank_below():
+    from ngd_pion.covariance import CovarianceAccumulator, SketchAccumulator
+    g = torch.Generator().manual_seed(35)
+    x = torch.randn(400, 12, generator=g) @ torch.diag(torch.linspace(3, 0.1, 12))
+    full, sk, lo = CovarianceAccumulator(beta=0.5), SketchAccumulator(beta=0.5, rank=12), SketchAccumulator(beta=0.5, rank=3)
+    for chunk in x.split(100):
+        full.observe(chunk); sk.observe(chunk); lo.observe(chunk)
+    assert torch.allclose(sk.matrix, full.matrix, rtol=1e-4, atol=1e-5)
+    assert torch.linalg.matrix_rank(lo.matrix, rtol=1e-5) == 3

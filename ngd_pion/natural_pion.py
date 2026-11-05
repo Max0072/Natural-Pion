@@ -34,7 +34,7 @@ from collections import defaultdict
 
 import torch
 
-from .covariance import CovarianceAccumulator
+from .covariance import CovarianceAccumulator, SketchAccumulator
 from .direction import generators
 from .factorization import (Basis, basis_congruence, basis_congruence_from_root, basis_identity_anchor,
                             floored_inverse_root)
@@ -162,8 +162,12 @@ class NaturalPion(torch.optim.Optimizer):
     def _stat(self, param: torch.Tensor, key: str, beta: float) -> CovarianceAccumulator:
         state = self.state[param]
         if key not in state:
-            state[key] = CovarianceAccumulator(beta=beta, dtype=torch.float32, input_dtype=self._input_dtype,
-                                               stride=getattr(self, "_stats_stride", 1))
+            k = getattr(self, "_stats_sketch", 0)
+            if k:
+                state[key] = SketchAccumulator(beta=beta, rank=k, stride=getattr(self, "_stats_stride", 1))
+            else:
+                state[key] = CovarianceAccumulator(beta=beta, dtype=torch.float32, input_dtype=self._input_dtype,
+                                                   stride=getattr(self, "_stats_stride", 1))
             state.setdefault("step", 0)
             state.setdefault("since_refactor", 0)
         return state[key]
@@ -595,7 +599,7 @@ class NaturalPionTurbo(NaturalPionFast):
 
     def __init__(self, params, lr: float = 0.05, *, stats_dtype: str = "bf16", fisher_dtype: str = "bf16",
                  stats_stride: int = 1, c_floor: str = "shift", inv_root: str = "ns", stats_window: int | None = 1,
-                 warm_refresh: int = 0, **kwargs) -> None:
+                 warm_refresh: int = 0, stats_sketch: int = 0, **kwargs) -> None:
         """Defaults (2026-11-05): every approximation that cost nothing in loss at 3000 steps -- F^-1 in bf16, C
         shifted, B^-1/2 by Newton-Schulz, statistics in the one step before a refresh. T_fac stays 25 (50 cost 0.023).
         Approximations, all upstream of the Cayley gate (X is made exactly skew before it, so the rotation stays
@@ -607,12 +611,17 @@ class NaturalPionTurbo(NaturalPionFast):
           warm_refresh K:      only every K-th refresh is a full one (K = 1 or 0: all full); in between the previous
                                vectors P are kept, each column rescaled to (P^T B~ P)_ii = 1 and lam_i set to the
                                Rayleigh quotient (P^T C~ P)_ii / (P^T B~ P)_ii, floored (B~, C~ shifted by eps*lmax);
-                               no eigendecomposition, two products per side"""
+                               no eigendecomposition, two products per side
+          stats_sketch k:      A and D kept as Nystrom sketches of rank k (cost T n k instead of T n^2, memory n k);
+                               the refresh rebuilds the rank-k approximation, the floor fills the rest"""
         if fisher_dtype not in ("fp32", "bf16") or c_floor not in ("eigh", "shift") or inv_root not in ("eigh", "ns"):
             raise ValueError("fisher_dtype fp32|bf16, c_floor eigh|shift, inv_root eigh|ns")
         if stats_stride < 1:
             raise ValueError("stats_stride must be at least 1")
         self._stats_stride = stats_stride
+        if stats_sketch < 0:
+            raise ValueError("stats_sketch must be >= 0")
+        self._stats_sketch = stats_sketch
         super().__init__(params, lr, stats_dtype=stats_dtype, stats_window=stats_window, **kwargs)
         self.fisher_dtype, self.c_floor, self.inv_root = fisher_dtype, c_floor, inv_root
         if warm_refresh < 0:

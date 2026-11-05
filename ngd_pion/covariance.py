@@ -159,3 +159,60 @@ class CovarianceAccumulator:
         self._matrix = None if matrix is None else matrix.to(self.dtype)
         self.count = state["count"]
         self.beta = state["beta"]
+
+
+class SketchAccumulator:
+    """Nystrom sketch of `E[x x^T]` (NaturalPionTurbo only): keeps `Y = A Omega` (n x k) instead of `A` (n x n).
+
+    `Omega` is a fixed random orthonormal n x k matrix, so the EMA of `A Omega` is `(EMA A) Omega` exactly. Cost per
+    observation `2 T n k` instead of `2 T n^2`; memory `n k`. `matrix` rebuilds the rank-k Nystrom approximation
+    `Y (Omega^T Y)^+ Y^T`; the eigenvalues it lacks are zero, which the optimizer's floor raises -- in effect the top
+    k directions of A plus the floor.
+    """
+
+    def __init__(self, beta: float, rank: int, dtype: torch.dtype = torch.float32, stride: int = 1) -> None:
+        self.beta, self.rank, self.dtype, self.stride = beta, rank, dtype, stride
+        self._Y: torch.Tensor | None = None
+        self._omega: torch.Tensor | None = None
+        self.count = 0
+
+    @property
+    def ready(self) -> bool:
+        return self._Y is not None
+
+    @torch.no_grad()
+    def observe(self, x: torch.Tensor, scale: float = 1.0) -> None:
+        flat = x.detach().reshape(-1, x.shape[-1])
+        if self.stride > 1:
+            flat = flat[::self.stride]
+        if flat.shape[0] == 0:
+            return
+        n = flat.shape[-1]
+        if self._omega is None:
+            g = torch.Generator(device="cpu").manual_seed(n * 7919 + self.rank)
+            q, _ = torch.linalg.qr(torch.randn(n, min(self.rank, n), generator=g, dtype=torch.float64))
+            self._omega = q.to(device=flat.device, dtype=self.dtype)
+        with torch.autocast(flat.device.type, enabled=False), exact_fp32():
+            f = flat.to(self.dtype)
+            Y = f.transpose(0, 1) @ (f @ self._omega) * (scale / f.shape[0])
+        if self._Y is None:
+            self._Y = Y
+        else:
+            self._Y.mul_(self.beta).add_(Y, alpha=1.0 - self.beta)
+        self.count += flat.shape[0]
+
+    @property
+    def matrix(self) -> torch.Tensor:
+        if self._Y is None:
+            raise RuntimeError("no activations observed yet")
+        with exact_fp32():
+            core = self._omega.transpose(0, 1) @ self._Y
+            w, U = torch.linalg.eigh(0.5 * (core + core.transpose(0, 1)))
+            w = w.clamp_min(w.amax() * 1e-7 + torch.finfo(w.dtype).tiny)
+            L = self._Y @ (U * w.rsqrt().unsqueeze(0))
+            return L @ L.transpose(0, 1)
+
+    def to(self, device) -> "SketchAccumulator":
+        if self._Y is not None:
+            self._Y, self._omega = self._Y.to(device), self._omega.to(device)
+        return self
