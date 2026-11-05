@@ -597,8 +597,9 @@ of the model's forward and backward pass ($6 \times$ tokens $\times$ matrix para
 | step, Natural Pion Fast / Pion | {{flops_60M_ratio:.2f}} | {{flops_1_3B_ratio:.2f}} |
 
 $F^{-1}$ and Cayley cost $O(n^3)$ per matrix and step against the model's $O(Tn^2)$ for $T$ tokens, so their share
-grows with width at a fixed batch; on several GPUs they divide among them, the forward and backward pass does
-not. Statistics are the largest term in FLOPs but run on tensor cores in bf16; eigendecompositions are the
+grows with width at a fixed batch. With data parallelism the forward and backward pass divides among the GPUs;
+the optimizer's matrices must be divided among them too (one GPU per matrix), or, replicated on every GPU as
+Pion's step is, their share grows with the number of GPUs. Statistics are the largest term in FLOPs but run on tensor cores in bf16; eigendecompositions are the
 smallest but latency-bound, which is why Table 2b and this table rank the parts differently.
 
 ---
@@ -847,7 +848,8 @@ reports modest gains over its truncated exponential; at Natural Pion's angles it
   than an order of magnitude in scale. This is consistent with Section 3.3: we keep the direction of
   $F^{-1}G$ but not its length.
 * **Cost.** $F^{-1}$, Cayley and the refresh are $O(n^3)$ per matrix: {{flops_60M_ratio:.2f}}x Pion's step FLOPs at 60M,
-  {{flops_1_3B_ratio:.2f}}x at 1.3B (Section 4.11). At scale they have to be divided among GPUs.
+  {{flops_1_3B_ratio:.2f}}x at 1.3B (Section 4.11); on several GPUs the matrices have to be divided among them to keep
+  that share.
 * **Steps-to-loss** (at least {{steps_ratio_min_lo:.2f}}x) is a lower bound from mid-schedule crossings, not a measured ratio with
   fitted schedules.
 
