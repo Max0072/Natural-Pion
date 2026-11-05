@@ -7265,3 +7265,20 @@ Deferred until the reruns end: the legacy config fields (removing them changes r
 not resume) and the dead rho/pred_drop block (it costs an extra forward on logged steps for both arms; removing it
 mid-campaign would make new step times incomparable with the archived Pion ones). Still mention the old method:
 docs/RESUME.md, AGENTS.md, ADRs (history, kept).
+
+## 2026-11-05 — preprint wired to the v2 runs
+
+Every number of Sections 3-4, 5.4 and Appendix D now comes from a v2.sbatch row by tag (paper_numbers.py, block
+"Sections 3-4, 5.4, Appendix D"); grids report their best angle and mark an EDGE optimum in numbers.md. Text:
+3.4 table (the method vs truncated exponential), Table 1 on the class's own profiler parts (statistics are inside the
+forward/backward row now), 4.5 "computing only what the step uses" removed (it described the old implementation;
+4.6-4.11 renumbered to 4.5-4.10), 4.6 statistics table on RTX with 15000 steps, 4.7 retraction table on RTX,
+Table 2 chain on the new runs, 5.4 rewritten on Fast (reference: the method, angle 0.2), Appendix D on Fast.
+Prose that stated outcomes was cut until the numbers exist; restore only what they support: "momentum absorbs
+half of it at T_fac 25 and all of it at 10", "at 15000 the difference is gone", "inside run-to-run noise",
+"momentum supplies part of what F^-1 does", "X = G with momentum is close to Pion", "the more evenly the matrices
+turn, the lower the loss", "the spectral rule beats RMS on all four seeds", "the floor 1e-4 is an interior
+optimum", "linear decay and cosine are within noise", "the polar step is worse in loss".
+Second wave, once the grids finish: add v2.sbatch rows alg1-mom-seeds (seeds 1-3 at the angle of tf1_mom) and
+len-rms-seeds (seeds 1-3 at the angle of len_rms); extend any grid whose optimum is at an edge.
+On a GPU after the runs: paper_checks.sbatch, ns_diag.sbatch (RETS="cayley ns ns_delta"), optimizer_step_bench.sbatch.
