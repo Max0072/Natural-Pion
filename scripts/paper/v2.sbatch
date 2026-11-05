@@ -166,6 +166,15 @@ ROWS=(
 "len-rms-seeds|$F|3000|best:len-rms|1|0.9|||{\"length\":\"rms\"}|"
 "len-rms-seeds|$F|3000|best:len-rms|2|0.9|||{\"length\":\"rms\"}|"
 "len-rms-seeds|$F|3000|best:len-rms|3|0.9|||{\"length\":\"rms\"}|"
+# 130-134 grid edges found on 2026-11-05: angle 0.8 where 0.4 was best; smaller angles where X = G diverged
+"dir-nat-nomom-0.8|$F|3000|0.8|0|0||||"
+"dir-nat-mom-0.8|$F|3000|0.8|0|0.9||||"
+"tf25-mom-0.8|$A|3000|0.8|0|0.9|||{\"t_fac\":25}|"
+"dir-raw-nomom-0.05|$F|3000|0.05|0|0|||{\"direction\":\"raw\"}|"
+"dir-raw-nomom-0.025|$F|3000|0.025|0|0|||{\"direction\":\"raw\"}|"
+# 135-136 TF32 (scripts/probes/tf32_check.py): everything but the Cayley step, and everything
+"tf32-upstream|$F|3000|0.2|0|0.9|||{\"tf32\":\"upstream\"}|"
+"tf32-all|$F|3000|0.2|0|0.9|||{\"tf32\":\"all\"}|"
 )
 IFS='|' read -r TAG OPT STEPS LR SEED B1 RET STATS KW EXTRA <<< "${ROWS[$SLURM_ARRAY_TASK_ID]}"
 case "$RET" in ""|cayley|ns|ns_delta|trunc) ;; *) echo "row $SLURM_ARRAY_TASK_ID: bad RETRACTION '$RET'"; exit 1 ;; esac

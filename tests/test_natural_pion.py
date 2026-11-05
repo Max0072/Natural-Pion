@@ -378,3 +378,17 @@ def test_ablation_arguments_are_checked():
                 dict(planes="equal", length="fixed"), dict(attn_mult=0.0), dict(a_every=0)):
         with pytest.raises(ValueError):
             NaturalPionFast(params, **bad)
+
+
+@pytest.mark.parametrize("tf32", ["upstream", "all"])
+def test_tf32_option_runs_and_keeps_the_spectrum(tf32):
+    """On a CPU TF32 does not exist, so the trajectory is the fp32 one; the option must only change the arithmetic."""
+    a, b = _weights(52), _weights(52)
+    ref = NaturalPionFast(a, lr=0.05, t_fac=5, stats_window=3)
+    opt = NaturalPionFast(b, lr=0.05, t_fac=5, stats_window=3, tf32=tf32)
+    for x, y in zip(_drive(ref, a, 15, 53, lambda t: 0.05)[-1], _drive(opt, b, 15, 53, lambda t: 0.05)[-1]):
+        assert torch.equal(x, y)
+    with pytest.raises(ValueError):
+        NaturalPionFast(_weights(52), tf32="x")
+    with pytest.raises(ValueError):
+        NaturalPionTurbo(_weights(52), tf32="all")

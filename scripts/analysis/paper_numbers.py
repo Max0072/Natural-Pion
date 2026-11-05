@@ -449,7 +449,7 @@ derive("peak_d", lambda a, b: a - b, ("peak_np", "peak_pion"), "peak_np - peak_p
 
 # 3.1: the true Fisher (D from targets drawn from the model) against the empirical one, best of three angles each
 vbest("fisher_true", grid("fisher-mc", ("0.1", "0.2", "0.4")))
-vbest("fisher_empirical", ["fisher-emp-0.1", "s3000", "fisher-emp-0.4"])
+vbest("fisher_empirical", ["fisher-emp-0.1", "s3000", "fisher-emp-0.4", "dir-nat-mom-0.8"])
 
 # 3.4 / 4.8: retractions (3000 steps angle 0.2; 15000 steps angle 0.05)
 vval("ret_cayley_3000", "ret-cayley")
@@ -483,7 +483,7 @@ for t, tag in (("tfac1", "prof-alg1"), ("tfac25", "prof-tf25")):
 vbest("tf1_nomom", grid("alg1-nomom", ("0.2", "0.4", "0.8")))
 vbest("tf25_nomom", grid("tf25-nomom", ("0.4", "0.8", "1.6")))
 vbest("tf1_mom", grid("alg1-mom", ("0.05", "0.1", "0.2")))
-vbest("tf25_mom", grid("tf25-mom", ("0.1", "0.2", "0.4")))
+vbest("tf25_mom", grid("tf25-mom", ("0.1", "0.2", "0.4", "0.8")))
 vval("tf10_mom", "tf10-s0")
 for k in ("tf1_nomom", "tf25_nomom", "tf1_mom", "tf25_mom"):
     if NUM.get(k + "_tag"):
@@ -536,9 +536,9 @@ derive("stats_bf16_saving", lambda a, b: a - b, ("stats_fp32_sps", "m_sps"), "st
 derive("speedup_vs_exact", lambda a, b: a / b, ("tf1_mom_sps", "m_sps"), "tf1_mom_sps / m_sps")
 
 # 5.4: direction, X = F^-1 G against X = G (best angle of each grid; 0.2 with momentum is the method's own run)
-vbest("dir_fisher_nomom", grid("dir-nat-nomom", ("0.1", "0.2", "0.4")))
-vbest("dir_fisher_mom", ["dir-nat-mom-0.1", "s3000", "dir-nat-mom-0.4"])
-vbest("dir_raw_nomom", grid("dir-raw-nomom", ("0.1", "0.2", "0.4")))
+vbest("dir_fisher_nomom", grid("dir-nat-nomom", ("0.1", "0.2", "0.4", "0.8")))
+vbest("dir_fisher_mom", ["dir-nat-mom-0.1", "s3000", "dir-nat-mom-0.4", "dir-nat-mom-0.8"])
+vbest("dir_raw_nomom", grid("dir-raw-nomom", ("0.025", "0.05", "0.1", "0.2", "0.4")))
 vbest("dir_raw_mom", grid("dir-raw-mom", ("0.1", "0.2", "0.4")))
 derive("gain_fisher_nomom", lambda a, b: a - b, ("dir_raw_nomom", "dir_fisher_nomom"), "dir_raw_nomom - dir_fisher_nomom")
 derive("gain_fisher_mom", lambda a, b: a - b, ("dir_raw_mom", "dir_fisher_mom"), "dir_raw_mom - dir_fisher_mom")

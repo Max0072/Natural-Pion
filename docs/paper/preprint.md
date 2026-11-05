@@ -650,8 +650,8 @@ interpolation), at 19 200 steps' time {{eqt_19200_gap:.3f}}, and at 3 840 steps'
 
 All ablations are on Natural Pion Fast at 3 000 steps, seed 0, and change one thing. The reference is the method
 itself: angle 0.2, Lie momentum 0.9, cosine schedule ({{v2_3000_s0:.4f}}). Where a row says "best", it is the best
-over a grid of that row's step-size parameter; such rows are compared with the method at its best angle of 0.1, 0.2
-and 0.4 ({{dir_fisher_mom:.4f}}).
+over a grid of that row's step-size parameter; such rows are compared with the method at its own best angle,
+{{dir_fisher_mom_lr:g}} ({{dir_fisher_mom:.4f}}).
 
 **The direction: natural gradient against the raw generator.** Best angle of each grid. Same normalisation,
 retraction and schedule; only $X = F^{-1}G$ against $X = G$ changes.
@@ -707,9 +707,9 @@ The best alternative differs from the default by {{reg_best_other_d:+.3f}}.
 |---|---|
 | each side normalised by its own $\sigma$, best of angles 0.1 and 0.2 | {{sides_best:.4f}} |
 | attention matrices at $\times 0.25 / 0.5 / 2 / 4$ the angle | {{attn_0.25:.4f}} / {{attn_0.5:.4f}} / {{attn_2:.4f}} / {{attn_4:.4f}} |
-| constant angle; linear decay; warmup + cosine, best of 3 angles each (cosine, best of 3: {{dir_fisher_mom:.4f}}) | {{sched_constant:.4f}}; {{sched_linear:.4f}}; {{sched_warmcos:.4f}} |
+| constant angle; linear decay; warmup + cosine, best of 3 angles each (cosine, at its best angle: {{dir_fisher_mom:.4f}}) | {{sched_constant:.4f}}; {{sched_linear:.4f}}; {{sched_warmcos:.4f}} |
 | warmup-stable-decay, decay over the last 20% / 10% | {{wsd_0.2:.4f}} / {{wsd_0.1:.4f}} |
-| true Fisher ($D$ from targets drawn from the model, one more forward and backward pass), best of angles 0.1, 0.2, 0.4 (empirical: {{fisher_empirical:.4f}}) | {{fisher_true:.4f}} |
+| true Fisher ($D$ from targets drawn from the model, one more forward and backward pass), best of its angle grid (empirical: {{fisher_empirical:.4f}}) | {{fisher_true:.4f}} |
 | equal angle on every plane of $X$ (polar step), best of angles 0.1 and 0.2 | {{polar:.4f}} |
 
 The polar step needs an SVD per matrix per step ({{svd_sps_lo:.1f}}–{{svd_sps_hi:.1f}} s per step). Appendix D varies the

@@ -47,6 +47,21 @@ def exact_fp32():
         torch.set_float32_matmul_precision(precision)
 
 
+@contextmanager
+def tf32_matmul():
+    """fp32 matrix products in TF32 (ten mantissa bits) for the duration, then the settings back. Used only where the
+    result is upstream of the Cayley gate (natural_pion.NaturalPionFast, tf32="upstream"), or to measure."""
+    matmul = torch.backends.cuda.matmul.allow_tf32
+    precision = torch.get_float32_matmul_precision()
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.set_float32_matmul_precision("high")
+    try:
+        yield
+    finally:
+        torch.backends.cuda.matmul.allow_tf32 = matmul
+        torch.set_float32_matmul_precision(precision)
+
+
 def skew(M: torch.Tensor) -> torch.Tensor:
     """The skew-symmetric part, `(M - M^T) / 2`.
 

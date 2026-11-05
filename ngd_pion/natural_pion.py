@@ -35,7 +35,8 @@ from .direction import generators
 from .factorization import (Basis, basis_congruence, basis_congruence_from_root, basis_identity_anchor,
                             floored_inverse_root)
 from .linalg import floor_eigenvalues, safe_eigh
-from .linalg import exact_fp32, is_identity, skew, spectral_norm
+from .linalg import exact_fp32, is_identity, skew, spectral_norm, tf32_matmul
+from contextlib import nullcontext
 
 __all__ = ["NaturalPion", "NaturalPionFast", "NaturalPionTurbo", "NaturalPionStiefel", "BY_NAME", "default_of"]
 
@@ -275,7 +276,7 @@ class NaturalPion(torch.optim.Optimizer):
     def step(self, closure=None):
         loss = closure() if closure is not None else None
         # fp32 must mean fp32: with TF32 the Cayley solve stops being orthogonal and W's spectrum drifts.
-        with exact_fp32():
+        with self._step_precision():
             for group in self.param_groups:
                 active = [p for p in group["params"] if p.grad is not None]
                 for p in active:
@@ -319,6 +320,14 @@ class NaturalPion(torch.optim.Optimizer):
     def _correct(self, X, G, P, den, items, rows, group):
         """Hook after `X = F^-1 G` in the basis; the reference path uses the basis solution as it is."""
         return X
+
+    def _step_precision(self):
+        """The arithmetic of the whole step: true fp32 (TF32 off), so the retraction stays orthogonal."""
+        return exact_fp32()
+
+    def _retraction_precision(self):
+        """The arithmetic of the Cayley step inside the step's own; the reference path changes nothing."""
+        return nullcontext()
 
     def _largest_angle(self, group: dict) -> float:
         """The largest rotation angle of this step, which decides whether Newton-Schulz may stand in for the exact
@@ -379,38 +388,39 @@ class NaturalPion(torch.optim.Optimizer):
 
         # Cayley: R = (I + c/2 X)^-1 (I - c/2 X), exactly orthogonal for skew X
         self._tick("cayley")
-        for n, items in solves.items():
-            X = torch.stack([x for *_, x in items])
-            if isinstance(items[0][2], torch.Tensor):
-                half = (0.5 * torch.stack([c for _, _, c, _ in items])).to(X.dtype).reshape(-1, 1, 1)
-            else:
-                half = torch.as_tensor([0.5 * c for _, _, c, _ in items], dtype=X.dtype, device=X.device).reshape(-1, 1, 1)
-            eye = torch.eye(n, dtype=X.dtype, device=X.device).expand_as(X)
-            if group["retraction"] == "trunc":
-                A = -(half + half) * X                       # -c X: Cay(cX) and exp(-cX) agree to second order
-                R = eye + A + 0.5 * (A @ A)
-            elif group["retraction"] == "ns_delta" and self._largest_angle(group) <= group["ns_guard"]:
-                # The same Newton-Schulz iteration carried in the correction z = Z - I: residual r = M Z - I =
-                # A + z + A z, and Z (I - r) gives z <- z - r - z r. Nothing is rounded next to 1, which in "ns"
-                # biases R^T R - I positive by ~1e-6 per side per step in fp32 (the trained spectrum grew 1.1%
-                # over 3000 steps). R = I + 2 z.
-                A = half * X
-                z = -A
-                for _ in range(group["ns_iters"]):
-                    r = A + z + A @ z
-                    z = z - r - z @ r
-                R = eye + 2.0 * z
-            elif group["retraction"] == "ns" and self._largest_angle(group) <= group["ns_guard"]:
-                # Cay = 2 (I + A)^-1 - I; Newton-Schulz Z <- Z (2I - M Z) from Z0 = I - A, residual A^2 squaring
-                A = half * X
-                M, Z = eye + A, eye - A
-                for _ in range(group["ns_iters"]):
-                    Z = Z @ (2.0 * eye - M @ Z)
-                R = 2.0 * Z - eye
-            else:
-                R = torch.linalg.solve(eye + half * X, eye - half * X)
-            for k, (i, slot, _, _) in enumerate(items):
-                rows[i][slot] = R[k]
+        with self._retraction_precision():
+            for n, items in solves.items():
+                X = torch.stack([x for *_, x in items])
+                if isinstance(items[0][2], torch.Tensor):
+                    half = (0.5 * torch.stack([c for _, _, c, _ in items])).to(X.dtype).reshape(-1, 1, 1)
+                else:
+                    half = torch.as_tensor([0.5 * c for _, _, c, _ in items], dtype=X.dtype, device=X.device).reshape(-1, 1, 1)
+                eye = torch.eye(n, dtype=X.dtype, device=X.device).expand_as(X)
+                if group["retraction"] == "trunc":
+                    A = -(half + half) * X                       # -c X: Cay(cX) and exp(-cX) agree to second order
+                    R = eye + A + 0.5 * (A @ A)
+                elif group["retraction"] == "ns_delta" and self._largest_angle(group) <= group["ns_guard"]:
+                    # The same Newton-Schulz iteration carried in the correction z = Z - I: residual r = M Z - I =
+                    # A + z + A z, and Z (I - r) gives z <- z - r - z r. Nothing is rounded next to 1, which in "ns"
+                    # biases R^T R - I positive by ~1e-6 per side per step in fp32 (the trained spectrum grew 1.1%
+                    # over 3000 steps). R = I + 2 z.
+                    A = half * X
+                    z = -A
+                    for _ in range(group["ns_iters"]):
+                        r = A + z + A @ z
+                        z = z - r - z @ r
+                    R = eye + 2.0 * z
+                elif group["retraction"] == "ns" and self._largest_angle(group) <= group["ns_guard"]:
+                    # Cay = 2 (I + A)^-1 - I; Newton-Schulz Z <- Z (2I - M Z) from Z0 = I - A, residual A^2 squaring
+                    A = half * X
+                    M, Z = eye + A, eye - A
+                    for _ in range(group["ns_iters"]):
+                        Z = Z @ (2.0 * eye - M @ Z)
+                    R = 2.0 * Z - eye
+                else:
+                    R = torch.linalg.solve(eye + half * X, eye - half * X)
+                for k, (i, slot, _, _) in enumerate(items):
+                    rows[i][slot] = R[k]
 
         self._tick("apply W")
         new: dict[int, list] = {}
@@ -458,7 +468,7 @@ class NaturalPionFast(NaturalPion):
                  retraction: str = "ns_delta", stats_dtype: str = "bf16", batch_sigma: bool = True,
                  share_root: bool = True, direction: str = "natural", length: str = "spectral", sides: str = "joint", planes: str = "scaled",
                  attn_mult: float = 1.0, a_window: int | None = None, d_window: int | None = None, a_every: int = 1,
-                 **kwargs) -> None:
+                 tf32: str = "off", **kwargs) -> None:
         super().__init__(params, lr, t_fac=t_fac, stats_window=stats_window, beta_a=beta_a, beta_d=beta_d,
                          share_inputs=share_inputs, retraction=retraction, stats_dtype=stats_dtype, **kwargs)
         # Ablation switches (Section 5.4); every default is the method itself.
@@ -490,6 +500,18 @@ class NaturalPionFast(NaturalPion):
         self._gens: dict[tuple, torch.Tensor] = {}
         self.batch_sigma = batch_sigma
         self.share_root = share_root
+        # tf32: "off" -- the whole step in true fp32 (the method); "upstream" -- fp32 products in TF32 everywhere except
+        # the Cayley step, so only the direction is affected (the rotation stays orthogonal to fp32 round-off);
+        # "all" -- the Cayley step in TF32 too (measured, not assumed: scripts/probes/tf32_check.py)
+        if tf32 not in ("off", "upstream", "all"):
+            raise ValueError(f"tf32 must be off, upstream or all, got {tf32!r}")
+        self.tf32 = tf32
+
+    def _step_precision(self):
+        return exact_fp32() if self.tf32 == "off" else tf32_matmul()
+
+    def _retraction_precision(self):
+        return exact_fp32() if self.tf32 == "upstream" else nullcontext()
 
     def _collecting(self, param: torch.Tensor, kind: str = "a") -> bool:
         window = self.a_window if kind == "a" else self.d_window
@@ -674,6 +696,8 @@ class NaturalPionTurbo(NaturalPionFast):
         if warm_refresh < 0:
             raise ValueError("warm_refresh must be >= 0")
         self.warm_refresh = warm_refresh
+        if self.tf32 != "off":
+            raise ValueError("tf32 is an option of NaturalPionFast's own step; Turbo computes its Cayley step itself")
         self.async_refresh = async_refresh
         self._side = None
         self._pending = None

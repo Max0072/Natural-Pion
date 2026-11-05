@@ -59,7 +59,7 @@ it exact and cheap, and pairs it with a step-length rule in the spirit of Pion's
 3. **Direction from the Fisher, length from an angle.** We take only the direction of $F^{-1}G$. The step length is set so
    that the largest rotation plane of every matrix turns by the same scheduled angle $\theta_t$
    (Proposition 3). With the same angle rule and the same momentum, the natural gradient reaches
-   3.7124 at 3 000 steps against **[dir_raw_mom?]** for Pion's raw generator (Pion itself:
+   **[dir_fisher_mom?]** at 3 000 steps against **[dir_raw_mom?]** for Pion's raw generator (Pion itself:
    3.8412). With a fixed step size instead of the angle, $F^{-1}G$ gives
    **[len_fixed?]** (Section 5.4).
 4. **A retraction that is exact at large angles.** Natural Pion turns each matrix by up to 0.05–0.2 rad per step.
@@ -406,7 +406,7 @@ of K-FAC).
 | every 25 steps | none | 3.7686 (+0.043) | 0.74 |
 | every step | 0.9 | 3.7006 | 2.10 |
 | every 10 steps | 0.9 | 3.6925 (-0.008) | 0.85 |
-| every 25 steps | 0.9 | 3.7179 (+0.017) | 0.74 |
+| every 25 steps | 0.9 | **[tf25_mom?]** (**[tf25_mom_d?]**) | **[tf25_mom_sps?]** |
 
 Each row's angle is tuned separately ($T_{\mathrm{fac}} = 10$: angle 0.2). Over four seeds, $T_{\mathrm{fac}} = 1$ averages
 **[tf1_mom_mean?]**, $T_{\mathrm{fac}} = 10$ **[tf10_mom_mean?]** and Natural Pion Fast ($T_{\mathrm{fac}} = 25$)
@@ -508,7 +508,7 @@ after 3 000 training steps, median / worst over the rotated matrices (`scripts/p
 | step | s / step | val (3 000 steps, seed 0) |
 |---|---|---|
 | Algorithm 1 | 2.10 | 3.7006 |
-| refresh every 25 steps (4.2) | 0.742 | 3.7179 |
+| refresh every 25 steps (4.2) | **[tf25_mom_sps?]** | **[tf25_mom?]** |
 | + statistics only before a refresh (4.3) | **[win_adlast6_sps?]** | **[win_adlast6?]** |
 | + batching by shape (4.4) | 0.641 | 3.7146 |
 | **+ batched $\sigma$, one $A$ per input, Newton–Schulz Cayley, bf16 statistics (4.5, 4.6, 4.7)**: Natural Pion Fast | **0.507** | **3.7162** |
@@ -650,8 +650,8 @@ interpolation), at 19 200 steps' time **[eqt_19200_gap?]**, and at 3 840 steps' 
 
 All ablations are on Natural Pion Fast at 3 000 steps, seed 0, and change one thing. The reference is the method
 itself: angle 0.2, Lie momentum 0.9, cosine schedule (3.7162). Where a row says "best", it is the best
-over a grid of that row's step-size parameter; such rows are compared with the method at its best angle of 0.1, 0.2
-and 0.4 (3.7124).
+over a grid of that row's step-size parameter; such rows are compared with the method at its own best angle,
+**[dir_fisher_mom_lr?]** (**[dir_fisher_mom?]**).
 
 **The direction: natural gradient against the raw generator.** Best angle of each grid. Same normalisation,
 retraction and schedule; only $X = F^{-1}G$ against $X = G$ changes.
@@ -660,9 +660,9 @@ retraction and schedule; only $X = F^{-1}G$ against $X = G$ changes.
 
 | | no momentum | Lie momentum 0.9 |
 |---|---|---|
-| $X = F^{-1}G$ | 3.7792 | 3.7124 |
-| $X = G$ | 4.1299 | **[dir_raw_mom?]** |
-| gain from $F^{-1}$ | 0.351 | **[gain_fisher_mom?]** |
+| $X = F^{-1}G$ | **[dir_fisher_nomom?]** | **[dir_fisher_mom?]** |
+| $X = G$ | **[dir_raw_nomom?]** | **[dir_raw_mom?]** |
+| gain from $F^{-1}$ | **[gain_fisher_nomom?]** | **[gain_fisher_mom?]** |
 
 Pion at 3 000 steps: 3.8412.
 
@@ -676,7 +676,7 @@ differs from a fixed $c$ only as far as the basis has gone stale since the last 
 
 | length rule | val | angle spread |
 |---|---|---|
-| spectral, after $F^{-1}$: $c = \theta/\sigma(F^{-1}G)$ (the method) | 3.7124 | 1 |
+| spectral, after $F^{-1}$: $c = \theta/\sigma(F^{-1}G)$ (the method) | **[dir_fisher_mom?]** | 1 |
 | RMS of the induced update, as in Pion | **[len_rms?]** | **[angle_spread_rms?]** |
 | quadratic-model ratio, $c = \theta \min(1, \langle G, X\rangle / \langle X, FX\rangle)$ | **[len_quad?]** | **[angle_spread_quad?]** |
 | Fisher norm, $c = \theta / \sqrt{\langle X, FX\rangle}$ | **[len_fisher?]** | **[angle_spread_fisher?]** |
@@ -707,9 +707,9 @@ The best alternative differs from the default by +0.004.
 |---|---|
 | each side normalised by its own $\sigma$, best of angles 0.1 and 0.2 | **[sides_best?]** |
 | attention matrices at $\times 0.25 / 0.5 / 2 / 4$ the angle | **[attn_0.25?]** / **[attn_0.5?]** / **[attn_2?]** / **[attn_4?]** |
-| constant angle; linear decay; warmup + cosine, best of 3 angles each (cosine, best of 3: 3.7124) | **[sched_constant?]**; **[sched_linear?]**; **[sched_warmcos?]** |
+| constant angle; linear decay; warmup + cosine, best of 3 angles each (cosine, at its best angle: **[dir_fisher_mom?]**) | **[sched_constant?]**; **[sched_linear?]**; **[sched_warmcos?]** |
 | warmup-stable-decay, decay over the last 20% / 10% | **[wsd_0.2?]** / **[wsd_0.1?]** |
-| true Fisher ($D$ from targets drawn from the model, one more forward and backward pass), best of angles 0.1, 0.2, 0.4 (empirical: 3.7124) | 3.7063 |
+| true Fisher ($D$ from targets drawn from the model, one more forward and backward pass), best of its angle grid (empirical: **[fisher_empirical?]**) | 3.7063 |
 | equal angle on every plane of $X$ (polar step), best of angles 0.1 and 0.2 | **[polar?]** |
 
 The polar step needs an SVD per matrix per step (**[svd_sps_lo?]**–**[svd_sps_hi?]** s per step). Appendix D varies the
