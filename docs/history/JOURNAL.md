@@ -7145,3 +7145,26 @@ as clean-up. Approximations, direction error of F^-1 M vs exact (median / max): 
 C + eps*lmax*I instead of the floor 0.091 / 0.15 (0.380 s; predicted ~1e-3 -- wrong: the floored directions are the
 ones that dominate X), A^-1/2 by Newton-Schulz 0.033 / 0.30 (0.463 s). Deferred to Turbo (user), to be judged by a
 training run, not by direction error alone.
+
+## 2026-11-05 — Turbo approximations, warm refresh, CG: results and decisions
+
+3000 steps, angle 0.2, seed 0, RTX (`scripts/paper/natural_pion_turbo.sbatch`, `natural_pion_fast2.sbatch`).
+
+**Turbo (aggressive tier).** Against Turbo exact (3.7212): F^-1 in bf16 3.7200, statistics every 4th / 8th token
+3.7231 / 3.7209, C shifted 3.7173, B^-1/2 by Newton-Schulz 3.7161, both together 3.7159 (refresh 0.556 -> 0.291 s),
+statistics window 1 3.7221, T_fac 50 3.7444 (+0.023), all incl. T_fac 50 3.7381. All approximations are upstream
+of the Cayley gate (X made skew before it), so the spectrum is kept whatever they do; direction errors of 3-13% on
+the checkpoint did not show in the loss. New Turbo defaults: bf16 F^-1, shifted C, NS root, window 1, T_fac 25 ->
+3.7151. Pending: the same at 15000 steps, and a 15000-step control with C floored (user doubted the shift).
+
+**Warm refresh** (keep P, rescale columns, Rayleigh quotients for lam, no eigendecomposition): full every 4th
+refresh 3.7563 (+0.041), only the first 3.8982 (+0.183). Rejected. The in-side pencil (A, W^T D W) turns with W,
+which moves up to 0.2 rad per step, so the eigenvectors do not stay put.
+
+**CG correction** (Fast, cg_iters): preconditioned CG on F(X) = G with the current W. 1 iteration 3.7161 (-0.006),
+2 iterations 3.7120 (-0.010), i.e. half the T_fac 25 vs 1 gap, as predicted; the other half is stale A and D.
+Cost +10% / +15% per step; at equal time plain Fast with 15% more steps gains ~0.02 by the budget curve. User: not
+adopted. Option stays, off by default.
+
+**Alternate update, k-subspace rotation**: not pursued (alternate halves motion per step; the k-subspace would cut
+the small-lambda directions that dominate X).
