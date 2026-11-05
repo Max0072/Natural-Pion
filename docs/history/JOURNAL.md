@@ -7251,3 +7251,17 @@ Length-rule grids are five points x2 apart around the old optima; an optimum at 
   Turbo. One `_lmax`; the `drop_kernel` reference function lives in the tests (Stiefel equivalence).
 * One run script: scripts/paper/v2.sbatch (rows 0-110; empty retraction/stats = class default); v2_rest and
   v2_perhead removed (their queued jobs keep running from SLURM's copies); collect_npv2.sh merges runs/npv2 and npv2x.
+
+## 2026-11-05 — legacy code removed (stage 1)
+
+Removed with the user's approval: the NGD-Pion optimizers (`ngd_pion/legacy/`, `unified.py`, `optimizer.py`,
+`with_s.py`; harness names `ngd-pion*`, `shampoo-pion`), `harness/instrument.py` and the per-layer diagnostics,
+8 test files of those classes, ~45 old probes incl. `step_norm.py`, the `step_norm_*.sbatch` launchers,
+`scripts/archive/sbatch/`, the first version's analysis scripts, `cluster/{train,sweep}.sbatch`, `gpu_smoke.py`.
+Kept and moved: the output-gradient recorder (now `ngd_pion.hooks`). Fast is now checked bit for bit against
+`NaturalPion` (Algorithm 1) instead of `step_norm.py`; harness tests run on natural-pion-fast. Pion's runs are
+reproducible through `harness.run --from-manifest` (`scripts/paper/pion.sbatch`, the 28 Pion runs the paper reads).
+Deferred until the reruns end: the legacy config fields (removing them changes run hashes, so a requeued job would
+not resume) and the dead rho/pred_drop block (it costs an extra forward on logged steps for both arms; removing it
+mid-campaign would make new step times incomparable with the archived Pion ones). Still mention the old method:
+docs/RESUME.md, AGENTS.md, ADRs (history, kept).

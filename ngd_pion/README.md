@@ -1,103 +1,18 @@
 # ngd_pion
 
-**The method is `natural_pion.py`** (`NaturalPion`, exact form; `NaturalPionFast`, the form we run), see
-`docs/paper/FINAL.md`. Variants that were tried and set aside moved to `legacy/` on 2026-11-03 (imports are
-`ngd_pion.legacy.<module>`); the table below predates that and describes them as they were judged.
+**The method is `natural_pion.py`.** Four tiers of one algorithm:
 
-## The three tiers of `natural_pion.py` (2026-11-04)
-
-Fast: every speed-up standard and explainable. Turbo: whatever is faster, no guarantees.
-
-| class | tier | rule | members |
+| class | harness name | tier | what it is |
 |---|---|---|---|
-| `NaturalPion` | reference | exact form; nothing sped up | -- |
-| `NaturalPionFast` | conservative | each speed-up a standard technique with a stated reason not to change the result, confirmed within 0.010 of the reference at 3000 and 15000 steps; only Natural Pion's own parts, never those shared with Pion (skew(W^T G), skew(G W^T), Lie momentum, R_out W R_in), so wall-clock vs Pion stays fair | basis every 25 steps (K-FAC amortisation); A, D only in the 6 steps before a refresh (within 0.002); warm power iteration for sigma; F^-1 and Cayley batched by shape; one A per input tensor (q,k,v; gate,up); Cayley inverse by Newton-Schulz in Z - I. Candidate: bf16 statistics inputs, fp32 accumulation, pending 15000 steps |
-| `NaturalPionTurbo` | aggressive | anything faster, no guarantees; loss cost measured and recorded; in no comparison | everything batched incl. Pion-shared parts; sigma without host syncs; bf16 statistics. Planned: alternate update, low-rank sketches of A and S, incremental basis updates, rotation in a k-dim subspace (`docs/history/drafts/natural_gradient_pion_addendum.md`) |
+| `NaturalPion` | `natural-pion` | reference | Algorithm 1: exact form, statistics every step, basis every step (`t_fac` 1), exact Cayley solve, fp32 |
+| `NaturalPionFast` | `natural-pion-fast` | the method | Algorithm 2: basis every 25 steps, A and D in the 6 steps before a refresh, one A per input, warm batched sigma, Cayley by Newton-Schulz in Z - I, bf16 statistics inputs. Every speed-up standard and explainable, loss within 0.010 of the reference; only Natural Pion's own parts. Also carries the ablation switches of Section 5.4 (`direction`, `length`, `sides`, `planes`, `attn_mult`, `a_window`, `d_window`, `a_every`), each defaulting to the method |
+| `NaturalPionTurbo` | `natural-pion-turbo` | aggressive | anything faster; loss cost measured; in no comparison |
+| `NaturalPionStiefel` | `natural-pion-stiefel` | aggressive | Turbo with the wide side of a rectangular matrix in its k-dimensional Stiefel form |
 
-T_fac 25 is 0.013 behind the exact form at 3000 steps (mean of 4 seeds) and level at 15000; accepted on the long horizon.
+Primitives: `covariance` (EMA second moments A, D), `direction` (generators, the Fisher operator, its solve in a
+basis), `factorization` (the generalized eigenbasis), `linalg` (Cayley, spectral norm, exact-fp32 context). `hooks`
+records activations (A) and output gradients (D). `pion_baseline` is published Pion, the only baseline. `reference`
+is a numpy oracle for the tests.
 
-# Which variant is which
-
-Nine optimizer names are registered in `harness.train.NGD_IMPLEMENTATIONS` and
-twenty modules sit in this package. This file says what each one is and whether
-it is live, so that picking one does not require reading all of them.
-
-**Read the status column with its caveat.** Almost every "superseded" verdict
-below was decided on a **150-step** comparison, and 150 steps was measured on
-2026-08-27 to *invert* the ordering of these optimizers: `ngd-pion` beats `pion`
-at 150 steps and loses to it by 0.30 at 73242, and for `shampoo-pion` the arm
-that is worst at step 500 is best from step 1000. So a dead end here means
-"lost a comparison we no longer trust", not "ruled out". Re-testing one at 3000
-steps is about fifty minutes.
-
-## The optimizers
-
-**The three live NGD names now share one class**, `unified.NGDPionUnified`, with
-the variants as flags rather than as a tower of subclasses. `_apply` had been
-copied four times and each copy needed a test to police it. The names are kept
-as presets so every sbatch script and every run directory on disk still means
-what it says, and `tests/test_unified.py` pins each preset **bit for bit**
-against the class it replaced.
-
-| name | class | module | status |
-|---|---|---|---|
-| `ngd-pion-s` | `NGDPionUnified` | `unified.py` | **live.** Preset: `use_s=True`, no momentum. Every NGD result in the repository |
-| `ngd-pion-m` | `NGDPionUnified` | `unified.py` | **live, best number so far.** Preset: `use_s=True` plus `ngd_momentum`. 3.8734 at 3000 steps against `pion`'s best-of-eight 3.9880 |
-| `ngd-pion-u` | `NGDPionUnified` | `unified.py` | **live.** Every algorithmic choice from the configuration instead of from the name -- the way to reach a combination nobody subclassed |
-| -- | `FastNGDPionS` | `with_s_fast.py` | **oracle, no longer run.** Kept so `tests/test_unified.py` has something to check against |
-| -- | `MomentumNGDPionS` | `momentum.py` | **oracle, no longer run.** Same |
-| `shampoo-pion` | `ShampooPion` | `shampoo.py` | **live alternative.** Preconditioner from the generators themselves, no hooks. Behind `ngd-pion-s` on loss; the only arm with a cross-layer angle spread near 1 |
-| `pion` | `Pion` | `pion_baseline.py` | **the baseline** -- published Pion, and the only one |
-| ~~`pion_ablated`~~ | -- | -- | **removed 2026-09-22** (ADR 0008, 0011). Momentum, RMS scaling and the truncated retraction switched off; it was not Pion. Its five 150-step runs in `runs/ablated/` are void |
-| `ngd-pion` | `FastNGDPion` | `fast.py` | superseded, and **not** folded into the unified class: it carries `angle_max`, a per-step cap on the rotation that the unified class does not implement. The default is `0`, so nothing has used it, but removing a lever silently is worse than leaving a module |
-| `ngd-pion-ref` | `NGDPion` | `optimizer.py` | reference. Unoptimised orchestration, checked against `reference.py` |
-| `ngd-pion-s-ref` | `NGDPionS` | `with_s.py` | reference for the `S` family. Now carries the power-iteration angle itself |
-| `ngd-pion-exact` | `ExactCurvNGDPionS` | `exact_curv.py` | **diagnostic only.** Measures the curvature the step is not preconditioned by; `_apply` calls its parent first, so the trajectory is unchanged |
-| `ngd-pion-op` | `OpDampedNGDPion` | `op_damped.py` | dead end. The floor on the operator rather than on its ingredients. Null result -- **and the null was measured at a shared `eta` across arms**, which the journal records as unable to have shown an effect either way |
-| `ngd-pion-pow` | `PoweredNGDPion` | `powered.py` | dead end. `F^-p`; `power = 0.5` measured 5.824 against the `S` arm's 5.5068. **Its docstring calls `power = 1/2` "Adam, Shampoo", which is wrong** -- the exponents agree, the matrices raised to them do not |
-| `ngd-pion-damped` | `DampedNGDPionS` | `damped.py` | dead end. Additive Tikhonov with a Levenberg-Marquardt rule on the reduction ratio |
-
-## Everything else
-
-| module | role |
-|---|---|
-| `reference.py` | the numpy oracle for NGD-Pion. **Never optimise it**; if it and the torch path disagree, it is right until proven otherwise |
-| `shampoo_reference.py` | the same role for `shampoo.py` |
-| `direction.py` | generators, the Fisher operator, the solve, the trust region |
-| `factorization.py` | the bases that diagonalise the operator: identity anchor and congruence |
-| `covariance.py` | `A = E[xx^T]`, and it refuses bf16 storage on purpose |
-| `linalg.py` | shared primitives: `cayley`, `spectral_norm`, `safe_eigh`, the spectral floor, `exact_fp32` |
-| `hooks.py` | feeds `nn.Linear` activations to the optimizer |
-| `damp_op.py` | the damping primitive `op_damped.py` is built from |
-
-## The two kinds of flag
-
-Kept apart deliberately, and tested differently.
-
-**Algorithmic** -- `use_s`, `momentum`, `beta1` -- change the trajectory. Each
-must reproduce the class it replaces under `torch.equal`, not `allclose`.
-
-**Implementation** -- `retraction`, `angle` -- must not, or must change it by a
-stated bound. `angle` feeds the instrument and the Newton-Schulz guard and
-nothing in the step, so all three settings must leave the weights identical;
-`retraction="ns"` is an approximation, so it is checked against the error bound
-`linalg.cayley_newton_schulz` documents and against the spectrum invariant.
-
-Mixing the two in one list is how a knob meant to be free quietly becomes a
-variable in a comparison.
-
-## Traps this layout has already sprung
-
-* **A configuration field that reaches the manifest but not the optimizer.**
-  `ngd_power` does exactly that for `ngd-pion-s`, so six runs record a
-  controlled variable that was not one. `tests/test_shampoo.py` and
-  `tests/test_momentum.py` pin the wiring for the two newest optimizers; the
-  older ones are unpinned.
-* **A manifest that records the configuration rather than the object built from
-  it.** The removed `pion_ablated` runs record `momentum="lie"`,
-  `scaling="rms"`, `retraction="trunc"` because `build_optimizers` substituted
-  at construction. The runs were correct; their record was not. The general
-  hazard stands for any future preset.
-* **A subclass whose reason for existing has lapsed.** `FastNGDPionS` was faster
-  than its parent until the parent absorbed the change. Its docstring now says
-  so, and a test pins the equality.
+The earlier NGD-Pion optimizers (`ngd-pion-*`, the alpha trust region, `shampoo-pion`) were removed on 2026-11-05;
+they are in git history and described in `docs/history/`.

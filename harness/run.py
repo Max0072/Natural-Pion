@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 import sys
 from dataclasses import fields, replace
 from typing import get_args, get_type_hints
@@ -73,6 +74,11 @@ def main() -> None:
         help="start over even if a checkpoint is present",
     )
     ap.add_argument(
+        "--from-manifest", metavar="MANIFEST",
+        help="repeat a run exactly as its manifest.json records it; only --out-dir, --data-path, --val-path, "
+             "--device and --max-steps apply",
+    )
+    ap.add_argument(
         "--anchor", choices=sorted(TARGETS),
         help="run their published configuration and compare against their figure",
     )
@@ -105,6 +111,15 @@ def main() -> None:
             print("\nmissed. before calling it a bug, rule out:")
             for reason in KNOWN_DIFFERENCES:
                 print(f"  - {reason}")
+        return
+
+    if args.from_manifest:
+        recorded = RunConfig.from_manifest(json.loads(Path(args.from_manifest).read_text())["config"])
+        cfg = replace(recorded, out_dir=args.out_dir, data_path=args.data_path, val_path=args.val_path)
+        print(f"from {args.from_manifest}: {cfg.name}")
+        out = train(cfg, device=args.device, max_steps=args.max_steps,
+                    resume=not args.no_resume, force=args.force)
+        print(f"\nwrote {out}")
         return
 
     overrides = {
