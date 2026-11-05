@@ -451,7 +451,7 @@ class NaturalPionFast(NaturalPion):
     def __init__(self, params, lr: float = 0.05, *, t_fac: int = 25, stats_window: int | None = 6,
                  beta_a: float = 0.5, beta_d: float = 0.5, share_inputs: bool = True,
                  retraction: str = "ns_delta", batch_sigma: bool = True, share_root: bool = True,
-                 async_refresh: bool = False, cg_iters: int = 0, **kwargs) -> None:
+                 async_refresh: bool = True, cg_iters: int = 0, **kwargs) -> None:
         super().__init__(params, lr, t_fac=t_fac, stats_window=stats_window, beta_a=beta_a, beta_d=beta_d,
                          share_inputs=share_inputs, retraction=retraction, **kwargs)
         self.batch_sigma = batch_sigma
