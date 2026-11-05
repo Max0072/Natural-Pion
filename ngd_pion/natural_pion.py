@@ -913,22 +913,31 @@ def stiefel_basis(B: torch.Tensor, Cq: torch.Tensor, Q: torch.Tensor, eps: float
     return Pr, lam_f, f, H
 
 
-def stiefel_direction(G: torch.Tensor, Pr, lam, f, H, Q: torch.Tensor):
+def stiefel_direction(G: torch.Tensor, Pr, lam, f, H, Q: torch.Tensor, lowp: torch.dtype | None = None):
     """F^-1 G on the wide side without the invisible block, projected off the current kernel, as factors
     X' = L @ Mt with L = [Q, R2] (s x 2k) and Mt = [Q^T X; Q^T] (2k x s). X itself is never formed: two products of
     order s^2 k (G P_r and (P_r^T G) H), everything else s k^2."""
-    GP = G @ Pr                                                            # s x k
+    if lowp is None:
+        GP = G @ Pr                                                        # s x k
+    else:                                                                  # the two s^2 k products on tensor cores
+        GP = (G.to(lowp) @ Pr.to(lowp)).float()
     Prt = Pr.transpose(-1, -2)
     K = 0.5 * (lam.unsqueeze(-1) + lam.unsqueeze(-2))
-    Y = (Prt @ GP) / K                                                     # k x k, skew
+    Y = (Prt @ GP) / K
+    Y = 0.5 * (Y - Y.transpose(-1, -2))                                    # skew exactly (bf16 products are not)
     d = (2.0 / (lam + f)).unsqueeze(-1)                                    # k x 1
-    Z = (-GP.transpose(-1, -2)) @ H                                        # P_r^T G H, k x s
+    if lowp is None:
+        Z = (-GP.transpose(-1, -2)) @ H                                    # P_r^T G H, k x s
+    else:
+        Z = ((-GP.transpose(-1, -2)).to(lowp) @ H.to(lowp)).float()
     # X = P_r Y P_r^T + P_r D Z - Z^T D P_r^T  (D = diag d)
     a = Q.transpose(-1, -2) @ Pr                                           # Q^T P_r, k x k
     ZQ = Z @ Q                                                             # k x k
     QX = a @ Y @ Prt + (a * d.transpose(-1, -2)) @ Z - ZQ.transpose(-1, -2) @ (d * Prt)          # Q^T X, k x s
-    XQ = Pr @ (Y @ a.transpose(-1, -2)) + Pr @ (d * ZQ) - Z.transpose(-1, -2) @ (d * a.transpose(-1, -2))  # X Q
-    R2 = XQ - Q @ (QX @ Q)
+    # X skew gives X Q = -(Q^T X)^T; building R2 from QX itself makes L @ Mt skew by construction (the Cayley gate)
+    S = QX @ Q
+    S = 0.5 * (S - S.transpose(-1, -2))
+    R2 = -QX.transpose(-1, -2) - Q @ S
     return torch.cat([Q, R2], dim=-1), torch.cat([QX, Q.transpose(-1, -2)], dim=-2)
 
 
@@ -1041,13 +1050,18 @@ class NaturalPionStiefel(NaturalPionTurbo):
             nb = [st["bases"][0 if side == "out" else 1] for st in sts]
             Gn = g_in if side == "out" else g_out
             P = torch.stack([x.P for x in nb]); den = torch.stack([x.denominator for x in nb]); Pt = P.transpose(-1, -2)
-            Xn = skew(P @ ((Pt @ Gn @ P) / den) @ Pt)
+            if self.fisher_dtype == "bf16":                                # as Turbo: F^-1 products in bf16
+                Pb, Ptb = P.to(torch.bfloat16), Pt.to(torch.bfloat16)
+                Xn = skew((Pb @ ((Ptb @ Gn.to(torch.bfloat16) @ Pb).float() / den).to(torch.bfloat16) @ Ptb).float())
+            else:
+                Xn = skew(P @ ((Pt @ Gn @ P) / den) @ Pt)
             # wide side: Stiefel form
             Gwd = g_out if side == "out" else g_in
             Pr = torch.stack([st["stiefel"][0] for st in sts]); lam = torch.stack([st["stiefel"][1] for st in sts])
             f = torch.stack([st["stiefel"][2] for st in sts]); H = torch.stack([st["stiefel"][3] for st in sts])
             Q = _orth_basis(W, side)
-            L, Mt = stiefel_direction(Gwd, Pr, lam, f, H, Q)
+            L, Mt = stiefel_direction(Gwd, Pr, lam, f, H, Q,
+                                      lowp=torch.bfloat16 if self.fisher_dtype == "bf16" else None)
             # sigma = max over the two sides, warm power iteration
             fresh = any("v_wide" not in st or st["since_refactor"] == 0 for st in sts)
             it = group["angle_warmup"] if fresh else group["angle_iters"]
