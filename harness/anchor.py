@@ -34,8 +34,8 @@ Their optimizer has since been read too, not only their script, and it moved
 three things. `_scale_update_matrix_rms` takes an `update_side` and normalises
 the side being applied, which `pion_baseline` now does; their default leaves
 the second moment off, which `pion_second_moment` now defaults to; and their
-`pion_qkv_split_granularity` defaults to per-head Q, which
-`pion_split_q_per_head` now reproduces. Two entries left `KNOWN_DIFFERENCES`
+`pion_qkv_split_granularity` defaults to per-head Q, which every rotating
+optimizer here now does (`train.query_blocks`). Two entries left `KNOWN_DIFFERENCES`
 outright: their Pion never applies weight decay to a rotated weight, and their
 sample windows cross document boundaries exactly as ours do.
 """
@@ -81,7 +81,7 @@ KNOWN_DIFFERENCES = (
     "layout: Megatron fuses QKV and fuses up with gate, where this harness "
     "keeps five separate matrices. Their optimizer slices the fused parameters "
     "apart again before rotating -- Q per head, K and V whole, up and gate "
-    "apart -- so with `pion_split_q_per_head` the geometry matches and only the "
+    "apart -- so with Q per head (`train.query_blocks`) the geometry matches and only the "
     "storage layout differs",
 )
 

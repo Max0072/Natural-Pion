@@ -53,6 +53,12 @@ __all__ = ["build_optimizers", "lr_at", "train"]
 DIAGNOSED = (NGDPion, ShampooPion)
 
 
+def query_blocks(model, cfg: RunConfig) -> dict[int, int]:
+    """The query projection rotates as one block per attention head (Pion's `qkv_split_granularity="head"`; K and V
+    are separate matrices here already). Part of the model's geometry, the same for every rotating optimizer."""
+    return {id(m.weight): cfg.model.heads for m in model.query_projections()}
+
+
 def lr_at(step: int, cfg: RunConfig, base: float | None = None, shape: str = "cosine") -> float:
     """Cosine decay to `lr_min`. Their script warms up over zero steps.
 
@@ -146,9 +152,7 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
         # The final method (docs/paper/FINAL.md). Only the angle and the momentum come from the
         # configuration; cadence, statistics window and factor EMAs are the class's own, so the legacy
         # `ngd_*` defaults cannot leak in. `--lr` is the peak rotation angle in radians.
-        # the query projection is rotated per attention head, as in Pion
-        blocks = {id(m.weight): cfg.model.heads for m in model.query_projections()}
-        rot = NATURAL_PION[cfg.optimizer](weights, lr=cfg.lr, beta1=cfg.ngd_beta1, row_blocks=blocks,
+        rot = NATURAL_PION[cfg.optimizer](weights, lr=cfg.lr, beta1=cfg.ngd_beta1, row_blocks=query_blocks(model, cfg),
                                           eps=cfg.ngd_eps, damping=cfg.np_damping,
                                           retraction=cfg.np_retraction, ns_iters=cfg.ngd_ns_iters,
                                           ns_guard=cfg.ngd_ns_guard, stats_dtype=cfg.np_stats_dtype,
@@ -235,15 +239,7 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
             alternate=cfg.pion_alternate,
             beta1=cfg.pion_beta1,
             beta2=cfg.pion_beta2 if cfg.pion_second_moment else None,
-            # Per-head Q blocks are their published configuration, and this arm
-            # is published Pion. `NGDPion` rotates whole matrices; that is one of
-            # the several differences between the two methods and is listed with
-            # the others in docs/history/VALIDATION.md V2.
-            row_blocks=(
-                {id(m.weight): cfg.model.heads for m in model.query_projections()}
-                if cfg.pion_split_q_per_head
-                else None
-            ),
+            row_blocks=query_blocks(model, cfg),
         )
         recorder = None
     else:

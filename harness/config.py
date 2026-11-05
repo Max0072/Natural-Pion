@@ -403,11 +403,6 @@ class RunConfig:
     # directory. Both are fields now, and the second moment is off by default
     # because that is what their number comes from.
     pion_second_moment: bool = False
-    # Their `pion_qkv_split_granularity`, which defaults to `"head"` and which
-    # the 60M script does not override: Q is rotated in per-head blocks, K and
-    # V whole. This harness keeps Q, K and V as separate matrices already, so
-    # only the granularity of Q was ever different.
-    pion_split_q_per_head: bool = True
 
     # AdamW, for everything Pion does not own -- the embedding, the output head
     # and the norm gains, which are 32.9M of this model's 58.2M parameters.
