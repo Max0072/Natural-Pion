@@ -11,8 +11,8 @@ $W \leftarrow R_{\mathrm{out}} W R_{\mathrm{in}}$, so the singular values of eve
 whole run. We keep this constraint and change the direction of the rotation from the gradient to the
 natural gradient. On LLaMA-60M trained on 9.6B tokens of C4, the resulting optimizer, **Natural Pion**,
 reaches a validation loss of {{np_full_steps:.4f}} in Pion's number of steps, against Pion's {{pion_full:.4f}}. At Pion's
-wall-clock time it reaches {{np_full_clock:.4f}}. It needs at least {{steps_ratio_min_lo:.2f}}x fewer steps to reach Pion's final loss, and it
-is ahead at equal wall-clock time on every seed and horizon we measured.
+wall-clock time it reaches {{np_full_clock:.4f}}. With each method on its own full schedule, it needs {{budget_lo:.2f}}–{{budget_hi:.2f}}x fewer steps to reach the losses Pion
+reaches; on one GPU it is also ahead at equal wall-clock time on every seed and horizon we measured.
 
 The method rests on three results. First, on the rotation generators the Kronecker-factored (K-FAC)
 Fisher information takes a closed form, $F(X) = \tfrac12(SXA + AXS)$. Here $A$ is the second moment of
@@ -75,7 +75,7 @@ provides.
    the cost is also given in FLOPs (Section 4).
 6. **Experiments.** On LLaMA-60M / C4 at Pion's full 9.6B-token budget, Natural Pion is ahead of
    Pion at equal steps by {{gap_full_steps:.3f}} and at equal wall-clock time by {{gap_full_clock:.3f}} in validation loss. It is ahead
-   on four of four seeds at two shorter horizons, and needs at least {{steps_ratio_min_lo:.2f}}x fewer steps. Ablations
+   on four of four seeds at two shorter horizons, and needs {{budget_lo:.2f}}–{{budget_hi:.2f}}x fewer steps. Ablations
    isolate each component.
 
 ---
@@ -689,22 +689,25 @@ Against Pion at its best short-horizon learning rate ($2\cdot10^{-3}$, seed 0), 
 
 ### 5.3 Steps to reach Pion's loss
 
-For each Pion run, we find the first step at which a Natural Pion run reaches Pion's final validation
-loss.
+Every run below has its own full cosine schedule ending at its budget $B$, so no loss is read off the middle of
+a schedule. For each method the final validation loss is fitted as $L(B) = a + bB^{-c}$ ({{budget_n_pion}} Pion budgets,
+{{budget_n_np}} Natural Pion budgets, four seeds where available; worst residual {{budget_resid:.4f}}), and the saving at Pion's
+loss $L$ is $B_{\mathrm{Pion}} / B_{\mathrm{NP}}(L)$, with $B_{\mathrm{NP}}$ from the fit or from linear interpolation in $\log B$
+between Natural Pion's budgets (`scripts/analysis/budget_fit.py`).
 
-*Table 7. Steps to Pion's final loss (seed 0).*
+*Table 7. Steps saved at Pion's loss: fit / interpolation.*
 
-| Pion steps | Pion val | Natural Pion reaches it at | ratio |
-|---|---|---|---|
-| 3 840 | {{steps_pion_3840_val:.4f}} | {{steps_cross_3840:,.0f}} | {{steps_ratio_3840:.2f}} |
-| 4 500 | {{steps_pion_4500_val:.4f}} | {{steps_cross_4500:,.0f}} | {{steps_ratio_4500:.2f}} |
-| 19 200 | {{steps_pion_19200_val:.4f}} | {{steps_cross_19200:,.0f}} | {{steps_ratio_19200:.2f}} |
-| 73 242 | {{steps_pion_73242_val:.4f}} | {{steps_cross_73242:,.0f}} | {{steps_ratio_73242:.2f}} |
+| Pion steps | Pion val | saving |
+|---|---|---|
+| 5 300 | {{budget_5300_L:.4f}} | {{budget_5300_pow:.2f}} / {{budget_5300_int:.2f}} |
+| 15 000 | {{budget_15000_L:.4f}} | {{budget_15000_pow:.2f}} / {{budget_15000_int:.2f}} |
+| 19 200 | {{budget_19200_L:.4f}} | {{budget_19200_pow:.2f}} / {{budget_19200_int:.2f}} |
+| 30 000 | {{budget_30000_L:.4f}} | {{budget_30000_pow:.2f}} / {{budget_30000_int:.2f}} |
+| 45 000 | {{budget_45000_L:.4f}} | {{budget_45000_pow:.2f}} / {{budget_45000_int:.2f}} |
+| 73 242 | {{budget_73242_L:.4f}} | {{budget_73242_pow:.2f}} / {{budget_73242_int:.2f}} |
 
-The crossing is interpolated linearly between two evaluations (every 500 steps in the short runs, every
-2 000 in the full-length ones), so each ratio is known to an interval: {{steps_ratio_73242_lo:.2f}}–{{steps_ratio_73242_hi:.2f}} at
-73 242 steps and {{steps_ratio_19200_lo:.2f}}–{{steps_ratio_19200_hi:.2f}} at 19 200. The ratio does not shrink with length. In settings where a step is expensive for reasons other than the optimizer (large
-distributed batches, reinforcement learning with generation), steps rather than optimizer time are
+The saving does not shrink with length. Where a step is expensive for reasons other than the optimizer
+(large distributed batches, reinforcement learning with generation), steps rather than optimizer time are
 the cost that matters.
 
 ### 5.4 Ablations
@@ -850,14 +853,13 @@ reports modest gains over its truncated exponential; at Natural Pion's angles it
 * **Cost.** $F^{-1}$, Cayley and the refresh are $O(n^3)$ per matrix: {{flops_60M_ratio:.2f}}x Pion's step FLOPs at 60M,
   {{flops_1_3B_ratio:.2f}}x at 1.3B (Section 4.11); on several GPUs the matrices have to be divided among them to keep
   that share.
-* **Steps-to-loss** (at least {{steps_ratio_min_lo:.2f}}x) is a lower bound from mid-schedule crossings, not a measured ratio with
-  fitted schedules.
 
 **Future work.** Reinforcement learning from verifiable rewards, where a step costs minutes of
 generation and the step efficiency of Section 5.3 is the relevant measure. The natural policy gradient
-lineage (Kakade, 2001) makes it the natural test. Larger models, where the $O(n^3)$ refresh has to be
-amortised over more steps or distributed across devices; at the shapes of a 1.7B model, one refresh
-of all matrices takes {{rl_refactor_b200:.0f}} s on one B200.
+lineage (Kakade, 2001) makes it the natural test. Larger models, where the optimizer's $O(n^3)$ work has to be
+divided across devices (at the shapes of a 1.7B model, one refresh of all matrices takes {{rl_refactor_b200:.0f}} s on one B200)
+and can be cut further: on a rectangular matrix the wide side need not form the block of its generator that
+cannot move $W$, which brings $F^{-1}$ and the Cayley step from $O(m^3)$ to $O(m^2 n)$ and a Woodbury solve of size $2n$.
 
 ---
 

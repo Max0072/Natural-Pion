@@ -531,6 +531,23 @@ if f.exists():
                 f"{f.name}: {part} / model FLOP, {size}")
 else:
     missing("flops_60M_np", "python scripts/analysis/flops.py")
+# steps saving from runs with their own full schedules (scripts/analysis/budget_fit.py)
+f = R / "probes" / "budget_fit.json"
+if f.exists():
+    d = json.load(open(f))
+    inside = {B: t for B, t in d["targets"].items() if t["interpolated"]}
+    for B, t in inside.items():
+        put(f"budget_{B}_L", t["L"], f"{f.name}: Pion val at {B} steps")
+        put(f"budget_{B}_pow", t["ratio_powerlaw"], f"{f.name}: B_Pion / B_NP(L), power law")
+        put(f"budget_{B}_int", t["ratio_interp"], f"{f.name}: same, interpolation in log B")
+    allr = [x for t in inside.values() for x in (t["ratio_powerlaw"], t["ratio_interp"])]
+    put("budget_lo", min(allr), f"{f.name}: smallest saving over both models and every interpolated target")
+    put("budget_hi", max(allr), f"{f.name}: largest")
+    put("budget_resid", max(d["residual_max_pion"], d["residual_max_np"]), f"{f.name}: worst fit residual")
+    put("budget_n_pion", len(d["pion"]["B"]), f"{f.name}: Pion budgets")
+    put("budget_n_np", len(d["natural_pion"]["B"]), f"{f.name}: Natural Pion budgets")
+else:
+    missing("budget_lo", "python scripts/analysis/budget_fit.py")
 # rounding of the retractions on bare matrices (scripts/probes/ns_rounding.py)
 f = R / "probes" / "ns_rounding.json"
 if f.exists():
