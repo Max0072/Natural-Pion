@@ -12,5 +12,10 @@ for SRC in npv2 npv2x; do
 done
 FIG=""; ls runs-record/npv2/s73242/*/log.jsonl >/dev/null 2>&1 && grep -q '"step": 73241' runs-record/npv2/s73242/*/log.jsonl \
     && FIG="python scripts/analysis/figures.py --out docs/paper/figures/preprint;"
-apptainer exec --env PYTHONPATH="$REPO" --pwd "$REPO" "$SIF" sh -c \
-    "$FIG python scripts/analysis/budget_fit.py; python scripts/analysis/paper_numbers.py; python scripts/analysis/render_paper.py"
+apptainer exec --bind "$DATA_p330:$DATA_p330" --env PYTHONPATH="$REPO" --pwd "$REPO" "$SIF" sh -c \
+    "$FIG python scripts/probes/retraction_drift.py; python scripts/analysis/budget_fit.py; python scripts/analysis/paper_numbers.py; python scripts/analysis/render_paper.py"
+# On a GPU, once the runs exist (they measure checkpoints and short training runs of the current code):
+#   sbatch scripts/probes/paper_checks.sbatch        K-FAC vs exact curvature, fp32 drift (the method's s3000 checkpoint)
+#   RETS="cayley ns ns_delta" sbatch scripts/probes/ns_diag.sbatch     per-step ||W||_F^2 change of each retraction
+#   sbatch scripts/probes/optimizer_step_bench.sbatch                 the optimizer step by part (Table 2b)
+

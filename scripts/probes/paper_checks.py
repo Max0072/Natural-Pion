@@ -174,7 +174,7 @@ def checkpoint_checks(ckpt: Path):
     # K-FAC against the exact per-token curvature along X = F^-1 G_in
     model = trained.to(DEV)
     linears, _ = model.parameter_split()
-    chosen = [linears[0], linears[5], linears[6]]
+    chosen = [linears[1], linears[5], linears[6]]      # k (square; q rotates per head), up, down of layer 0
     acts, grads, hs = {}, {}, []
     for m in chosen:
         hs.append(m.register_forward_pre_hook(lambda mod, inp, _m=m: acts.__setitem__(id(_m), inp[0].detach())))
@@ -214,8 +214,9 @@ def main():
         json.dump(OUT, open(dst, "w"), indent=1)
         print(json.dumps(OUT, indent=1))
         return
-    ckpt = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(
-        f"{os.environ['DATA_p330']}/runs/stepnormcombo/batch/ngd-pion-m-lr0.2-s0-e24857dcf7/checkpoint.pt")
+    # default: Natural Pion Fast, 3000 steps, angle 0.2, seed 0 (scripts/paper/v2.sbatch row s3000)
+    ckpt = Path(sys.argv[1]) if len(sys.argv) > 1 else sorted(
+        Path(os.environ["DATA_p330"], "runs", "npv2", "s3000").glob("*-s0-*/checkpoint.pt"))[0]
     torch.backends.cuda.matmul.allow_tf32 = False
     power_checks(); svd_timing(); ns_checks(); tf32_check(); checkpoint_checks(ckpt)
     OUT["gpu"] = torch.cuda.get_device_name(0)

@@ -4,7 +4,8 @@ For each checkpoint the initial weights are rebuilt from the run's seed and mode
 rotated matrix with singular values s0 (initial) and s1 (trained, both sorted):
   rel     = max_i |s1_i / s0_i - 1|           relative; dominated by the smallest s0 when it is near zero
   scaled  = max_i |s1_i - s0_i| / max_i s0_i   in units of the matrix's own scale
-Reported over the 56 matrices: median of rel, median and max of scaled, mean signed change mean_i(s1/s0 - 1).
+Reported over the rotated units (each matrix; the query projection per attention head, as it is rotated): median of
+rel, median and max of scaled, mean signed change mean_i(s1/s0 - 1).
 Each checkpoint is measured in its own process (rebuilding several models in one process gave wrong numbers).
 
     python scripts/probes/retraction_drift.py        # writes runs-record/probes/retraction_drift.json
@@ -19,11 +20,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 RUNS = Path(os.environ.get("DATA_p330", "")) / "runs"
-CHECKPOINTS = {                       # 3000 steps, angle 0.2, seed 0
-    "cayley": "stepnormcombo/batch/*/checkpoint.pt",
-    "ns": "npns/s3000/*/checkpoint.pt",
-    "trunc": "nptrunc/s3000/*/checkpoint.pt",
-    "ns_delta": "npnsdelta_b200/s3000/*/checkpoint.pt",
+CHECKPOINTS = {                       # Natural Pion Fast, 3000 steps, angle 0.2, seed 0 (scripts/paper/v2.sbatch rows)
+    "cayley": "npv2*/ret-cayley/*/checkpoint.pt",
+    "ns": "npv2*/ret-ns/*/checkpoint.pt",
+    "trunc": "npv2*/ret-trunc/*/checkpoint.pt",
+    "ns_delta": "npv2*/s3000/*-s0-*/checkpoint.pt",   # the method itself
 }
 
 
@@ -36,14 +37,16 @@ def measure(ckpt: Path) -> dict:
     init, trained = Transformer(m), Transformer(m)
     trained.load_state_dict(torch.load(ckpt, map_location="cpu", weights_only=False)["model"])
     rel, scaled, signed = [], [], []
+    queries = {id(q) for q in init.query_projections()}
     for a, b in zip(init.parameter_split()[0], trained.parameter_split()[0]):
-        s0 = torch.linalg.svdvals(a.weight.detach().double())
-        s1 = torch.linalg.svdvals(b.weight.detach().double())
-        rel.append(float((s1 / s0 - 1).abs().max()))
-        scaled.append(float((s1 - s0).abs().max() / s0.max()))
-        signed.append(float((s1 / s0 - 1).mean()))
+        k = m.heads if id(a) in queries else 1          # the units that rotate (harness.train.query_blocks)
+        for wa, wb in zip(a.weight.detach().double().chunk(k), b.weight.detach().double().chunk(k)):
+            s0, s1 = torch.linalg.svdvals(wa), torch.linalg.svdvals(wb)
+            rel.append(float((s1 / s0 - 1).abs().max()))
+            scaled.append(float((s1 - s0).abs().max() / s0.max()))
+            signed.append(float((s1 / s0 - 1).mean()))
     rel.sort(); scaled.sort()
-    return {"checkpoint": str(ckpt.relative_to(RUNS)), "rel_median": rel[len(rel) // 2],
+    return {"checkpoint": str(ckpt.relative_to(RUNS)), "setting": "v2", "units": len(rel), "rel_median": rel[len(rel) // 2],
             "scaled_median": scaled[len(scaled) // 2], "scaled_max": scaled[-1],
             "signed_mean": sum(signed) / len(signed)}
 

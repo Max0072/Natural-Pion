@@ -1,30 +1,11 @@
 {
- "cayley": {
-  "checkpoint": "stepnormcombo/batch/ngd-pion-m-lr0.2-s0-e24857dcf7/checkpoint.pt",
-  "rel_median": 0.0003917356420519713,
-  "scaled_median": 0.0003638761026921075,
-  "scaled_max": 0.0004282204067623651,
-  "signed_mean": 0.0003450805762192593
- },
- "ns": {
-  "checkpoint": "npns/s3000/natural-pion-fast-lr0.2-s0-9beff0de0d/checkpoint.pt",
-  "rel_median": 0.01257794291424541,
-  "scaled_median": 0.011830435685893622,
-  "scaled_max": 0.016893005569130124,
-  "signed_mean": 0.011188893442604242
- },
- "trunc": {
-  "checkpoint": "nptrunc/s3000/natural-pion-fast-lr0.2-s0-1a77be85d1/checkpoint.pt",
-  "rel_median": 0.005935601053447481,
-  "scaled_median": 0.000971820642053325,
-  "scaled_max": 0.0034202065571312962,
-  "signed_mean": 0.0022740232951194905
- },
  "ns_delta": {
-  "checkpoint": "npnsdelta_b200/s3000/natural-pion-fast-lr0.2-s0-27a57b0962/checkpoint.pt",
-  "rel_median": 0.00027819559758868184,
-  "scaled_median": 2.827411776648847e-06,
-  "scaled_max": 3.947807840945071e-06,
-  "signed_mean": 2.530773178097097e-06
+  "checkpoint": "npv2/s3000/natural-pion-fast-lr0.2-s0-d44725584d/checkpoint.pt",
+  "setting": "v2",
+  "units": 112,
+  "rel_median": 4.62192310024534e-06,
+  "scaled_median": 2.3130510848048866e-06,
+  "scaled_max": 6.337004852595337e-06,
+  "signed_mean": 2.065544196878509e-06
  }
 }

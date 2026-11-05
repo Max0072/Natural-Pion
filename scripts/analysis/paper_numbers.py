@@ -143,24 +143,13 @@ def missing(key: str, need: str):
     NUM[key] = None
     NOTE[key] = "MISSING: " + need
 
-
-# ---------------------------------------------------------------------------------------------- keys
 L = "stepnormlong"
 
-# headline, full length
-pf, ncf, nsf = info(one(f"{L}/pion73242-lr1e-3/*")), info(one(f"{L}/ours56900-lr0.05/*")), info(one(f"{L}/ours73242-lr0.05/*"))
+# ------------------------------------------------------------------------------------------- Pion (the baseline)
+pf = info(one(f"{L}/pion73242-lr1e-3/*"))
 put("pion_full", pf["val"], f"{L}/pion73242-lr1e-3")
 put("pion_full_wall", pf["wall"], f"{L}/pion73242-lr1e-3, wall")
-put("np_full_clock", ncf["val"], f"{L}/ours56900-lr0.05")
-put("np_full_clock_wall", ncf["wall"], f"{L}/ours56900-lr0.05, wall")
-put("np_full_clock_0025", val(f"{L}/ours56900-lr0.025/*"), f"{L}/ours56900-lr0.025")
-put("np_full_steps", nsf["val"], f"{L}/ours73242-lr0.05")
-put("np_full_steps_wall", nsf["wall"], f"{L}/ours73242-lr0.05, wall")
-put("gap_full_clock", pf["val"] - ncf["val"], "pion_full - np_full_clock")
-put("gap_full_steps", pf["val"] - nsf["val"], "pion_full - np_full_steps")
 put("pion_sps", pf["wall"] / pf["steps"], "pion_full wall / steps")
-put("np_sps", ncf["wall"] / ncf["steps"], "np_full_clock wall / steps")
-put("cost_ratio", NUM["np_sps"] / NUM["pion_sps"], "np_sps / pion_sps")
 
 # Pion lr grid
 for steps, lrs in ((3840, ("5e-4", "1e-3", "2e-3", "4e-3")), (19200, ("1e-3", "2e-3", "4e-3"))):
@@ -170,211 +159,17 @@ for steps, lrs in ((3840, ("5e-4", "1e-3", "2e-3", "4e-3")), (19200, ("1e-3", "2
 
 put("pion_lr_3840_better", NUM["pion_lr_3840_1e-3"] - NUM["pion_lr_3840_2e-3"], "Pion 3840: lr 1e-3 - lr 2e-3")
 
-# equal wall time, seeds
-P1800 = lambda s: ("stepnormfinal/pion3840/*", 0) if s == 0 else (f"{L}/pion3840-lr1e-3/*", s)
-O1800 = lambda s: ("stepnormcombo/batch/*", 0) if s == 0 else ("stepnormfinal/tf25/*", s)
-P8900 = lambda s: ("stepnormfinal/pion19200/*", 0) if s == 0 else (f"{L}/pion19200-lr1e-3/*", s)
-O8900 = lambda s: ("stepnormfinal/tf25-15k-0.05/*", 0) if s == 0 else (f"{L}/ours15000-lr0.05/*", s)
-for tag, P, O in (("1800", P1800, O1800), ("8900", P8900, O8900)):
-    gaps = []
-    for s in range(4):
-        g = val(*P(s)) - val(*O(s))
-        gaps.append(g)
-        put(f"gap_{tag}_s{s}", g, f"{P(s)[0]} seed {s} - {O(s)[0]} seed {s}")
-    put(f"gap_{tag}_mean", sum(gaps) / 4, f"mean of gap_{tag}_s0..3")
-put("gap_1800_vs_pion2e3", val(f"{L}/pion3840-lr2e-3/*", 0) - val("stepnormcombo/batch/*", 0), "Pion 3840 lr 2e-3 - ours 3000, seed 0")
-
-# equal steps
 p3000 = [val("adamw2d/pion-lr0.001-s0-9e6e6d32f6")] + [val("seedshead/pion-lr0.001-*", s) for s in (1, 2, 3)]
-o3000 = [val(*O1800(s)) for s in range(4)]
 put("pion3000_s0", p3000[0], "adamw2d/pion-lr0.001-s0-9e6e6d32f6 (Pion, 3000 steps, AdamW 8e-3)")
 put("pion3000_mean", sum(p3000) / 4, "Pion 3000, seeds 0-3 (adamw2d, seedshead)")
-put("np3000_mean", sum(o3000) / 4, "Natural Pion Fast 3000 @0.2, seeds 0-3")
-put("gap3000", NUM["pion3000_mean"] - NUM["np3000_mean"], "pion3000_mean - np3000_mean")
 put("pion15k", val("ladder15k/pion-lr0.001-s0-f67fdad3e9"), "ladder15k/pion-lr0.001-s0-f67fdad3e9")
-put("np15k", val("stepnormfinal/tf25-15k-0.05/*"), "stepnormfinal/tf25-15k-0.05")
-put("gap15k", NUM["pion15k"] - NUM["np15k"], "pion15k - np15k")
 
-# steps to Pion's final val (first crossing inside one of our runs; seed 0)
-ours_curves = [info(one(p)) for p in ("stepnormcombo/batch/*", "stepnormfinal/tf25-15k-0.05/*", f"{L}/ours56900-lr0.05/*", f"{L}/ours73242-lr0.05/*")]
-ratios = []
-for steps, pat in ((3840, "stepnormfinal/pion3840/*"), (4500, "stepnormfinal/pion4500/*"), (19200, "stepnormfinal/pion19200/*"), (73242, f"{L}/pion73242-lr1e-3/*")):
-    target = val(pat, 0)
-    cross, bracket = None, None
-    for c in ours_curves:
-        pts = sorted((s + 1, v) for s, v in c["vals"].items())
-        for (s0, v0), (s1, v1) in zip(pts, pts[1:]):
-            if v1 <= target < v0:
-                s = s0 + (v0 - target) / (v0 - v1) * (s1 - s0)
-                if cross is None or s < cross:
-                    cross, bracket = s, (s0, s1)
-                break
-    put(f"steps_pion_{steps}_val", target, pat)
-    put(f"steps_cross_{steps}", cross, f"first step any of our seed-0 runs reaches val(Pion {steps}), linear between evaluations")
-    put(f"steps_ratio_{steps}", steps / cross, f"{steps} / steps_cross_{steps}")
-    ratios.append(steps / cross)
-    put(f"steps_ratio_{steps}_lo", steps / bracket[1], f"{steps} / the evaluation step after the crossing")
-    put(f"steps_ratio_{steps}_hi", steps / bracket[0], f"{steps} / the evaluation step before the crossing")
-put("steps_ratio_min", min(ratios), "min of steps_ratio_*")
-put("steps_ratio_min_lo", min(NUM[f"steps_ratio_{n}_lo"] for n in (3840, 4500, 19200, 73242)), "min of steps_ratio_*_lo: the conservative bound")
-
-# ablations: direction
-for key, pat in (("dir_fisher_nomom", "stepnorm/*"), ("dir_raw_nomom", "stepnormabl/none-cosine/*"),
-                 ("dir_fisher_mom", "stepnormmom/fisher/*"), ("dir_raw_mom", "stepnormmom/none/*")):
-    v, lr, interior = best(pat)
-    put(key, v, f"best of {pat} (angle {lr}{'' if interior else ', EDGE'})")
-put("gain_fisher_nomom", NUM["dir_raw_nomom"] - NUM["dir_fisher_nomom"], "dir_raw_nomom - dir_fisher_nomom")
-put("gain_fisher_mom", NUM["dir_raw_mom"] - NUM["dir_fisher_mom"], "dir_raw_mom - dir_fisher_mom")
-put("gain_angle_on_raw", NUM["pion3000_s0"] - NUM["dir_raw_mom"], "pion3000_s0 - dir_raw_mom")
-
-# ablations: length rules (no momentum, t_fac 1)
-for key, pat, kw in (("len_rms", "stepnormnorm/rms/*", {}), ("len_fishernorm", "stepnormnorm/fisher/*", {}),
-                     ("len_alpha", "tfac1alpha/*", {}), ("len_fixed", "tfac1/*", {"ngd_t_fac": 1}),
-                     ("len_before", "stepnormpre/*", {})):
-    v, lr, interior = best(pat, **kw)
-    put(key, v, f"best of {pat} {kw} (lr {lr}{'' if interior else ', EDGE'})")
-    NUM[key + "_interior"] = interior
-    NOTE[key + "_interior"] = f"is the best of {pat} inside its grid"
-rms_seed = [val("stepnormnorm/rms/*", 0, lr=0.0024)] + [val("stepnormrmsseeds/*", s) for s in (1, 2, 3)]
-spec_seed = [val("stepnorm/*", 0, lr=0.4)] + [val("stepnormseeds/*", s) for s in (1, 2, 3)]
-for s in range(4):
-    put(f"rms_gap_s{s}", rms_seed[s] - spec_seed[s], f"RMS (lr 2.4e-3) - spectral (angle 0.4), seed {s}")
-def spread(rel: str) -> float:
-    """Median over logged steps >= 1000 of p90/p10 of the realised angle across the 56 matrices."""
-    ang = json.load(open(R / rel / "angles.json"))
-    ratios = []
-    for step, xs in ang.items():
-        if int(step) < 1000:
-            continue
-        xs = sorted(abs(x) for x in xs)
-        lo, hi = xs[int(0.1 * (len(xs) - 1))], xs[int(0.9 * (len(xs) - 1))]
-        if lo > 0:
-            ratios.append(hi / lo)
-    ratios.sort()
-    return ratios[len(ratios) // 2]
-
-
-for k, rel in (("spectral", "stepnorm/ngd-pion-s-lr0.4-s0-abc48c0d29"),
-               ("rms", "stepnormnorm/rms/ngd-pion-s-lr0.0024-s0-0e56770015"),
-               ("fishernorm", "stepnormnorm/fisher/ngd-pion-s-lr0.0048-s0-39ae0e1733"),
-               ("alpha", "tfac1alpha/ngd-pion-s-lr0.004-s0-98de9ab11a"),
-               ("fixed", "tfac1/ngd-pion-s-lr0.002-s0-0abdc0de2e"),
-               ("before", "stepnormpre/ngd-pion-s-lr3e-05-s0-72fbe69d19")):
-    put(f"angle_spread_{k}", spread(rel), f"{rel}/angles.json (scripts/analysis/extract_angles.py): median over steps >= 1000 of p90/p10 across matrices")
-put("angle_spread_fixed_c", NUM["angle_spread_fixed"], "= angle_spread_fixed")
-
-# ablations: other choices
-put("ref_tf25", val("stepnormcombo/cos0.2/*"), "stepnormcombo/cos0.2 (t_fac 25, momentum, A and D last 6)")
-put("sides_best", min(val("stepnormcombo/sides0.1/*"), val("stepnormcombo/sides0.2/*")), "best of stepnormcombo/sides0.1, sides0.2")
-for m in ("0.25", "0.5", "2", "4"):
-    put(f"attn_{m}", val(f"stepnormattn/m{m}/*"), f"stepnormattn/m{m}")
-for k in ("constant", "linear", "warmcos"):
-    v, lr, interior = best(f"stepnormabl/fisher-{k}/*")
-    put(f"sched_{k}", v, f"best of stepnormabl/fisher-{k} (angle {lr}{'' if interior else ', EDGE'})")
-for d in ("0.2", "0.1"):
-    put(f"wsd_{d}", val(f"stepnormwsd/decay{d}/*"), f"stepnormwsd/decay{d}")
-put("polar_2499", val_at(one("stepnormpower/p0/*", lr=0.01), 2499), "stepnormpower/p0 angle 0.01, val at step 2499")
-put("polar_ref_2499", val_at(one("stepnormmom/fisher/*", lr=0.1), 2499), "stepnormmom/fisher angle 0.1, val at step 2499")
-
-# chapter 4: profile
-for t in ("tfac1", "tfac25"):
-    pr = json.load(open(R / "stepnormprof" / t / "profile.json"))
-    n = pr["_step"][1]
-    per = lambda k: pr[k][0] / n
-    put(f"prof_{t}_refactor", per("_refactor"), f"stepnormprof/{t}/profile.json, _refactor / steps")
-    put(f"prof_{t}_angle", per("_measure_angle"), f"stepnormprof/{t}/profile.json")
-    put(f"prof_{t}_retract", per("_retract"), f"stepnormprof/{t}/profile.json")
-    put(f"prof_{t}_rest", per("_apply") - per("_measure_angle") - per("_retract"), f"stepnormprof/{t}/profile.json, _apply - angle - retract")
-    put(f"prof_{t}_stats", per("observe") + per("observe_backward"), f"stepnormprof/{t}/profile.json, observe + observe_backward")
-    put(f"prof_{t}_step", sps(f"stepnormprof/{t}/*"), f"stepnormprof/{t} run, wall / steps (profiled run)")
-
-# chapter 4: refresh cadence (3000 steps, seed 0; best angle of each grid)
-put("tf1_nomom", NUM["dir_fisher_nomom"], "= dir_fisher_nomom")
-put("tf1_nomom_sps", sps("stepnorm/*", lr=0.4), "stepnorm angle 0.4, wall / steps")
-v, lr, _ = best("stepnormtfac/*"); put("tf25_nomom", v, "best of stepnormtfac"); put("tf25_nomom_sps", sps("stepnormtfac/*", lr=lr), "stepnormtfac best angle")
-put("tf1_mom", NUM["dir_fisher_mom"], "= dir_fisher_mom")
-put("tf1_mom_sps", sps("stepnormmom/fisher/*", lr=0.1), "stepnormmom/fisher angle 0.1")
-put("tf10_mom", val("stepnormcombo/tf10-0.2/*"), "stepnormcombo/tf10-0.2")
-put("tf10_mom_sps", sps("stepnormcombo/tf10-0.2/*"), "stepnormcombo/tf10-0.2")
-v, lr, _ = best("stepnormtfacmom/*"); put("tf25_mom", v, "best of stepnormtfacmom"); put("tf25_mom_sps", sps("stepnormtfacmom/*", lr=lr), "stepnormtfacmom best angle")
-tf1s = [val("stepnormmom/fisher/*", lr=0.1)] + [val("stepnormmomseeds/*", s) for s in (1, 2, 3)]
-tf10s = [val("stepnormfinal/tf10/*", s) for s in (0, 1, 2, 3)]
-put("tf1_mom_mean", sum(tf1s) / 4, "angle 0.1, seeds 0-3")
-put("tf10_mom_mean", sum(tf10s) / 4, "stepnormfinal/tf10 (batched), angle 0.2, seeds 0-3")
-put("tf10_batched_sps", sps("stepnormfinal/tf10/*", 0), "stepnormfinal/tf10 seed 0")
-put("tf1_mom_15k", val("stepnormmom15k/*"), "stepnormmom15k")
-put("exact_vs_fast_3000", NUM["np3000_mean"] - NUM["tf1_mom_mean"], "np3000_mean - tf1_mom_mean")
-
-# chapter 4: statistics windows
-put("win_ref", NUM["tf25_mom"], "= tf25_mom"); put("win_ref_sps", NUM["tf25_mom_sps"], "= tf25_mom_sps")
-for k in ("dlast6", "alast6", "adlast6", "aevery2", "betad09", "betad095"):
-    put(f"win_{k}", val(f"stepnormfactors/{k}/*"), f"stepnormfactors/{k}")
-    put(f"win_{k}_sps", sps(f"stepnormfactors/{k}/*"), f"stepnormfactors/{k}")
-
-# chapter 4: FAST and batching
-ref, fast = _rows(one("stepnormcombo/idref/*")), _rows(one("stepnormcombo/idfast/*"))
-same = [r.get("train_loss") for r in ref if "train_loss" in r] == [r.get("train_loss") for r in fast if "train_loss" in r]
-same = same and [r.get("val_loss") for r in ref if "val_loss" in r] == [r.get("val_loss") for r in fast if "val_loss" in r]
-put("fast_bit_identical", same, "stepnormcombo/idref vs idfast: every logged train and val loss equal")
-put("fast_sps", sps("stepnormcombo/cos0.2/*"), "stepnormcombo/cos0.2 (FAST, unbatched)")
-put("batch_val", val("stepnormcombo/batch/*"), "stepnormcombo/batch")
-put("batch_sps", sps("stepnormcombo/batch/*"), "stepnormcombo/batch")
-put("speedup_vs_exact", NUM["tf1_mom_sps"] / NUM["batch_sps"], "tf1_mom_sps / batch_sps")
-
-# 2.2: empirical vs true Fisher (earlier variant, 3000 steps)
-put("fisher_empirical", best("fisher/*", at=2999, ngd_fisher_mc_every=0)[0], "best of runs-record/fisher at step 2999 (runs cut by --max-steps), empirical D")
-put("fisher_true", best("fisher/*", at=2999, ngd_fisher_mc_every=1)[0], "best of runs-record/fisher at step 2999, D from sampled targets")
-
-# chapter 4: Pion at the same evaluation cadence as the 3000-step runs; memory; unprofiled remainder
 put("pion3000_sps", sps("stepnormfinal/pion3840/*", 0), "Pion 3840 steps, seed 0, eval every 500 like the 3000-step runs (the 3000-step Pion run, adamw2d, ran on older code and is not used for timing)")
-put("cost_ratio_3000", NUM["batch_sps"] / NUM["pion3000_sps"], "batch_sps / pion3000_sps")
-for t in ("tfac1", "tfac25"):
-    parts = sum(NUM[f"prof_{t}_{k}"] for k in ("refactor", "angle", "retract", "rest", "stats"))
-    put(f"prof_{t}_other", NUM[f"prof_{t}_step"] - parts, f"prof_{t}_step - sum of the profiled parts (forward, backward, AdamW, data)")
 
-def peak(pattern):
-    g = [r.get("peak_gb") for r in _rows(one(pattern)) if r.get("peak_gb")]
-    return max(g)
-put("peak_pion", peak("adamw2d/pion-lr0.001-s0-9e6e6d32f6"), "max peak_gb in the Pion 3000-step log (micro-batch 256)")
-put("peak_np", peak("stepnormcombo/batch/*"), "max peak_gb in the Natural Pion Fast 3000-step log (micro-batch 256)")
-put("peak_d", NUM["peak_np"] - NUM["peak_pion"], "peak_np - peak_pion")
+def peak(d: Path) -> float:
+    return max(r.get("peak_gb") or 0.0 for r in _rows(d))
+put("peak_pion", peak(one("adamw2d/pion-lr0.001-s0-9e6e6d32f6")), "max peak_gb in the Pion 3000-step log (micro-batch 256)")
 
-# open checks: per-head query split; regularisation grid
-for e in ("1e-6", "1e-5", "1e-3", "1e-2"):
-    put(f"reg_eps_{e}", val(f"npreg/eps{e}-d0/*"), f"npreg/eps{e}-d0: floor eps = {e}, no damping")
-for d in ("1e-4", "1e-3", "1e-2", "1e-1"):
-    put(f"reg_damp_{d}", val(f"npreg/eps1e-6-d{d}/*"), f"npreg/eps1e-6-d{d}: floor 1e-6 plus damping {d} x max eigenvalue")
-put("reg_best_other", min([NUM[f"reg_eps_{e}"] for e in ("1e-6", "1e-5", "1e-3", "1e-2")] + [NUM[f"reg_damp_{d}"] for d in ("1e-4", "1e-3", "1e-2", "1e-1")]),
-    "best of the eight alternatives")
-put("reg_best_other_d", NUM["reg_best_other"] - NUM["batch_val"], "reg_best_other - batch_val (eps 1e-4)")
-put("npcheck2_identical", True if all(a == b for a, b in zip(
-    [r["train_loss"] for r in _rows(one("npcheck2/*")) if "train_loss" in r],
-    [r["train_loss"] for r in _rows(one("stepnormcombo/batch/*")) if "train_loss" in r])) else False,
-    "npcheck2 (natural-pion-fast, operator 1/2) vs stepnormcombo/batch: every logged train loss of the first 500 steps")
-
-# appendix D: initial spectrum
-I, IL = "stepnorminit", "stepnorminitlong"
-put("init_normal", NUM["batch_val"], "= batch_val")
-for k, pat in (("2", f"{I}/pl2/*"), ("2.5", f"{IL}/ours3000-lr0.2-pl2.5/*"), ("3", f"{I}/pl3/*"),
-               ("4", f"{IL}/ours3000-lr0.2-pl4/*"), ("5", f"{I}/pl5/*"), ("flat", f"{I}/flat/*"), ("orth", f"{I}/orth/*")):
-    put(f"init_{k}", val(pat), pat)
-put("init_best_d", NUM["init_3"] - NUM["init_normal"], "init_3 - init_normal")
-put("init_flat_d", NUM["init_flat"] - NUM["init_normal"], "init_flat - init_normal")
-put("init_orth_d", NUM["init_orth"] - NUM["init_normal"], "init_orth - init_normal")
-g = [NUM["init_normal"] - NUM["init_3"]] + [val("stepnormfinal/tf25/*", s_) - val(f"{IL}/ours3000-lr0.2-pl3/*", s_) for s_ in (1, 2, 3)]
-put("init_gain_3000_mean", sum(g) / 4, "Natural Pion, alpha 3 vs normal, 3000 steps, seeds 0-3")
-put("init_gain_15k", NUM["np15k"] - val(f"{IL}/ours15000-lr0.05-pl3/*"), "Natural Pion, 15000 steps")
-put("init_pion_gain_3000", NUM["pion3000_s0"] - val(f"{IL}/pion3000-lr1e-3-pl3/*"), "Pion, 3000 steps")
-put("init_pion_gain_15k", NUM["pion15k"] - val(f"{IL}/pion15000-lr1e-3-pl3/*"), "Pion, 15000 steps")
-put("init_gain_full", NUM["np_full_clock"] - val(f"{IL}/ours56900-lr0.05-pl3/*"), "Natural Pion, 56900 steps")
-put("init_pion_gain_full", NUM["pion_full"] - val(f"{IL}/pion73242-lr1e-3-pl3/*"), "Pion, 73242 steps")
-
-# small derived values used in the text
-put("tf25_nomom_d", NUM["tf25_nomom"] - NUM["tf1_nomom"], "tf25_nomom - tf1_nomom")
-put("tf10_mom_d", NUM["tf10_mom"] - NUM["tf1_mom"], "tf10_mom - tf1_mom")
-put("tf25_mom_d", NUM["tf25_mom"] - NUM["tf1_mom"], "tf25_mom - tf1_mom")
-put("win_maxdev", max(abs(NUM[f"win_{k}"] - NUM["win_ref"]) for k in ("dlast6", "alast6", "adlast6", "aevery2", "betad09", "betad095")),
-    "largest |win_* - win_ref|")
 _tr = [r for r in _rows(one(f"{L}/pion73242-lr1e-3/*")) if "train_loss" in r]
 _tr = [r["train_loss"] for r in _tr if r["step"] > _tr[-1]["step"] - 2000]
 put("pion_full_train", sum(_tr) / len(_tr), f"{L}/pion73242-lr1e-3: mean logged training loss over the last 2000 steps")
@@ -418,48 +213,7 @@ try:
 except Exception as e:  # numpy missing, etc.
     for k in ("mc_err_in", "mc_err_out", "pullback_err"):
         missing(k, f"scripts/analysis/check_fisher.py failed: {e}")
-for ret in ("ns", "trunc"):
-    for st in ("3000", "15000"):
-        hits = runs(f"np{ret}/s{st}/*")
-        if hits and info(hits[0])["done"]:
-            put(f"ret_{ret}_{st}", info(hits[0])["val"], f"np{ret}/s{st}: natural-pion-fast with the {ret} retraction")
-        else:
-            missing(f"ret_{ret}_{st}", f"scripts/paper/natural_pion_ns.sbatch with RET={ret}, {st} steps")
-    f = R / "probes" / f"paper_checks_{ret}.json"
-    if f.exists():
-        d = json.load(open(f))
-        put(f"ret_{ret}_drift", d["fp32_drift_3000_median"], f"{f.name}: spectrum of the 3000-step {ret} checkpoint vs init, median over matrices")
-        put(f"ret_{ret}_drift_max", d["fp32_drift_3000_max"], f"{f.name}: worst matrix")
-    else:
-        missing(f"ret_{ret}_drift", f"scripts/probes/paper_checks.py <np{ret}/s3000 checkpoint> {ret}")
-        missing(f"ret_{ret}_drift_max", "same")
-for ret in ("ns", "trunc"):
-    put(f"ret_{ret}_sps", sps(f"np{ret}/s3000/*"), f"np{ret}/s3000 (RTX)")
-put("ret_ns_saving", NUM["batch_sps"] - NUM["ret_ns_sps"], "batch_sps - ret_ns_sps (RTX)")
-put("ret_hw_noise", max(abs(val(f"np{r}/s3000/*") - val(f"np{r}_b200/s3000/*")) for r in ("ns", "trunc")),
-    "same configuration on RTX and B200 (np{ns,trunc}/s3000 vs _b200): max |val difference|")
-_m = json.load(open(one("npstats_fp32_b200/s3000/*") / "manifest.json"))
-put("tokens_per_step", _m["tokens_per_step"], "manifest tokens_per_step")
-put("stats_tokens", _m["config"]["micro_batch"] * _m["config"]["model"]["seq_len"],
-    "micro_batch x seq_len: the hooks record the first micro-batch of a step (harness/train.py)")
-# ns_delta: Newton-Schulz in the correction form, B200 only so far
-hits = runs("npnsdelta_b200/s3000/*")
-if hits and info(hits[0])["done"]:
-    put("ret_nsd_3000", info(hits[0])["val"], "npnsdelta_b200/s3000")
-    put("ret_nsd_sps_b200", sps("npnsdelta_b200/s3000/*"), "npnsdelta_b200/s3000 (B200)")
-else:
-    missing("ret_nsd_3000", "RET=ns_delta OUTROOT=npnsdelta_b200 sbatch -p b200 --array=0 scripts/paper/natural_pion_ns.sbatch")
-    missing("ret_nsd_sps_b200", "same")
-f = R / "probes" / "paper_checks_ns_delta.json"
-if f.exists():
-    d = json.load(open(f))
-    put("ret_nsd_drift", d["fp32_drift_3000_median"], f.name)
-    put("ret_nsd_drift_max", d["fp32_drift_3000_max"], f.name)
-else:
-    missing("ret_nsd_drift", "scripts/probes/paper_checks.py <npnsdelta_b200/s3000 checkpoint> ns_delta")
-    missing("ret_nsd_drift_max", "same")
-for ret in ("ns", "trunc"):
-    put(f"ret_{ret}_sps_b200", sps(f"np{ret}_b200/s3000/*"), f"np{ret}_b200/s3000 (B200)")
+
 # per-step change of ||W||_F^2 in training, first 200 steps (scripts/probes/ns_diag.py)
 for ret in ("cayley", "ns", "trunc", "ns_delta"):
     f = R / "probes" / f"ns_diag_{ret}.json"
@@ -477,19 +231,7 @@ for ret in ("cayley", "ns", "trunc", "ns_delta"):
     else:
         for k in ("step", "neg", "sum"):
             missing(f"diag_{ret}_{k}", f"RETS={ret} sbatch scripts/probes/ns_diag.sbatch")
-# trained spectrum drift per retraction, in units of each matrix's largest singular value (retraction_drift.py)
-f = R / "probes" / "retraction_drift.json"
-if f.exists():
-    d = json.load(open(f))
-    for tag in ("cayley", "ns", "trunc", "ns_delta"):
-        if tag in d:
-            put(f"rd_{tag}_med", d[tag]["scaled_median"], f"{f.name}: median over 56 matrices of max|s1-s0|/max s0")
-            put(f"rd_{tag}_max", d[tag]["scaled_max"], f"{f.name}: worst matrix, same measure")
-            put(f"rd_{tag}_signed", d[tag]["signed_mean"], f"{f.name}: mean signed relative change")
-        else:
-            missing(f"rd_{tag}_med", "python scripts/probes/retraction_drift.py")
-else:
-    missing("rd_cayley_med", "python scripts/probes/retraction_drift.py")
+
 f = R / "probes" / "retraction_bias.json"
 if f.exists():
     d = json.load(open(f))["n1376_th0.05"]
@@ -498,11 +240,7 @@ if f.exists():
         put(f"rb_{tag}_z", d[tag]["z"], f"{f.name}: same, mean over its standard error")
 else:
     missing("rb_solve_mean", "python scripts/probes/retraction_bias.py")
-# the current fast form (one A per input, Newton-Schulz in Z - I, batched sigma, bf16 statistics)
-put("fast2_val", val("npfast2/s3000/*"), "npfast2/s3000")
-put("fast2_sps", sps("npfast2/s3000/*"), "npfast2/s3000 (RTX)")
-put("fast2_15k", val("npfast2/s15000/*"), "npfast2/s15000")
-put("fast2_ratio", NUM["fast2_sps"] / NUM["pion3000_sps"], "fast2_sps / pion3000_sps")
+
 # optimizer step alone, by part (scripts/probes/optimizer_step_bench.py, synchronised timers)
 f = R / "probes" / "optimizer_step_bench.json"
 if f.exists():
@@ -517,6 +255,7 @@ if f.exists():
             "generators+momentum + apply W")
 else:
     missing("bench_pion", "scripts/probes/optimizer_step_bench.sbatch")
+
 # FLOP per step (scripts/analysis/flops.py)
 f = R / "probes" / "flops.json"
 if f.exists():
@@ -533,33 +272,8 @@ if f.exists():
                 f"{f.name}: {part} / model FLOP, {size}")
 else:
     missing("flops_60M_np", "python scripts/analysis/flops.py")
-# steps saving from runs with their own full schedules (scripts/analysis/budget_fit.py)
-f = R / "probes" / "budget_fit.json"
-if f.exists():
-    d = json.load(open(f))
-if f.exists() and d.get("complete"):
-    inside = {B: t for B, t in d["targets"].items() if t["interpolated"]}
-    for B, t in inside.items():
-        put(f"budget_{B}_L", t["L"], f"{f.name}: Pion val at {B} steps")
-        put(f"budget_{B}_pow", t["ratio_powerlaw"], f"{f.name}: B_Pion / B_NP(L), power law")
-        put(f"budget_{B}_int", t["ratio_interp"], f"{f.name}: same, interpolation in log B")
-    allr = [x for t in inside.values() for x in (t["ratio_powerlaw"], t["ratio_interp"])]
-    put("budget_lo", min(allr), f"{f.name}: smallest saving over both models and every interpolated target")
-    put("budget_hi", max(allr), f"{f.name}: largest")
-    put("budget_resid", max(d["residual_max_pion"], d["residual_max_np"]), f"{f.name}: worst fit residual")
-    put("budget_n_pion", len(d["pion"]["B"]), f"{f.name}: Pion budgets")
-    put("budget_n_np", len(d["natural_pion"]["B"]), f"{f.name}: Natural Pion budgets")
-    for B, e in d["equal_time"].items():
-        put(f"eqt_{B}_steps", e["B_np"], f"{f.name}: Natural Pion steps in Pion's time at {B}")
-        put(f"eqt_{B}_L", e["L_np_powerlaw"], f"{f.name}: Natural Pion loss there, from the fit")
-        put(f"eqt_{B}_gap", e["gap_powerlaw"], f"{f.name}: Pion - Natural Pion at equal time, fit")
-        put(f"eqt_{B}_gap_int", e["gap_interp"], f"{f.name}: same, interpolation")
-        put(f"eqt_{B}_Lp", e["L_pion"], f"{f.name}: Pion at {B}")
-else:
-    for k in ["budget_lo", "budget_hi", "budget_resid", "budget_n_pion", "budget_n_np"] + \
-             [f"budget_{B}_{x}" for B in (5300, 15000, 19200, 30000, 45000, 73242) for x in ("L", "pow", "int")] + \
-             [f"eqt_{B}_{x}" for B in (3840, 19200, 73242) for x in ("steps", "L", "gap", "gap_int", "Lp")]:
-        missing(k, "python scripts/analysis/budget_fit.py (needs every npv2 run)")
+
+# ---------------------------------------------------------------- Section 5 (v2.sbatch rows 99-110)
 
 # Section 5 with the query projection per head (scripts/paper/v2.sbatch, rows 99-110)
 def _v(pattern, seed=None):
@@ -605,6 +319,35 @@ try:
     put("v2_ratio", NUM["v2_sps"] / NUM["pion3000_sps"], "v2_sps / pion3000_sps")
 except SystemExit:
     missing("v2_sps", "npv2/s3000 seed 0")
+
+# steps saving from runs with their own full schedules (scripts/analysis/budget_fit.py)
+f = R / "probes" / "budget_fit.json"
+if f.exists():
+    d = json.load(open(f))
+if f.exists() and d.get("complete"):
+    inside = {B: t for B, t in d["targets"].items() if t["interpolated"]}
+    for B, t in inside.items():
+        put(f"budget_{B}_L", t["L"], f"{f.name}: Pion val at {B} steps")
+        put(f"budget_{B}_pow", t["ratio_powerlaw"], f"{f.name}: B_Pion / B_NP(L), power law")
+        put(f"budget_{B}_int", t["ratio_interp"], f"{f.name}: same, interpolation in log B")
+    allr = [x for t in inside.values() for x in (t["ratio_powerlaw"], t["ratio_interp"])]
+    put("budget_lo", min(allr), f"{f.name}: smallest saving over both models and every interpolated target")
+    put("budget_hi", max(allr), f"{f.name}: largest")
+    put("budget_resid", max(d["residual_max_pion"], d["residual_max_np"]), f"{f.name}: worst fit residual")
+    put("budget_n_pion", len(d["pion"]["B"]), f"{f.name}: Pion budgets")
+    put("budget_n_np", len(d["natural_pion"]["B"]), f"{f.name}: Natural Pion budgets")
+    for B, e in d["equal_time"].items():
+        put(f"eqt_{B}_steps", e["B_np"], f"{f.name}: Natural Pion steps in Pion's time at {B}")
+        put(f"eqt_{B}_L", e["L_np_powerlaw"], f"{f.name}: Natural Pion loss there, from the fit")
+        put(f"eqt_{B}_gap", e["gap_powerlaw"], f"{f.name}: Pion - Natural Pion at equal time, fit")
+        put(f"eqt_{B}_gap_int", e["gap_interp"], f"{f.name}: same, interpolation")
+        put(f"eqt_{B}_Lp", e["L_pion"], f"{f.name}: Pion at {B}")
+else:
+    for k in ["budget_lo", "budget_hi", "budget_resid", "budget_n_pion", "budget_n_np"] + \
+             [f"budget_{B}_{x}" for B in (5300, 15000, 19200, 30000, 45000, 73242) for x in ("L", "pow", "int")] + \
+             [f"eqt_{B}_{x}" for B in (3840, 19200, 73242) for x in ("steps", "L", "gap", "gap_int", "Lp")]:
+        missing(k, "python scripts/analysis/budget_fit.py (needs every npv2 run)")
+
 # rounding of the retractions on bare matrices (scripts/probes/ns_rounding.py)
 f = R / "probes" / "ns_rounding.json"
 if f.exists():
@@ -615,22 +358,282 @@ if f.exists():
     put("rnd_delta_vs_cayley", max(r["delta_vs_cayley"] for r in d.values()), f"{f.name}: max over sizes")
 else:
     missing("rnd_ns_0.2", "python scripts/probes/ns_rounding.py")
-# statistics: one A per input tensor, fp32 or bf16 inputs (scripts/paper/natural_pion_stats.sbatch, B200)
-for st in ("fp32", "bf16"):
-    hits = runs(f"npstats_{st}_b200/s3000/*")
-    if hits and info(hits[0])["done"]:
-        put(f"stats_{st}_val", info(hits[0])["val"], f"npstats_{st}_b200/s3000")
-        put(f"stats_{st}_sps", sps(f"npstats_{st}_b200/s3000/*"), f"npstats_{st}_b200/s3000 (B200)")
-    else:
-        missing(f"stats_{st}_val", f"STATS={st} OUTROOT=npstats_{st}_b200 sbatch -p b200 scripts/paper/natural_pion_stats.sbatch")
-if "stats_bf16_val" in NUM and "stats_fp32_val" in NUM:
-    put("stats_bf16_d", NUM["stats_bf16_val"] - NUM["stats_fp32_val"], "stats_bf16_val - stats_fp32_val")
-    put("stats_bf16_saving", NUM["stats_fp32_sps"] - NUM["stats_bf16_sps"], "stats_fp32_sps - stats_bf16_sps")
-hits = runs("npstats_bf16_rtx/s15000/*")
-if hits and info(hits[0])["done"]:
-    put("stats_bf16_15k", info(hits[0])["val"], "npstats_bf16_rtx/s15000 (RTX, as np15k)")
+
+# ------------------------------------------------------------------- Sections 3-4, 5.4, Appendix D: scripts/paper/v2.sbatch
+# Every run is a row of v2.sbatch, found by its tag under runs-record/npv2/<tag>/ (collect_npv2.sh copies them there).
+V = "npv2"
+
+
+def vrun(tag: str, seed: int = 0) -> Path | None:
+    hits = runs(f"{V}/{tag}/*", seed)
+    return max(hits, key=lambda d: (d / "log.jsonl").stat().st_mtime) if hits else None
+
+
+def vinfo(tag: str, seed: int = 0) -> dict | None:
+    d = vrun(tag, seed)
+    if d is None:
+        return None
+    i = info(d)
+    return i if i["done"] else None
+
+
+def vval(key: str, tag: str, seed: int = 0):
+    i = vinfo(tag, seed)
+    if i is None:
+        missing(key, f"v2.sbatch row {tag}, seed {seed}")
+        return None
+    put(key, i["val"], f"{V}/{tag} seed {seed}")
+    return i["val"]
+
+
+def vsps(key: str, tag: str, seed: int = 0, need_done: bool = True):
+    """Wall seconds per step of a v2 run (its last logged wall over its last logged step + 1)."""
+    d = vrun(tag, seed)
+    if d is None or (need_done and not info(d)["done"]):
+        missing(key, f"v2.sbatch row {tag}, seed {seed}")
+        return None
+    rows = [r for r in _rows(d) if "wall" in r]
+    v = rows[-1]["wall"] / (rows[-1]["step"] + 1)
+    put(key, v, f"{V}/{tag} seed {seed}, wall / steps (RTX)")
+    return v
+
+
+def vbest(key: str, tags: list[str], seed: int = 0):
+    """Best final val over an angle grid (one tag per angle). Puts key, key_lr, key_tag and key_interior; missing
+    until every point of the grid is done."""
+    infos = [(t, vinfo(t, seed)) for t in tags]
+    if any(i is None for _, i in infos):
+        todo = [t for t, i in infos if i is None]
+        for k in (key, key + "_lr", key + "_interior"):
+            missing(k, "v2.sbatch rows " + ", ".join(todo))
+        return None
+    infos.sort(key=lambda ti: ti[1]["lr"])
+    k = min(range(len(infos)), key=lambda j: infos[j][1]["val"])
+    interior = 0 < k < len(infos) - 1
+    t, i = infos[k]
+    put(key, i["val"], f"best of {', '.join(tags)}: {t} (angle {i['lr']}{'' if interior else ', EDGE: extend the grid'})")
+    put(key + "_lr", i["lr"], f"angle of {key}")
+    put(key + "_interior", interior, f"is {key} inside its grid")
+    NOTE[key + "_tag"], NUM[key + "_tag"] = "run of the best angle", t
+    return i["val"]
+
+
+def derive(key: str, fn, deps: tuple, note: str):
+    vals = [NUM.get(d) for d in deps]
+    if any(v is None for v in vals):
+        missing(key, "needs " + ", ".join(d for d, v in zip(deps, vals) if v is None))
+        return None
+    put(key, fn(*vals), note)
+    return NUM[key]
+
+
+def grid(prefix: str, angles) -> list[str]:
+    return [f"{prefix}-{a}" for a in angles]
+
+
+# the method's own runs, read by many rows below
+REF = vval("m_3000", "s3000")                              # Natural Pion Fast, angle 0.2, momentum 0.9, seed 0
+vval("m_15000", "s15000")
+vsps("m_sps", "s3000")
+_m = vrun("s3000")
+if _m is not None:
+    _man = json.load(open(_m / "manifest.json"))
+    put("tokens_per_step", _man["tokens_per_step"], "manifest tokens_per_step")
+    put("stats_tokens", _man["config"]["micro_batch"] * _man["config"]["model"]["seq_len"],
+        "micro_batch x seq_len: the hooks record the first micro-batch of a step (harness/train.py)")
+    put("peak_np", peak(_m), "max peak_gb in the Natural Pion Fast 3000-step log (micro-batch 256)")
 else:
-    missing("stats_bf16_15k", "STATS=bf16 OUTROOT=npstats_bf16_rtx sbatch --array=1 scripts/paper/natural_pion_stats.sbatch")
+    for k in ("tokens_per_step", "stats_tokens", "peak_np"):
+        missing(k, "v2.sbatch row s3000")
+derive("peak_d", lambda a, b: a - b, ("peak_np", "peak_pion"), "peak_np - peak_pion")
+
+# 3.1: the true Fisher (D from targets drawn from the model) against the empirical one, best of three angles each
+vbest("fisher_true", grid("fisher-mc", ("0.1", "0.2", "0.4")))
+vbest("fisher_empirical", ["fisher-emp-0.1", "s3000", "fisher-emp-0.4"])
+
+# 3.4 / 4.8: retractions (3000 steps angle 0.2; 15000 steps angle 0.05)
+vval("ret_cayley_3000", "ret-cayley")
+vval("ret_ns_3000", "ret-ns")
+vval("ret_trunc_3000", "ret-trunc")
+vval("ret_trunc_15000", "ret-trunc-15k")
+vsps("ret_cayley_sps", "ret-cayley")
+vsps("ret_ns_sps", "ret-ns")
+
+# 4.1: the step by part (400 profiled steps; ngd_pion.natural_pion's own GPU-synchronised timers)
+PARTS = {"refresh": "refresh", "sigma": "sigma", "cayley": "cayley", "Finv": "F^-1",
+         "shared": ("generators+momentum", "apply W")}
+for t, tag in (("tfac1", "prof-alg1"), ("tfac25", "prof-tf25")):
+    d = vrun(tag)
+    pf_ = (d / "profile.json") if d is not None else None
+    if pf_ is None or not pf_.exists():
+        for k in list(PARTS) + ["step", "other"]:
+            missing(f"prof_{t}_{k}", f"v2.sbatch row {tag} (writes profile.json)")
+        continue
+    pr = json.load(open(pf_))
+    n, sec = pr["steps"], pr["seconds"]
+    for k, names in PARTS.items():
+        names = names if isinstance(names, tuple) else (names,)
+        put(f"prof_{t}_{k}", sum(sec.get(x, 0.0) for x in names) / n, f"{V}/{tag}/profile.json: {' + '.join(names)} / steps")
+    vsps(f"prof_{t}_step", tag, need_done=False)
+    derive(f"prof_{t}_other", lambda s, *p: s - sum(p), (f"prof_{t}_step",) + tuple(f"prof_{t}_{k}" for k in PARTS),
+           f"prof_{t}_step - the optimizer's parts: forward and backward with the statistics hooks, AdamW, data")
+
+# 4.2: refresh cadence (Algorithm 1 = natural-pion; every row's angle tuned on its own grid)
+vbest("tf1_nomom", grid("alg1-nomom", ("0.2", "0.4", "0.8")))
+vbest("tf25_nomom", grid("tf25-nomom", ("0.4", "0.8", "1.6")))
+vbest("tf1_mom", grid("alg1-mom", ("0.05", "0.1", "0.2")))
+vbest("tf25_mom", grid("tf25-mom", ("0.1", "0.2", "0.4")))
+vval("tf10_mom", "tf10-s0")
+for k in ("tf1_nomom", "tf25_nomom", "tf1_mom", "tf25_mom"):
+    if NUM.get(k + "_tag"):
+        vsps(k + "_sps", NUM[k + "_tag"])
+    else:
+        missing(k + "_sps", f"{k} grid")
+vsps("tf10_mom_sps", "tf10-s0")
+derive("tf25_nomom_d", lambda a, b: a - b, ("tf25_nomom", "tf1_nomom"), "tf25_nomom - tf1_nomom")
+derive("tf10_mom_d", lambda a, b: a - b, ("tf10_mom", "tf1_mom"), "tf10_mom - tf1_mom")
+derive("tf25_mom_d", lambda a, b: a - b, ("tf25_mom", "tf1_mom"), "tf25_mom - tf1_mom")
+_tf10 = [vinfo("tf10-s0" if s == 0 else f"tf10-s{s}", s) for s in range(4)]
+if all(_tf10):
+    put("tf10_mom_mean", sum(i["val"] for i in _tf10) / 4, "v2 rows tf10-s0..s3, angle 0.2")
+else:
+    missing("tf10_mom_mean", "v2.sbatch rows tf10-s0..s3")
+# Algorithm 1 over seeds at its best angle: seed 0 from the grid, seeds 1-3 from the rows "alg1-mom-seeds"
+_s0 = NUM.get("tf1_mom")
+_s = [vinfo("alg1-mom-seeds", s) for s in (1, 2, 3)]
+if _s0 is not None and all(_s):
+    put("tf1_mom_mean", (_s0 + sum(i["val"] for i in _s)) / 4, "Algorithm 1, best angle, seeds 0-3")
+else:
+    missing("tf1_mom_mean", "v2.sbatch rows alg1-mom-seeds, seeds 1-3, at the angle of tf1_mom (add once the grid is done)")
+vval("tf1_mom_15k", "alg1-mom-15k")
+derive("exact_vs_fast_3000", lambda a, b: a - b, ("v2_3000_mean", "tf1_mom_mean"), "v2_3000_mean - tf1_mom_mean")
+
+# 4.3: statistics windows on the T_fac = 25 form, angle 0.2 (reference: tf25-mom-0.2)
+vval("win_ref", "tf25-mom-0.2")
+vsps("win_ref_sps", "tf25-mom-0.2")
+for k in ("dlast6", "alast6", "adlast6", "aevery2", "betad09", "betad095"):
+    vval(f"win_{k}", f"win-{k}")
+    vsps(f"win_{k}_sps", f"win-{k}")
+_w = [NUM.get(f"win_{k}") for k in ("dlast6", "alast6", "adlast6", "aevery2", "betad09", "betad095")]
+if NUM.get("win_ref") is not None and all(v is not None for v in _w):
+    put("win_maxdev", max(abs(v - NUM["win_ref"]) for v in _w), "largest |win_* - win_ref|")
+else:
+    missing("win_maxdev", "every win-* row")
+
+# 4.5: batching by shape (Fast with exact Cayley, fp32 statistics, unbatched sigma, one A per matrix)
+vval("batch_val", "form46")
+vsps("batch_sps", "form46")
+
+# 4.7: statistics inputs, fp32 against bf16 (the method)
+vval("stats_fp32_val", "stats-fp32")
+vsps("stats_fp32_sps", "stats-fp32")
+vval("stats_fp32_15k", "stats-fp32-15k")
+derive("stats_bf16_d", lambda a, b: a - b, ("m_3000", "stats_fp32_val"), "m_3000 - stats_fp32_val")
+derive("stats_bf16_saving", lambda a, b: a - b, ("stats_fp32_sps", "m_sps"), "stats_fp32_sps - m_sps")
+
+# cost of the method against Pion and Algorithm 1
+derive("speedup_vs_exact", lambda a, b: a / b, ("tf1_mom_sps", "m_sps"), "tf1_mom_sps / m_sps")
+
+# 5.4: direction, X = F^-1 G against X = G (best angle of each grid; 0.2 with momentum is the method's own run)
+vbest("dir_fisher_nomom", grid("dir-nat-nomom", ("0.1", "0.2", "0.4")))
+vbest("dir_fisher_mom", ["dir-nat-mom-0.1", "s3000", "dir-nat-mom-0.4"])
+vbest("dir_raw_nomom", grid("dir-raw-nomom", ("0.1", "0.2", "0.4")))
+vbest("dir_raw_mom", grid("dir-raw-mom", ("0.1", "0.2", "0.4")))
+derive("gain_fisher_nomom", lambda a, b: a - b, ("dir_raw_nomom", "dir_fisher_nomom"), "dir_raw_nomom - dir_fisher_nomom")
+derive("gain_fisher_mom", lambda a, b: a - b, ("dir_raw_mom", "dir_fisher_mom"), "dir_raw_mom - dir_fisher_mom")
+
+# 5.4: length rules, Fast with momentum; angle spread = median over logged steps >= 1000 of p90/p10 of the realised angle
+GRIDS = {"before": ("3e-6", "1e-5", "3e-5", "1e-4", "3e-4"), "rms": ("6e-4", "1.2e-3", "2.4e-3", "4.8e-3", "9.6e-3"),
+         "fisher": ("2.4e-3", "4.8e-3", "9.6e-3", "1.9e-2", "3.8e-2"), "quad": ("1e-3", "2e-3", "4e-3", "8e-3", "1.6e-2"),
+         "fixed": ("5e-4", "1e-3", "2e-3", "4e-3", "8e-3")}
+
+
+def angle_spread(d: Path) -> float | None:
+    rs = sorted(r["angle_p90"] / r["angle_p10"] for r in _rows(d)
+                if r.get("step", 0) >= 1000 and r.get("angle_p10", 0) > 0 and "angle_p90" in r)
+    return rs[len(rs) // 2] if rs else None
+
+
+put("angle_spread_spectral", 1.0, "by construction: c = theta / sigma turns every matrix by theta")
+for rule, g in GRIDS.items():
+    vbest(f"len_{rule}", grid(f"len-{rule}", g))
+    t = NUM.get(f"len_{rule}_tag")
+    s_ = angle_spread(vrun(t)) if t else None
+    (put(f"angle_spread_{rule}", s_, f"{V}/{t}: median over steps >= 1000 of angle_p90 / angle_p10") if s_ is not None
+     else missing(f"angle_spread_{rule}", f"len-{rule} grid"))
+# the RMS rule against the spectral one over seeds (RMS at its best angle: rows "len-rms-seeds", seeds 1-3)
+for s in range(4):
+    rms = NUM.get("len_rms") if s == 0 else (vinfo("len-rms-seeds", s) or {}).get("val")
+    spec = NUM.get("m_3000") if s == 0 else NUM.get(f"v2_3000_s{s}")
+    if rms is not None and spec is not None:
+        put(f"rms_gap_s{s}", rms - spec, f"RMS rule at its best angle - the method, seed {s}")
+    else:
+        missing(f"rms_gap_s{s}", "v2.sbatch rows len-rms-seeds at the angle of len_rms (add once the grid is done)")
+
+# 5.4: regularisation of the Fisher (reference: the method, floor 1e-4)
+for e in ("1e-6", "1e-5", "1e-3", "1e-2"):
+    vval(f"reg_eps_{e}", f"reg-eps{e}")
+for dmp in ("1e-4", "1e-3", "1e-2", "1e-1"):
+    vval(f"reg_damp_{dmp}", f"reg-damp{dmp}")
+_r = [NUM.get(f"reg_eps_{e}") for e in ("1e-6", "1e-5", "1e-3", "1e-2")] + \
+     [NUM.get(f"reg_damp_{d}") for d in ("1e-4", "1e-3", "1e-2", "1e-1")]
+if REF is not None and all(v is not None for v in _r):
+    put("reg_best_other_d", min(_r) - REF, "best of the eight alternatives - m_3000")
+else:
+    missing("reg_best_other_d", "every reg-* row and s3000")
+
+# 5.4: other choices (reference: the method, angle 0.2, cosine)
+vbest("sides_best", grid("sides-each", ("0.1", "0.2")))
+for m in ("0.25", "0.5", "2", "4"):
+    vval(f"attn_{m}", f"attn-x{m}")
+vbest("sched_constant", grid("sched-constant", ("0.05", "0.1", "0.2")))
+vbest("sched_linear", grid("sched-linear", ("0.1", "0.2", "0.4")))
+vbest("sched_warmcos", grid("sched-warmcos", ("0.1", "0.2", "0.4")))
+for dd in ("0.2", "0.1"):
+    vval(f"wsd_{dd}", f"sched-wsd-{dd}")
+vbest("polar", grid("planes-equal", ("0.1", "0.2")))
+_p = [vsps(f"_polar_sps_{a}", f"planes-equal-{a}") for a in ("0.1", "0.2")]
+if all(v is not None for v in _p):
+    put("svd_sps_lo", min(_p), "planes-equal runs, wall / steps, min over angles")
+    put("svd_sps_hi", max(_p), "same, max")
+else:
+    missing("svd_sps_lo", "planes-equal rows"); missing("svd_sps_hi", "planes-equal rows")
+
+# Appendix D: the initial spectrum (Natural Pion Fast; Pion's runs as before)
+put("init_normal", REF, "= m_3000") if REF is not None else missing("init_normal", "s3000")
+for k in ("2", "2.5", "3", "4", "5", "flat", "orth"):
+    vval(f"init_{k}", f"init-pl{k}" if k[0].isdigit() else f"init-{k}")
+derive("init_best_d", lambda *v: min(v[1:]) - v[0], ("init_normal", "init_2", "init_2.5", "init_3", "init_4", "init_5"),
+       "best power-law tail - init_normal")
+derive("init_flat_d", lambda a, b: a - b, ("init_flat", "init_normal"), "init_flat - init_normal")
+derive("init_orth_d", lambda a, b: a - b, ("init_orth", "init_normal"), "init_orth - init_normal")
+_g = [(NUM.get(f"v2_3000_s{s}"), (vinfo("init-pl3", s) or {}).get("val")) for s in range(4)]
+if all(a is not None and b is not None for a, b in _g):
+    put("init_gain_3000_mean", sum(a - b for a, b in _g) / 4, "Natural Pion, alpha 3 vs normal, 3000 steps, seeds 0-3")
+else:
+    missing("init_gain_3000_mean", "init-pl3 seeds 0-3 and s3000 seeds 0-3")
+_i15 = vinfo("init-pl3-15k")
+derive("init_gain_15k", lambda a: a - _i15["val"], ("m_15000",), "m_15000 - init-pl3-15k") if _i15 else missing("init_gain_15k", "v2.sbatch row init-pl3-15k")
+_if = vinfo("init-pl3-73242")
+derive("init_gain_full", lambda a: a - _if["val"], ("v2_full",), "v2_full - init-pl3-73242") if _if else missing("init_gain_full", "v2.sbatch row init-pl3-73242")
+I_, IL = "stepnorminit", "stepnorminitlong"
+put("init_pion_gain_3000", NUM["pion3000_s0"] - val(f"{IL}/pion3000-lr1e-3-pl3/*"), "Pion, 3000 steps")
+put("init_pion_gain_15k", NUM["pion15k"] - val(f"{IL}/pion15000-lr1e-3-pl3/*"), "Pion, 15000 steps")
+put("init_pion_gain_full", NUM["pion_full"] - val(f"{IL}/pion73242-lr1e-3-pl3/*"), "Pion, 73242 steps")
+
+# trained spectrum drift per retraction, in units of each matrix's largest singular value (retraction_drift.py,
+# on the v2 checkpoints: ret-cayley, ret-ns, ret-trunc and the method's s3000)
+f = R / "probes" / "retraction_drift.json"
+d = json.load(open(f)) if f.exists() else {}
+for tag in ("cayley", "ns", "trunc", "ns_delta"):
+    if tag in d and d[tag].get("setting") == "v2":
+        put(f"rd_{tag}_med", d[tag]["scaled_median"], f"{f.name}: median over the rotated matrices of max|s1-s0|/max s0")
+        put(f"rd_{tag}_max", d[tag]["scaled_max"], f"{f.name}: worst matrix, same measure")
+        put(f"rd_{tag}_signed", d[tag]["signed_mean"], f"{f.name}: mean signed relative change")
+    else:
+        for k in ("med", "max", "signed"):
+            missing(f"rd_{tag}_{k}", "python scripts/probes/retraction_drift.py (run by collect_npv2.sh once the checkpoints exist)")
+
 
 PC = R / "probes" / "paper_checks.json"
 pc = json.load(open(PC)) if PC.exists() else {}
@@ -642,19 +645,13 @@ for k in ("trunc_drift_toy", "tf32_drift", "fp32_drift_200", "fp32_drift_3000", 
         put(k, pc[k], "runs-record/probes/paper_checks.json (scripts/probes/paper_checks.py)")
     else:
         missing(k, "run scripts/probes/paper_checks.sbatch (writes runs-record/probes/paper_checks.json)")
-if "svd_exact_s" in pc:
-    rest = NUM["prof_tfac25_refactor"] + NUM["prof_tfac25_retract"] + NUM["prof_tfac25_rest"]
-    put("svd_share_of_step", pc["svd_exact_s"] / (pc["svd_exact_s"] + rest),
-        "exact spectral norms / (that + refresh, retraction and rest of the T_fac 25 optimizer step, profiled)")
-else:
-    missing("svd_share_of_step", "needs paper_checks.json")
-p0 = [sps_median(d) for d in runs("stepnormpower/p0/*")]
-put("sched_linear_fast", val("stepnormcombo/lin0.2/*"), "stepnormcombo/lin0.2 (Natural Pion Fast, linear decay, peak 0.2)")
-put("clock_pion_sps", sps("stepnormclock/pion-*"), "stepnormclock Pion 5300-step run: the step time measured before the clock runs were planned")
-put("clock_steps_planned", 73242 * NUM["clock_pion_sps"] / NUM["batch_sps"], "73242 x clock_pion_sps / batch_sps; rounded to 56 900 for the run")
-put("svd_sps_lo", min(p0), "stepnormpower/p0 runs, median s/step between logged rows, min over angles")
-put("svd_sps_hi", max(p0), "same, max over angles")
 
+if "svd_exact_s" in pc and all(NUM.get(f"prof_tfac25_{k}") is not None for k in ("refresh", "cayley", "Finv", "shared")):
+    rest = sum(NUM[f"prof_tfac25_{k}"] for k in ("refresh", "cayley", "Finv", "shared"))
+    put("svd_share_of_step", pc["svd_exact_s"] / (pc["svd_exact_s"] + rest),
+        "exact spectral norms / (that + the rest of the T_fac 25 optimizer step: refresh, Cayley, F^-1, generators, rotation)")
+else:
+    missing("svd_share_of_step", "paper_checks.json and the prof-tf25 profile")
 
 def main():
     out = ROOT / "docs/paper"
