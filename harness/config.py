@@ -424,11 +424,6 @@ class RunConfig:
     # whole run. The only compensation left is the embedding and the head.
     decay_norms_and_biases: bool = False
 
-    # Natural Pion: rotate the query projection per attention head, as published Pion does
-    # (`pion_split_q_per_head`). The setting of the paper, default since 2026-11-05 (user: the same setting as Pion,
-    # not an option). Runs before that date rotated it whole: pass false to reproduce them. Dropped from the hash
-    # while False, so every earlier run keeps its name.
-    np_split_q_per_head: bool = True
     # Natural Pion: damping of the Fisher relative to its largest eigenvalue (0 = floor only). Out of the hash at 0.
     np_damping: float = 0.0
     # Natural Pion: how the Cayley inverse is computed -- "cayley" exact solve (every paper run in Section 5), "ns"
@@ -492,8 +487,6 @@ class RunConfig:
         d = asdict(self)
         for key in self._EXCLUDED:
             d.pop(key, None)
-        if not d.get("np_split_q_per_head"):
-            d.pop("np_split_q_per_head", None)
         if not d.get("np_damping"):
             d.pop("np_damping", None)
         if d.get("np_retraction") == "cayley":

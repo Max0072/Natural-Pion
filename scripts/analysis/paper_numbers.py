@@ -340,8 +340,6 @@ put("peak_np", peak("stepnormcombo/batch/*"), "max peak_gb in the Natural Pion F
 put("peak_d", NUM["peak_np"] - NUM["peak_pion"], "peak_np - peak_pion")
 
 # open checks: per-head query split; regularisation grid
-put("qhead_val", val("npqhead/*"), "npqhead: natural-pion-fast, query rotated per head, 3000 steps, seed 0")
-put("qhead_d", NUM["qhead_val"] - NUM["batch_val"], "qhead_val - batch_val (query rotated whole)")
 for e in ("1e-6", "1e-5", "1e-3", "1e-2"):
     put(f"reg_eps_{e}", val(f"npreg/eps{e}-d0/*"), f"npreg/eps{e}-d0: floor eps = {e}, no damping")
 for d in ("1e-4", "1e-3", "1e-2", "1e-1"):
