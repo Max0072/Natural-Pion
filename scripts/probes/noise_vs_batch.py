@@ -55,9 +55,8 @@ BATCHES = [int(x) for x in sys.argv[2].split(",")] if len(sys.argv) > 2 else [51
 MICRO = 256
 dev = "cuda" if torch.cuda.is_available() else "cpu"
 
-cfg_d = json.load(open(os.path.join(run, "manifest.json")))["config"]
-mcfg = ModelConfig(**cfg_d["model"])
-cfg = RunConfig(**{k: v for k, v in cfg_d.items() if k != "model"}, model=mcfg)
+cfg = RunConfig.from_manifest(json.load(open(os.path.join(run, "manifest.json")))["config"])
+mcfg = cfg.model
 
 torch.manual_seed(cfg.seed)
 model = Transformer(mcfg).to(dev)

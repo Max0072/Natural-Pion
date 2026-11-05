@@ -7237,3 +7237,17 @@ realised angle (`_largest_angle`; the reference class returns theta, unchanged).
 field (`schedule`: cosine | constant | linear | warmcos | wsd, `wsd_decay`; AdamW keeps the cosine), and
 `np_profile` writes profile.json. All 5.4 and 4.x reruns are rows of scripts/paper/v2_rest.sbatch (0-98).
 Length-rule grids are five points x2 apart around the old optima; an optimum at a grid edge gets a second wave.
+
+## 2026-11-05 — cleanup: defaults, rejected options, one run script
+
+* Q per head: no field anywhere (`pion_split_q_per_head` removed too); `train.query_blocks` gives the blocks to every
+  rotating optimizer. Run names of earlier per-head runs change (the flag was in the hash); scripts find runs by
+  directory and seed, not hash. `RunConfig.from_manifest` loads old manifests (drops the removed fields).
+* Harness no longer overrides class defaults: `np_retraction` / `np_stats_dtype` are None unless set, and the hash
+  records the value in effect (Fast: ns_delta, bf16 — the same names as runs that passed them explicitly; natural-pion:
+  cayley, fp32 — out of the hash as before). NaturalPionFast's statistics default is now bf16 (its final form).
+* Rejected options out of Fast: `cg_iters` and `drop_kernel` deleted (Turbo's own step never called those hooks, so
+  moving them would have left dead code; results stay in this journal and runs-record), `async_refresh` moved to
+  Turbo. One `_lmax`; the `drop_kernel` reference function lives in the tests (Stiefel equivalence).
+* One run script: scripts/paper/v2.sbatch (rows 0-110; empty retraction/stats = class default); v2_rest and
+  v2_perhead removed (their queued jobs keep running from SLURM's copies); collect_npv2.sh merges runs/npv2 and npv2x.

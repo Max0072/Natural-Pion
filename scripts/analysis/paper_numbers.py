@@ -561,7 +561,7 @@ else:
              [f"eqt_{B}_{x}" for B in (3840, 19200, 73242) for x in ("steps", "L", "gap", "gap_int", "Lp")]:
         missing(k, "python scripts/analysis/budget_fit.py (needs every npv2 run)")
 
-# Section 5 with the query projection per head (scripts/paper/v2_perhead.sbatch)
+# Section 5 with the query projection per head (scripts/paper/v2.sbatch, rows 99-110)
 def _v(pattern, seed=None):
     try:
         return val(pattern, seed)
@@ -572,7 +572,7 @@ for st in (3000, 15000):
     vs = [_v(f"npv2/s{st}/*", sd) for sd in range(4)]
     for sd, v in enumerate(vs):
         (put(f"v2_{st}_s{sd}", v, f"npv2/s{st} seed {sd}") if v is not None
-         else missing(f"v2_{st}_s{sd}", f"v2_perhead.sbatch, {st} steps, seed {sd}"))
+         else missing(f"v2_{st}_s{sd}", f"v2.sbatch, {st} steps, seed {sd}"))
     if all(v is not None for v in vs):
         put(f"v2_{st}_mean", sum(vs) / 4, f"npv2/s{st}, seeds 0-3")
     else:
@@ -599,7 +599,7 @@ if vf and info(vf[0])["done"]:
     put("v2_full_ratio", NUM["v2_full_sps"] / NUM["pion_sps"], "v2_full_sps / pion_sps")
 else:
     for k in ("v2_full", "v2_full_wall", "v2_gap_full", "v2_full_sps", "v2_full_ratio"):
-        missing(k, "v2_perhead.sbatch task 11 (73 242 steps)")
+        missing(k, "v2.sbatch row 110 (73 242 steps)")
 try:
     put("v2_sps", sps("npv2/s3000/*", 0), "npv2/s3000 seed 0 (RTX)")
     put("v2_ratio", NUM["v2_sps"] / NUM["pion3000_sps"], "v2_sps / pion3000_sps")

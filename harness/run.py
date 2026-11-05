@@ -18,7 +18,7 @@ import argparse
 import json
 import sys
 from dataclasses import fields, replace
-from typing import get_type_hints
+from typing import get_args, get_type_hints
 
 import torch
 
@@ -46,6 +46,8 @@ def main() -> None:
         if f.name == "model":
             continue
         annotated = hints[f.name]
+        if type(None) in get_args(annotated):            # `X | None`: parse as X, None stays the default
+            annotated = next(a for a in get_args(annotated) if a is not type(None))
         kind = _boolean if annotated is bool else annotated
         ap.add_argument(f"--{f.name.replace('_', '-')}", type=kind, default=getattr(base, f.name))
     # The nested model config gets flags of its own. Without them the

@@ -14,6 +14,24 @@ import torch
 from ngd_pion.natural_pion import NaturalPion, NaturalPionFast, NaturalPionTurbo, NaturalPionStiefel
 
 ROOT = Path(__file__).resolve().parents[1]
+# The block of a generator that cannot move a rectangular W (the reference for the Stiefel form).
+def drop_kernel(X: torch.Tensor, W: torch.Tensor, side: str) -> torch.Tensor:
+    """Remove from the generator X the block that cannot move a rectangular W.
+
+    Out side of W (m x n, m > n): rotations inside the complement of W's column space leave W unchanged. With Q an
+    orthonormal basis of that column space and N = I - Q Q^T, return X - N X N, i.e. Q Q^T X + X Q Q^T - Q Q^T X Q Q^T.
+    In side (m < n): the same with the row space. Skew in, skew out; X' W = X W (out) and W X' = W X (in) exactly."""
+    if side == "out":
+        L = torch.linalg.cholesky_ex(W.transpose(-1, -2) @ W)[0]            # n x n, small side; _ex: no host sync
+        Q = torch.linalg.solve_triangular(L, W.transpose(-1, -2), upper=False).transpose(-1, -2)   # W L^-T, m x n
+    else:
+        L = torch.linalg.cholesky_ex(W @ W.transpose(-1, -2))[0]            # m x m
+        Q = torch.linalg.solve_triangular(L, W, upper=False).transpose(-1, -2)                      # W^T L^-T, n x m
+    QX = Q.transpose(-1, -2) @ X
+    XQ = X @ Q
+    return Q @ QX + XQ @ Q.transpose(-1, -2) - Q @ (QX @ Q) @ Q.transpose(-1, -2)
+
+
 SHAPES = [(12, 8), (8, 8), (8, 8), (8, 12), (12, 8)]  # repeated shapes and sizes exercise the batching
 
 
@@ -70,7 +88,8 @@ def test_fast_is_the_probe_bit_for_bit(t_fac, window):
     a, b = _weights(0), _weights(0)
     probe = StepNorm(a, lr=0.2, beta=0.5, eps=1e-4, alpha_max=1.0, t_fac=t_fac, use_s=True,
                      momentum="lie", beta1=0.9, trust="none", beta_backward=0.5)
-    ours = NaturalPionFast(b, lr=0.2, t_fac=t_fac, stats_window=window, retraction="cayley", batch_sigma=False, share_root=False)
+    ours = NaturalPionFast(b, lr=0.2, t_fac=t_fac, stats_window=window, retraction="cayley", stats_dtype="fp32",
+                           batch_sigma=False, share_root=False)
     ta = _drive(probe, a, 60, 1, _cosine)
     tb = _drive(ours, b, 60, 1, _cosine)
     for t, (wa, wb) in enumerate(zip(ta, tb)):
@@ -207,8 +226,8 @@ def test_bf16_statistics_keep_the_spectrum_and_track_fp32():
 
 def test_newton_schulz_in_correction_form_matches_cayley_and_keeps_the_norm():
     a, b = _weights(21), _weights(21)
-    oa = NaturalPionFast(a, lr=0.2, t_fac=5, stats_window=2, retraction="cayley")
-    ob = NaturalPionFast(b, lr=0.2, t_fac=5, stats_window=2)
+    oa = NaturalPionFast(a, lr=0.2, t_fac=5, stats_window=2, retraction="cayley", stats_dtype="fp32")
+    ob = NaturalPionFast(b, lr=0.2, t_fac=5, stats_window=2, stats_dtype="fp32")
     ta, tb = _drive(oa, a, 30, 22, _cosine), _drive(ob, b, 30, 22, _cosine)
     for x, y in zip(ta[-1], tb[-1]):
         assert torch.allclose(x, y, rtol=1e-4, atol=1e-5), (x - y).abs().max()
@@ -219,7 +238,8 @@ def test_newton_schulz_in_correction_form_matches_cayley_and_keeps_the_norm():
 @pytest.mark.parametrize("retraction", ["ns_delta", "cayley"])
 def test_turbo_is_fast_batched(retraction):
     a, b = _weights(23), _weights(23)
-    fa = NaturalPionFast(a, lr=0.2, t_fac=5, stats_window=2, retraction=retraction, row_blocks={id(a[1]): 4})
+    fa = NaturalPionFast(a, lr=0.2, t_fac=5, stats_window=2, retraction=retraction, stats_dtype="fp32",
+                         row_blocks={id(a[1]): 4})
     fb = NaturalPionTurbo(b, lr=0.2, t_fac=5, stats_window=2, retraction=retraction, stats_dtype="fp32",
                           fisher_dtype="fp32", c_floor="eigh", inv_root="eigh", row_blocks={id(b[1]): 4})
     ta, tb = _drive(fa, a, 30, 24, _cosine), _drive(fb, b, 30, 24, _cosine)
@@ -255,23 +275,6 @@ def test_turbo_approximations_stay_behind_the_cayley_gate(opts):
         assert (p.detach() - w).abs().max() > 1e-3
 
 
-
-def test_cg_correction_keeps_the_spectrum_and_reduces_the_residual():
-    ps = _weights(31)
-    s0 = [torch.linalg.svdvals(p.detach().double()) for p in ps]
-    opt = NaturalPionFast(ps, lr=0.2, t_fac=10, stats_window=2, cg_iters=2)
-    _drive(opt, ps, 20, 32, _cosine)
-    for p, s in zip(ps, s0):
-        assert torch.allclose(torch.linalg.svdvals(p.detach().double()), s, rtol=1e-4)
-    # zero iterations is the plain fast form, bit for bit
-    a, b = _weights(33), _weights(33)
-    wa = _drive(NaturalPionFast(a, lr=0.2, t_fac=5, stats_window=2), a, 10, 34, _cosine)[-1]
-    wb = _drive(NaturalPionFast(b, lr=0.2, t_fac=5, stats_window=2, cg_iters=0), b, 10, 34, _cosine)[-1]
-    for x, y in zip(wa, wb):
-        assert torch.equal(x, y)
-
-
-
 def test_sketch_is_exact_at_full_rank_and_low_rank_below():
     from ngd_pion.covariance import CovarianceAccumulator, SketchAccumulator
     g = torch.Generator().manual_seed(35)
@@ -285,7 +288,6 @@ def test_sketch_is_exact_at_full_rank_and_low_rank_below():
 
 
 def test_drop_kernel_removes_only_the_invisible_block():
-    from ngd_pion.natural_pion import drop_kernel
     from ngd_pion.linalg import skew
     g = torch.Generator().manual_seed(37)
     W = torch.randn(12, 5, generator=g, dtype=torch.float64)
@@ -299,19 +301,9 @@ def test_drop_kernel_removes_only_the_invisible_block():
     Yi = drop_kernel(X, Wi, "in")
     assert torch.allclose(Wi @ Yi, Wi @ X)
 
-
-def test_drop_kernel_keeps_the_spectrum():
-    ps = _weights(39)
-    s0 = [torch.linalg.svdvals(p.detach().double()) for p in ps]
-    _drive(NaturalPionFast(ps, lr=0.2, t_fac=5, stats_window=2, drop_kernel=True), ps, 20, 40, _cosine)
-    for p, s in zip(ps, s0):
-        assert torch.allclose(torch.linalg.svdvals(p.detach().double()), s, rtol=1e-4)
-
-
-
 @pytest.mark.parametrize("side", ["out", "in"])
 def test_stiefel_direction_equals_full_solve_without_the_invisible_block(side):
-    from ngd_pion.natural_pion import stiefel_basis, stiefel_direction, drop_kernel, _orth_basis
+    from ngd_pion.natural_pion import stiefel_basis, stiefel_direction, _orth_basis
     from ngd_pion.linalg import skew, floor_eigenvalues
     g = torch.Generator().manual_seed(41)
     s, k, eps = 14, 5, 1e-4

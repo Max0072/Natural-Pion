@@ -50,7 +50,7 @@ PION = [
     (45000, [(f"{L}/pion45000-lr1e-3/*", 0)]),
     (73242, [(f"{L}/pion73242-lr1e-3/*", 0)]),
 ]
-# Natural Pion Fast with the query projection per head (scripts/paper/v2_perhead.sbatch). The earlier Q-whole points
+# Natural Pion Fast with the query projection per head (scripts/paper/v2.sbatch, rows 99-110). The earlier Q-whole points
 # (stepnormcombo, stepnormfinal, stepnormlong/ours*) are in git history (budget_fit.json before 2026-11-05 evening).
 V = "npv2"
 NP = [

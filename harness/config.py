@@ -21,6 +21,8 @@ import os
 import subprocess
 from dataclasses import asdict, dataclass, field
 
+from ngd_pion.natural_pion import BY_NAME, default_of
+
 from .model import ModelConfig
 
 __all__ = ["RunConfig", "git_commit", "machine", "untracked_modules"]
@@ -428,14 +430,12 @@ class RunConfig:
 
     # Natural Pion: damping of the Fisher relative to its largest eigenvalue (0 = floor only). Out of the hash at 0.
     np_damping: float = 0.0
-    # Natural Pion: how the Cayley inverse is computed -- "cayley" exact solve (every paper run in Section 5), "ns"
-    # Newton-Schulz (biased in fp32), "ns_delta" Newton-Schulz in Z - I (NaturalPionFast's own default since
-    # 2026-11-04), "trunc" Pion's truncated exponential. Stays "cayley" here so earlier hashes keep their meaning;
-    # pass --np-retraction ns_delta for the current fast form. Out of the hash at cayley.
-    np_retraction: str = "cayley"
-    # Natural Pion: "bf16" forms the grams of A and D from bf16-rounded inputs with fp32 accumulation and result
-    # (tensor cores); "fp32" from fp32 inputs. Out of the hash at fp32.
-    np_stats_dtype: str = "fp32"
+    # Natural Pion: how the Cayley inverse is computed -- "cayley" exact solve, "ns" Newton-Schulz (biased in fp32),
+    # "ns_delta" Newton-Schulz in Z - I, "trunc" Pion's truncated exponential -- and "bf16" or "fp32" inputs for the
+    # grams of A and D. None: the optimizer class's own default (NaturalPion: cayley, fp32; NaturalPionFast: ns_delta,
+    # bf16). The hash records the value in effect, out of it at cayley / fp32, so earlier names keep their meaning.
+    np_retraction: str | None = None
+    np_stats_dtype: str | None = None
     # Natural Pion: extra optimizer keyword arguments as JSON (natural-pion-turbo's approximations). Out of the hash
     # when empty.
     np_kwargs: str = ""
@@ -484,6 +484,14 @@ class RunConfig:
     def total_tokens(self) -> int:
         return self.tokens_per_step * self.train_steps
 
+    @classmethod
+    def from_manifest(cls, config: dict) -> "RunConfig":
+        """The configuration a run's manifest.json records. Fields since removed (the per-head flags of 2026-11-05:
+        Q is always rotated per head now) are dropped; any other unknown field is an error."""
+        removed = {"np_split_q_per_head", "pion_split_q_per_head"}
+        d = {k: v for k, v in config.items() if k not in removed}
+        return cls(model=ModelConfig(**d.pop("model")), **d)
+
     def scientific_fields(self) -> dict:
         """Everything that can change the result, and nothing that cannot."""
         d = asdict(self)
@@ -495,9 +503,13 @@ class RunConfig:
             d.pop("schedule", None)
         if d.get("schedule") != "wsd":
             d.pop("wsd_decay", None)
-        if d.get("np_retraction") == "cayley":
+        if self.optimizer in BY_NAME:                    # None means the class's default: hash what is in effect
+            for field, kw in (("np_retraction", "retraction"), ("np_stats_dtype", "stats_dtype")):
+                if d.get(field) is None:
+                    d[field] = default_of(BY_NAME[self.optimizer], kw)
+        if d.get("np_retraction") in ("cayley", None):
             d.pop("np_retraction", None)
-        if d.get("np_stats_dtype") == "fp32":
+        if d.get("np_stats_dtype") in ("fp32", None):
             d.pop("np_stats_dtype", None)
         if not d.get("np_kwargs"):
             d.pop("np_kwargs", None)

@@ -41,24 +41,7 @@ from .factorization import (Basis, basis_congruence, basis_congruence_from_root,
 from .linalg import floor_eigenvalues, safe_eigh
 from .linalg import exact_fp32, is_identity, skew, spectral_norm
 
-__all__ = ["NaturalPion", "NaturalPionFast", "NaturalPionTurbo", "NaturalPionStiefel"]
-
-
-def drop_kernel(X: torch.Tensor, W: torch.Tensor, side: str) -> torch.Tensor:
-    """Remove from the generator X the block that cannot move a rectangular W.
-
-    Out side of W (m x n, m > n): rotations inside the complement of W's column space leave W unchanged. With Q an
-    orthonormal basis of that column space and N = I - Q Q^T, return X - N X N, i.e. Q Q^T X + X Q Q^T - Q Q^T X Q Q^T.
-    In side (m < n): the same with the row space. Skew in, skew out; X' W = X W (out) and W X' = W X (in) exactly."""
-    if side == "out":
-        L = torch.linalg.cholesky_ex(W.transpose(-1, -2) @ W)[0]            # n x n, small side; _ex: no host sync
-        Q = torch.linalg.solve_triangular(L, W.transpose(-1, -2), upper=False).transpose(-1, -2)   # W L^-T, m x n
-    else:
-        L = torch.linalg.cholesky_ex(W @ W.transpose(-1, -2))[0]            # m x m
-        Q = torch.linalg.solve_triangular(L, W, upper=False).transpose(-1, -2)                      # W^T L^-T, n x m
-    QX = Q.transpose(-1, -2) @ X
-    XQ = X @ Q
-    return Q @ QX + XQ @ Q.transpose(-1, -2) - Q @ (QX @ Q) @ Q.transpose(-1, -2)
+__all__ = ["NaturalPion", "NaturalPionFast", "NaturalPionTurbo", "NaturalPionStiefel", "BY_NAME", "default_of"]
 
 
 def _lmax(C: torch.Tensor, iters: int = 30) -> torch.Tensor:
@@ -476,13 +459,12 @@ class NaturalPionFast(NaturalPion):
 
     def __init__(self, params, lr: float = 0.05, *, t_fac: int = 25, stats_window: int | None = 6,
                  beta_a: float = 0.5, beta_d: float = 0.5, share_inputs: bool = True,
-                 retraction: str = "ns_delta", batch_sigma: bool = True, share_root: bool = True,
-                 async_refresh: bool = False, cg_iters: int = 0, drop_kernel: bool = False,
-                 direction: str = "natural", length: str = "spectral", sides: str = "joint", planes: str = "scaled",
+                 retraction: str = "ns_delta", stats_dtype: str = "bf16", batch_sigma: bool = True,
+                 share_root: bool = True, direction: str = "natural", length: str = "spectral", sides: str = "joint", planes: str = "scaled",
                  attn_mult: float = 1.0, a_window: int | None = None, d_window: int | None = None, a_every: int = 1,
                  **kwargs) -> None:
         super().__init__(params, lr, t_fac=t_fac, stats_window=stats_window, beta_a=beta_a, beta_d=beta_d,
-                         share_inputs=share_inputs, retraction=retraction, **kwargs)
+                         share_inputs=share_inputs, retraction=retraction, stats_dtype=stats_dtype, **kwargs)
         # Ablation switches (Section 5.4); every default is the method itself.
         #   direction  "natural": X = F^-1 G | "raw": X = G
         #   length     "spectral": c = theta / sigma(X) | "before": theta / sigma(G) | "rms": the RMS of W X_in + X_out W
@@ -512,21 +494,6 @@ class NaturalPionFast(NaturalPion):
         self._gens: dict[tuple, torch.Tensor] = {}
         self.batch_sigma = batch_sigma
         self.share_root = share_root
-        # A refresh is read only by the next step's rotation, so on a GPU it runs on a side stream, overlapping the
-        # next forward and backward pass. Only with a statistics window: otherwise the hooks would write A and D
-        # while the refresh reads them.
-        self.async_refresh = async_refresh
-        # cg_iters > 0: that many iterations of preconditioned conjugate gradient on F(X) = G with the *current* W
-        # (S = W^T D W, V = W A W^T; A, D as last collected, every factor shifted by eps*lmax), started from the
-        # basis solution and preconditioned by it. Corrects the basis for the rotation of W since the last refresh.
-        if cg_iters < 0:
-            raise ValueError("cg_iters must be >= 0")
-        self.cg_iters = cg_iters
-        # drop_kernel: on the wide side of a rectangular matrix, remove the block of X that cannot move W before sigma
-        # and Cayley (it inflated sigma by a median 1.07, up to 1.39 on down projections; kernel_block.py)
-        self.drop_kernel = drop_kernel
-        self._side = None
-        self._pending = None
 
     def _collecting(self, param: torch.Tensor, kind: str = "a") -> bool:
         window = self.a_window if kind == "a" else self.d_window
@@ -545,96 +512,7 @@ class NaturalPionFast(NaturalPion):
             X = G
         if self.length in ("before", "quad"):            # the generators, for the rules that read them
             self._gens.update({(i, slot): G[k] for k, (i, slot, _, _) in enumerate(items)})
-        if self.cg_iters:
-            X = self._cg(X, G, P, den, items, rows, group)
-        if self.drop_kernel:
-            groups: dict[tuple, list] = defaultdict(list)          # (side, shape of W) -> [(slot in X, row)]
-            for k, (i, slot, _, _) in enumerate(items):
-                m, n = rows[i][1].shape
-                if slot == 3 and m > n:
-                    groups[("out", m, n)].append((k, i))
-                elif slot == 2 and n > m:
-                    groups[("in", m, n)].append((k, i))
-            if groups:
-                X = X.clone()
-                for (side, _, _), members in groups.items():
-                    ks = torch.tensor([k for k, _ in members], device=X.device)
-                    W = torch.stack([rows[i][1] for _, i in members])
-                    X[ks] = drop_kernel(X[ks], W, side)
         return X
-
-    def _cg(self, X, G, P, den, items, rows, group):
-        eps = group["eps"]
-        Bs, Cs = [], []
-        for i, slot, _, _ in items:
-            p, W, _, _, b, r, whole = rows[i]
-            st = self.state[p]
-            A = st["cov"].matrix.to(W.dtype)
-            D = st["cov_backward"].matrix.to(W.dtype)
-            if not whole:
-                D = D[r, r]
-            if slot == 2:                                   # in side: F(X) = (S X A + A X S)/2, S = W^T D W
-                Bs.append(A); Cs.append(W.transpose(-1, -2) @ D @ W)
-            else:                                           # out side: (V X D + D X V)/2, V = W A W^T
-                Bs.append(D); Cs.append(W @ A @ W.transpose(-1, -2))
-        B, C = torch.stack(Bs), torch.stack(Cs)
-        eye = torch.eye(B.shape[-1], dtype=B.dtype, device=B.device)
-        B = B + eps * _lmax(B).unsqueeze(-1) * eye
-        C = C + eps * _lmax(C).unsqueeze(-1) * eye
-        Pt = P.transpose(-1, -2)
-        F = lambda Y: 0.5 * (C @ Y @ B + B @ Y @ C)
-        Minv = lambda R: skew(P @ ((Pt @ R @ P) / den) @ Pt)
-        dot = lambda a, b: (a * b).sum(dim=(-2, -1), keepdim=True)
-        r = G - F(X)
-        z = Minv(r)
-        d = z
-        rz = dot(r, z)
-        tiny = torch.finfo(X.dtype).tiny
-        for k in range(self.cg_iters):
-            Ad = F(d)
-            alpha = rz / dot(d, Ad).clamp_min(tiny)
-            X = X + alpha * d
-            if k + 1 == self.cg_iters:
-                break
-            r = r - alpha * Ad
-            z = Minv(r)
-            rz_new = dot(r, z)
-            d = z + (rz_new / rz.clamp_min(tiny)) * d
-            rz = rz_new
-        return skew(X)
-
-    def _refresh(self, params: list[torch.Tensor], group: dict) -> None:
-        dev = params[0].device
-        if not (self.async_refresh and dev.type == "cuda" and group["stats_window"] is not None
-                and group["stats_window"] < group["t_fac"] and self.profile is None):
-            return super()._refresh(params, group)
-        self._await_refresh()
-        if self._side is None:
-            self._side = torch.cuda.Stream(device=dev)
-        main = torch.cuda.current_stream(dev)
-        self._side.wait_stream(main)                       # W as rotated this step, A and D as collected
-        with torch.cuda.stream(self._side):
-            self._refactor(params, group)
-            for p in params:                               # bases made here are read on the main stream later
-                st = self.state[p]
-                for unit in [st, *st.get("blocks", {}).values()]:
-                    for b in unit.get("bases", ()):
-                        b.P.record_stream(main); b.lam.record_stream(main)
-        ev = torch.cuda.Event()
-        ev.record(self._side)
-        self._pending = (ev, main)
-
-    def _await_refresh(self) -> None:
-        if self._pending is not None:
-            ev, main = self._pending
-            main.wait_event(ev)
-            self._pending = None
-
-    def state_dict(self):
-        if self._pending is not None:
-            self._pending[0].synchronize()
-            self._pending = None
-        return super().state_dict()
 
     def _basis_in(self, A: torch.Tensor, gram_in: torch.Tensor, eps: float, members: list):
         """`A^{-1/2}` once per distinct input moment (q, k, v and gate, up share one), then the rest per matrix."""
@@ -768,7 +646,7 @@ class NaturalPionTurbo(NaturalPionFast):
 
     def __init__(self, params, lr: float = 0.05, *, stats_dtype: str = "bf16", fisher_dtype: str = "bf16",
                  stats_stride: int = 1, c_floor: str = "shift", inv_root: str = "ns", stats_window: int | None = 1,
-                 warm_refresh: int = 0, stats_sketch: int = 0, **kwargs) -> None:
+                 warm_refresh: int = 0, stats_sketch: int = 0, async_refresh: bool = False, **kwargs) -> None:
         """Defaults (2026-11-05): every approximation that cost nothing in loss at 3000 steps -- F^-1 in bf16, C
         shifted, B^-1/2 by Newton-Schulz, statistics in the one step before a refresh. T_fac stays 25 (50 cost 0.023).
         Approximations, all upstream of the Cayley gate (X is made exactly skew before it, so the rotation stays
@@ -782,7 +660,11 @@ class NaturalPionTurbo(NaturalPionFast):
                                Rayleigh quotient (P^T C~ P)_ii / (P^T B~ P)_ii, floored (B~, C~ shifted by eps*lmax);
                                no eigendecomposition, two products per side
           stats_sketch k:      A and D kept as Nystrom sketches of rank k (cost T n k instead of T n^2, memory n k);
-                               the refresh rebuilds the rank-k approximation, the floor fills the rest"""
+                               the refresh rebuilds the rank-k approximation, the floor fills the rest
+        Scheduling:
+          async_refresh:       the refresh on a side stream, overlapping the next forward and backward pass (it is
+                               read only by the next step's rotation); only with a statistics window, so the hooks
+                               never write A and D while it reads them. Bit-identical weights; no gain measured."""
         if fisher_dtype not in ("fp32", "bf16") or c_floor not in ("eigh", "shift") or inv_root not in ("eigh", "ns"):
             raise ValueError("fisher_dtype fp32|bf16, c_floor eigh|shift, inv_root eigh|ns")
         if stats_stride < 1:
@@ -796,6 +678,42 @@ class NaturalPionTurbo(NaturalPionFast):
         if warm_refresh < 0:
             raise ValueError("warm_refresh must be >= 0")
         self.warm_refresh = warm_refresh
+        self.async_refresh = async_refresh
+        self._side = None
+        self._pending = None
+
+    def _refresh(self, params: list[torch.Tensor], group: dict) -> None:
+        dev = params[0].device
+        if not (self.async_refresh and dev.type == "cuda" and group["stats_window"] is not None
+                and group["stats_window"] < group["t_fac"] and self.profile is None):
+            return super()._refresh(params, group)
+        self._await_refresh()
+        if self._side is None:
+            self._side = torch.cuda.Stream(device=dev)
+        main = torch.cuda.current_stream(dev)
+        self._side.wait_stream(main)                       # W as rotated this step, A and D as collected
+        with torch.cuda.stream(self._side):
+            self._refactor(params, group)
+            for p in params:                               # bases made here are read on the main stream later
+                st = self.state[p]
+                for unit in [st, *st.get("blocks", {}).values()]:
+                    for b in unit.get("bases", ()):
+                        b.P.record_stream(main); b.lam.record_stream(main)
+        ev = torch.cuda.Event()
+        ev.record(self._side)
+        self._pending = (ev, main)
+
+    def _await_refresh(self) -> None:
+        if self._pending is not None:
+            ev, main = self._pending
+            main.wait_event(ev)
+            self._pending = None
+
+    def state_dict(self):
+        if self._pending is not None:
+            self._pending[0].synchronize()
+            self._pending = None
+        return super().state_dict()
 
     def _refactor(self, params: list[torch.Tensor], group: dict) -> None:
         K = self.warm_refresh
@@ -823,8 +741,8 @@ class NaturalPionTurbo(NaturalPionFast):
         def rescale(P, B, C):
             n = B.shape[-1]
             eye = torch.eye(n, dtype=B.dtype, device=B.device)
-            Bs = B + eps * self._lmax(B).unsqueeze(-1) * eye
-            Cs = C + eps * self._lmax(C).unsqueeze(-1) * eye
+            Bs = B + eps * _lmax(B).unsqueeze(-1) * eye
+            Cs = C + eps * _lmax(C).unsqueeze(-1) * eye
             g = (P * (Bs @ P)).sum(-2)                         # diag(P^T B~ P)
             h = (P * (Cs @ P)).sum(-2)                         # diag(P^T C~ P)
             g = g.clamp_min(torch.finfo(g.dtype).tiny)
@@ -846,19 +764,11 @@ class NaturalPionTurbo(NaturalPionFast):
                     Basis(P=P_in[j], lam=l_in[j], orthogonal=False), Basis(P=P_out[j], lam=l_out[j], orthogonal=False))
                 self.state[p]["since_refactor"] = 0
 
-    @staticmethod
-    def _lmax(C: torch.Tensor, iters: int = 30) -> torch.Tensor:
-        v = torch.ones(*C.shape[:-1], 1, dtype=C.dtype, device=C.device)
-        for _ in range(iters):
-            v = C @ v
-            v = v / v.norm(dim=-2, keepdim=True).clamp_min(1e-30)
-        return (v.transpose(-1, -2) @ C @ v).squeeze(-1)      # (..., 1)
-
     def _root(self, B: torch.Tensor, eps: float) -> torch.Tensor:
         if self.inv_root == "eigh":
             return floored_inverse_root(B, eps)
         eye = torch.eye(B.shape[-1], dtype=B.dtype, device=B.device)
-        Bd = B + eps * self._lmax(B).unsqueeze(-1) * eye
+        Bd = B + eps * _lmax(B).unsqueeze(-1) * eye
         s = torch.linalg.matrix_norm(Bd, ord="fro", keepdim=True)
         Y, Z = Bd / s, eye.expand_as(B).clone()
         for _ in range(12):
@@ -870,7 +780,7 @@ class NaturalPionTurbo(NaturalPionFast):
         if self.c_floor == "eigh":
             return basis_congruence_from_root(root, C, eps)
         eye = torch.eye(C.shape[-1], dtype=C.dtype, device=C.device)
-        C = C + eps * self._lmax(C).unsqueeze(-1) * eye
+        C = C + eps * _lmax(C).unsqueeze(-1) * eye
         M = root @ C @ root
         lam, Q = safe_eigh(0.5 * (M + M.transpose(-1, -2)))
         return Basis(P=root @ Q, lam=floor_eigenvalues(lam, eps), orthogonal=False)
@@ -1094,6 +1004,16 @@ def _orth_basis(W: torch.Tensor, side: str) -> torch.Tensor:
     return torch.linalg.solve_triangular(L, W, upper=False).transpose(-1, -2)
 
 
+def default_of(cls: type, name: str):
+    """The default a Natural Pion class gives keyword `name` (its own, or the nearest base class's)."""
+    import inspect
+    for k in cls.__mro__:
+        p = inspect.signature(k.__init__).parameters.get(name) if "__init__" in vars(k) else None
+        if p is not None and p.default is not inspect.Parameter.empty:
+            return p.default
+    raise KeyError(f"{cls.__name__} has no default for {name!r}")
+
+
 class NaturalPionStiefel(NaturalPionTurbo):
     """Turbo with the wide side of every rectangular matrix in Stiefel form: its generator never forms the block that
     cannot move W, F^-1 costs O(s^2 k) instead of O(s^3) and the Cayley step is a Woodbury solve of size 2k. Square
@@ -1252,3 +1172,8 @@ class NaturalPionStiefel(NaturalPionTurbo):
                 self.state[p]["step"] += 1
                 self.state[p]["since_refactor"] += 1
         self._tick(None)
+
+
+# the optimizer names of the harness
+BY_NAME = {"natural-pion": NaturalPion, "natural-pion-fast": NaturalPionFast,
+           "natural-pion-turbo": NaturalPionTurbo, "natural-pion-stiefel": NaturalPionStiefel}

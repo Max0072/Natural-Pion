@@ -35,7 +35,7 @@ from ngd_pion.unified import NGDPionUnified
 from ngd_pion.legacy.damped import DampedNGDPionS
 from ngd_pion.legacy.exact_curv import ExactCurvNGDPionS
 from ngd_pion.linalg import EIGH_FALLBACKS
-from ngd_pion.natural_pion import NaturalPion, NaturalPionFast, NaturalPionStiefel, NaturalPionTurbo
+from ngd_pion.natural_pion import BY_NAME, NaturalPion
 
 from .config import RunConfig
 from .data import TokenCorpus
@@ -116,8 +116,7 @@ def lr_at(step: int, cfg: RunConfig, base: float | None = None, shape: str = "co
 # to it and differs only by recording `quad`, `curv` and `pred_drop`. The
 # 69.5 s of a 73.5 s step this comment used to cite is history, not a live cost.
 # The final method, exact and efficient forms (ngd_pion/natural_pion.py).
-NATURAL_PION = {"natural-pion": NaturalPion, "natural-pion-fast": NaturalPionFast,
-                "natural-pion-turbo": NaturalPionTurbo, "natural-pion-stiefel": NaturalPionStiefel}
+NATURAL_PION = BY_NAME
 
 NGD_IMPLEMENTATIONS = {
     "ngd-pion": FastNGDPion,
@@ -154,8 +153,9 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
         # `ngd_*` defaults cannot leak in. `--lr` is the peak rotation angle in radians.
         rot = NATURAL_PION[cfg.optimizer](weights, lr=cfg.lr, beta1=cfg.ngd_beta1, row_blocks=query_blocks(model, cfg),
                                           eps=cfg.ngd_eps, damping=cfg.np_damping,
-                                          retraction=cfg.np_retraction, ns_iters=cfg.ngd_ns_iters,
-                                          ns_guard=cfg.ngd_ns_guard, stats_dtype=cfg.np_stats_dtype,
+                                          ns_iters=cfg.ngd_ns_iters, ns_guard=cfg.ngd_ns_guard,
+                                          **{k: v for k, v in (("retraction", cfg.np_retraction),
+                                                               ("stats_dtype", cfg.np_stats_dtype)) if v is not None},
                                           **(json.loads(cfg.np_kwargs) if cfg.np_kwargs else {}))
         recorder = attach(linears, rot)
         if cfg.np_profile:
