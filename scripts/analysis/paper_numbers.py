@@ -442,6 +442,8 @@ put("ret_hw_noise", max(abs(val(f"np{r}/s3000/*") - val(f"np{r}_b200/s3000/*")) 
     "same configuration on RTX and B200 (np{ns,trunc}/s3000 vs _b200): max |val difference|")
 _m = json.load(open(one("npstats_fp32_b200/s3000/*") / "manifest.json"))
 put("tokens_per_step", _m["tokens_per_step"], "manifest tokens_per_step")
+put("stats_tokens", _m["config"]["micro_batch"] * _m["config"]["model"]["seq_len"],
+    "micro_batch x seq_len: the hooks record the first micro-batch of a step (harness/train.py)")
 # ns_delta: Newton-Schulz in the correction form, B200 only so far
 hits = runs("npnsdelta_b200/s3000/*")
 if hits and info(hits[0])["done"]:
@@ -526,6 +528,8 @@ if f.exists():
         put(f"flops_{tag}_pion", d[size]["pion_overhead"], f"{f.name}: Pion optimizer / model FLOP, {size}")
         put(f"flops_{tag}_np", d[size]["np_overhead"], f"{f.name}: Natural Pion Fast optimizer / model FLOP, {size}")
         put(f"flops_{tag}_ratio", d[size]["np_over_pion"], f"{f.name}: step FLOP, Natural Pion Fast / Pion, {size}")
+        put(f"flops_{tag}_shared", (d[size]["natural_pion_fast"]["generators"] + d[size]["natural_pion_fast"]["rotation"])
+            / d[size]["model"], f"{f.name}: generators + rotation / model FLOP, {size}")
         for part, v in d[size]["natural_pion_fast"].items():
             put(f"flops_{tag}_part_" + part.split(" ")[0].replace("^-1", "inv"), v / d[size]["model"],
                 f"{f.name}: {part} / model FLOP, {size}")

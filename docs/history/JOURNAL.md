@@ -7192,3 +7192,14 @@ Preprint: abstract cost now FLOPs (1.14x Pion per step at 60M) plus time on one 
 Section 4 intro, 4.4 (batched sigma), Table 2 (current form 0.498 s, 3.7224), Table 2b (optimizer by part),
 Algorithm 2, new 4.11 (FLOPs at 60M and 1.3B), Limitations (cost), Table 5 caption (one GPU type, form of 4.6).
 Section 5 keeps the runs of the 4.6 form; the current form matches its loss at 3000 and 15000 steps.
+
+## 2026-11-05 — consistency pass on the preprint; statistics use the first micro-batch only
+
+An independent read found stale and inconsistent passages; fixed: the cost footnote and Section 5.1 now name the
+form of 4.6 for the Section 5 runs (Natural Pion Fast = the final form); "fast form" for the T_fac 25 ablation stage
+renamed; symbol clashes (F_W(Z), Omega and Y in 4.8, N for tokens), "five steps", S defined in contribution 1,
+peak angles, damping's B, Appendix C retraction, seed notes on Tables 6-7, Limitations' cost split.
+Found while checking: the hooks record only the first micro-batch of a step (harness/train.py, `micro == 0`), so A
+and D are estimated from 65 536 tokens, not 131 072. Section 4.7 and `flops.py` corrected: statistics are 5.7% of
+the model's FLOPs at 60M (was 11.4%), 9.1% at 1.3B; the fast form costs 1.09x Pion's step FLOPs at 60M (was 1.14x),
+1.27x at 1.3B (was 1.35x).

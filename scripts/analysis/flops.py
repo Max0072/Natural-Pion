@@ -18,7 +18,8 @@ Per rotated matrix W (m x n, out x in), side sizes m (out) and n (in):
                  Cayley by Newton-Schulz in Z - I  8n^3 + 8m^3            (two iterations, two products each)
                  rotation                          2m^2n + 2mn^2
                  sigma                             negligible (matrix-vector products)
-                 statistics, 6 of 25 steps         2 T n^2 per distinct input, 2 T m^2 per output (T tokens)
+                 statistics, 6 of 25 steps         2 T_s n^2 per distinct input, 2 T_s m^2 per output, over the
+                                                   first micro-batch only (T_s = micro-batch tokens, half the step)
                  refresh, 1 of 25 steps            per side 3 eigendecompositions + 5 products of the side size,
                                                    plus the grams W A W^T and W^T D W (2mn^2 + 2m^2n each)
 
@@ -32,8 +33,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 T_FAC, WINDOW = 25, 6
 MODELS = {   # hidden, ffn, layers, vocab, seq, batch (sequences): ours (60M) and Pion's 1.3B
-    "60M": dict(h=512, f=1376, L=8, V=32100, seq=256, batch=512),
-    "1.3B": dict(h=2048, f=5460, L=24, V=32100, seq=256, batch=512),
+    "60M": dict(h=512, f=1376, L=8, V=32100, seq=256, batch=512, micro=256),
+    "1.3B": dict(h=2048, f=5460, L=24, V=32100, seq=256, batch=512, micro=256),
 }
 
 
@@ -59,7 +60,8 @@ def count(c):
     inputs = {}
     for m, n, g in mats:
         inputs[g] = n
-    stats = (sum(2 * T * n * n for n in inputs.values()) + sum(2 * T * m * m for m, _, _ in mats)) * WINDOW / T_FAC
+    Ts = c["seq"] * c["micro"]                      # the hooks record the first micro-batch of each step only
+    stats = (sum(2 * Ts * n * n for n in inputs.values()) + sum(2 * Ts * m * m for m, _, _ in mats)) * WINDOW / T_FAC
     side = lambda k: 3 * 9 * k ** 3 + 5 * 2 * k ** 3
     refresh = sum(side(n) + side(m) + 2 * (2 * m * n * n + 2 * m * m * n) for m, n, _ in mats) / T_FAC
     npf = {"generators": gen, "F^-1": sum(8 * n ** 3 + 8 * m ** 3 for m, n, _ in mats),
