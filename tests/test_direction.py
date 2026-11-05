@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import torch
 
-from ngd_pion.direction import fisher_apply, generators, natural_gradient, trust_region_alpha
+from ngd_pion.direction import fisher_apply, generators, natural_gradient
 from ngd_pion.factorization import basis_congruence, basis_identity_anchor, build_bases
 from ngd_pion.linalg import skew
 from ngd_pion.reference import fisher_matrix
@@ -121,46 +121,6 @@ def test_solve_is_invariant_to_eigenvector_sign_and_degenerate_rotation():
     rotated = natural_gradient(G, type(b)(P=P2, lam=b.lam, orthogonal=True))
     assert (rotated - base).abs().max() / base.abs().max() < 1e-12
 
-
-def _quad_curv(W, A, G, eps):
-    d_out = W.shape[0]
-    b_in, b_out = build_bases(W, A, eps=eps)
-    G_in, G_out = generators(W, G)
-    X_in = natural_gradient(G_in, b_in)
-    X_out = natural_gradient(G_out, b_out)
-    quad = (G_in * X_in).sum() + (G_out * X_out).sum()
-    curv = (X_in * fisher_apply(A, W.T @ W, X_in)).sum() + (
-        X_out * fisher_apply(torch.eye(d_out, dtype=DT), W @ A @ W.T, X_out)
-    ).sum()
-    return quad, curv
-
-
-def test_alpha_is_exactly_one_for_square_w_at_zero_floor():
-    """With no kernel and no floor, `curv == quad` is an identity, not an estimate."""
-    W = semi_ortho(16, 16, seed=21)
-    quad, curv = _quad_curv(W, spd(16, seed=22), rand(16, 16, seed=23), eps=0.0)
-    assert abs(float(quad / curv) - 1.0) < 1e-9
-
-
-@pytest.mark.parametrize("shape", [(24, 12), (12, 24)])
-def test_alpha_is_one_up_to_the_floor_for_non_square_w(shape):
-    """A non-square `W` needs a positive floor -- `eps = 0` is a true 0/0 there."""
-    d_out, d_in = shape
-    W = semi_ortho(d_out, d_in, seed=21)
-    A = spd(d_in, seed=22)
-    G = rand(*shape, seed=23)
-    assert torch.isnan(_quad_curv(W, A, G, eps=0.0)[0])
-    quad, curv = _quad_curv(W, A, G, eps=1e-8)
-    assert abs(float(quad / curv) - 1.0) < 1e-4
-
-
-def test_alpha_is_capped_and_one_sided():
-    q = torch.tensor(5.0, dtype=DT)
-    c = torch.tensor(1.0, dtype=DT)
-    assert float(trust_region_alpha(q, c, alpha_max=1.0)) == 1.0
-    assert float(trust_region_alpha(torch.tensor(0.4, dtype=DT), c, 1.0)) == pytest.approx(0.4)
-
-
 @pytest.mark.parametrize("shape", SHAPES)
 def test_dead_block_carries_no_gradient(shape):
     """A non-square `W` gives `0/0`, never a live numerator over a zero."""
@@ -220,39 +180,6 @@ def test_the_generator_is_now_the_riemannian_gradient():
     G_in, _ = generators(W, G)
     assert torch.allclose((G * (W @ X)).sum(), (G_in * X).sum(), atol=1e-12)
 
-
-def test_doubling_eta_reproduces_the_old_trajectory():
-    """The linearity that makes the eta-doubling exact rather than approximate.
-
-    `natural_gradient` is linear in `G` and `alpha = quad/curv` carries the
-    factor in both halves, so a run at twice the gradient and rate `c` is the
-    same as one at the gradient and rate `2c` -- which is precisely the relation
-    between an `eta` recorded before 2026-08-28 and one recorded after.
-    """
-    import torch
-
-    from ngd_pion.unified import NGDPionUnified
-
-    DT = torch.float64
-    g = torch.Generator().manual_seed(2)
-    W = torch.randn(6, 4, dtype=DT, generator=g)
-    x = torch.randn(64, 4, dtype=DT, generator=g)
-    d = torch.randn(64, 6, dtype=DT, generator=g) * 0.3
-    grads = [torch.randn(6, 4, dtype=DT, generator=g) * 0.1 for _ in range(6)]
-
-    def run(scale, lr):
-        p = torch.nn.Parameter(W.clone())
-        opt = NGDPionUnified([p], lr=lr, t_fac=3, compute_dtype=DT)
-        opt.observe(p, x)
-        opt.observe_backward(p, d)
-        for G in grads:
-            p.grad = (scale * G).clone()
-            opt.step()
-        return p.detach().clone()
-
-    assert torch.allclose(run(2.0, 0.02), run(1.0, 0.04), rtol=1e-10, atol=1e-12)
-
-
 def test_pion_with_rms_is_untouched_by_the_factor():
     """Its update is normalised to a target RMS, so a constant on the generator
     is absorbed. This is why the anchor did not have to be re-run."""
@@ -274,26 +201,3 @@ def test_pion_with_rms_is_untouched_by_the_factor():
         return p.detach().clone()
 
     assert torch.allclose(run(1.0), run(2.0), rtol=1e-9, atol=1e-11)
-
-
-def test_shampoo_is_untouched_by_the_factor():
-    """`P` goes as `1/4`, `P^-1/4` as `sqrt(2)`, and the sandwich returns the
-    same step -- so its `eta` means what it meant before the change."""
-    import torch
-
-    from ngd_pion.legacy.shampoo import ShampooPion
-
-    DT = torch.float64
-    g = torch.Generator().manual_seed(4)
-    W = torch.randn(6, 4, dtype=DT, generator=g)
-    grads = [torch.randn(6, 4, dtype=DT, generator=g) * 0.1 for _ in range(5)]
-
-    def run(scale):
-        p = torch.nn.Parameter(W.clone())
-        opt = ShampooPion([p], lr=0.05, eps=1e-10, compute_dtype=DT)
-        for G in grads:
-            p.grad = (scale * G).clone()
-            opt.step()
-        return p.detach().clone()
-
-    assert torch.allclose(run(1.0), run(2.0), rtol=1e-8, atol=1e-10)

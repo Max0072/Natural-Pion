@@ -23,8 +23,7 @@ from harness.train import (
     lr_at,
     train,
 )
-from ngd_pion.legacy.fast import FastNGDPion
-from ngd_pion.optimizer import NGDPion
+from ngd_pion.natural_pion import NaturalPion, NaturalPionFast
 from ngd_pion.pion_baseline import Pion
 
 SMALL = ModelConfig(vocab_size=256, hidden=64, layers=2, heads=2, ffn_hidden=176, seq_len=32)
@@ -126,7 +125,7 @@ def test_missing_corpus_says_what_to_run():
 
 @pytest.mark.parametrize(
     "optimizer,expected",
-    [("ngd-pion", FastNGDPion), ("ngd-pion-ref", NGDPion),
+    [("natural-pion-fast", NaturalPionFast), ("natural-pion", NaturalPion),
      ("pion", Pion), ("adamw", None)],
 )
 def test_optimizer_wiring(optimizer, expected):
@@ -134,7 +133,7 @@ def test_optimizer_wiring(optimizer, expected):
     rot, adamw, recorder = build_optimizers(model, RunConfig(optimizer=optimizer, model=SMALL))
     assert rot is None if expected is None else isinstance(rot, expected)
     assert isinstance(adamw, torch.optim.AdamW)
-    assert (recorder is not None) == optimizer.startswith("ngd-pion")
+    assert (recorder is not None) == optimizer.startswith("natural-pion")
     if recorder is not None:
         recorder.remove()
 
@@ -155,7 +154,7 @@ def test_pion_ablated_is_gone():
         build_optimizers(Transformer(SMALL), RunConfig(optimizer="pion_ablated", model=SMALL))
 
 
-@pytest.mark.parametrize("optimizer", ["ngd-pion", "pion", "adamw"])
+@pytest.mark.parametrize("optimizer", ["natural-pion-fast", "natural-pion", "pion", "adamw"])
 def test_run_end_to_end_and_reduce_loss(optimizer, corpus, tmp_path):
     cfg = RunConfig(
         optimizer=optimizer, model=SMALL, batch_sequences=8, micro_batch=4,
@@ -170,51 +169,6 @@ def test_run_end_to_end_and_reduce_loss(optimizer, corpus, tmp_path):
     assert any("val_loss" in r for r in rows)
     assert (out / "manifest.json").exists()
     assert (out / "checkpoint.pt").exists()
-    if optimizer.startswith("ngd-pion"):
-        assert "angle_max" in train_rows[-1], "NGD runs must log the diagnostics"
-        assert train_rows[-1]["alpha_max"] <= 1.0
-        assert "skew_ratio_max" in train_rows[-1]
-        assert "qoc_max" in train_rows[-1]
-        # the point of logging it unclamped: it may exceed alpha_max, and alpha
-        # sitting at the cap is exactly when it carries information
-        assert train_rows[-1]["qoc_max"] >= train_rows[-1]["alpha_max"] - 1e-6
-    assert (out / "diagnostics.jsonl").exists() == optimizer.startswith("ngd-pion")
-
-
-def test_per_layer_diagnostics_are_written_and_carry_depth(corpus, tmp_path):
-    """The summary is a min and a max; the depth questions need the rows.
-
-    Whether the required step size varies with depth, and whether the
-    antisymmetric part of the gradient survives bf16, are both per-layer
-    questions. `summarise` cannot answer either, so the rows are persisted
-    separately and this pins that they are.
-    """
-    cfg = RunConfig(
-        optimizer="ngd-pion", model=SMALL, batch_sequences=8, micro_batch=4,
-        train_steps=20, ngd_t_fac=5, eval_every=100, eval_batches=2, log_every=5,
-        data_path=str(corpus / "train.bin"), val_path=str(corpus / "val.bin"),
-        out_dir=str(tmp_path),
-    )
-    out = train(cfg, max_steps=20)
-    rows = [json.loads(l) for l in (out / "diagnostics.jsonl").read_text().splitlines()]
-    assert rows, "no per-layer rows written"
-
-    for key in ("name", "shape", "alpha", "angle", "cond_A", "skew_ratio",
-                "quad_over_curv", "depth", "step"):
-        assert key in rows[0], f"missing {key}"
-
-    # every block of the model should appear, and the depths should be the
-    # block indices rather than -1: a naming change that broke the parse would
-    # otherwise turn into a silently flat depth profile at analysis time
-    depths = {r["depth"] for r in rows}
-    assert depths == set(range(SMALL.layers)), f"depths {sorted(depths)}"
-
-    # one row per parameter per logged step, not one row per step
-    per_step = {}
-    for r in rows:
-        per_step.setdefault(r["step"], []).append(r)
-    counts = {len(v) for v in per_step.values()}
-    assert len(counts) == 1 and counts.pop() > 1, "expected several layers per step"
 
 
 def test_anchor_follows_the_published_number_not_the_shell_script():
@@ -344,7 +298,7 @@ def test_a_run_resumes_from_its_checkpoint(corpus, tmp_path):
     """Every partition caps at 24h and a full run may not fit, so a requeued
     job has to continue rather than start over."""
     cfg = RunConfig(
-        optimizer="ngd-pion", model=SMALL, batch_sequences=4, micro_batch=4,
+        optimizer="natural-pion-fast", model=SMALL, batch_sequences=4, micro_batch=4,
         train_steps=8, ngd_t_fac=2, eval_every=2, eval_batches=1, log_every=1,
         data_path=str(corpus / "train.bin"), val_path=str(corpus / "val.bin"),
         out_dir=str(tmp_path),
@@ -399,7 +353,7 @@ def test_bf16_autocast_trains_and_leaves_the_weights_in_fp32(corpus, tmp_path):
     it pins the wiring rather than the numerics.
     """
     cfg = RunConfig(
-        optimizer="ngd-pion", model=SMALL, batch_sequences=4, micro_batch=4,
+        optimizer="natural-pion-fast", model=SMALL, batch_sequences=4, micro_batch=4,
         train_steps=4, ngd_t_fac=2, eval_every=2, eval_batches=1, log_every=1,
         precision="bf16",
         data_path=str(corpus / "train.bin"), val_path=str(corpus / "val.bin"),
@@ -709,14 +663,12 @@ def test_orthogonal_weights_survive_a_cayley_run():
     """The premise of the residual-free experiment: the spectrum is frozen, so
     an orthogonal initialisation is orthogonal for the whole run, not only at
     step zero."""
-    from ngd_pion.unified import NGDPionUnified
-
     torch.manual_seed(0)
     m = Transformer(replace(SMALL, init="orthogonal", residual=False))
     w = m.parameter_split()[0][0].weight
     before = torch.linalg.svdvals(w.detach().double())
     p = torch.nn.Parameter(w.detach().clone())
-    opt = NGDPionUnified([p], lr=0.05, t_fac=3)
+    opt = NaturalPion([p], lr=0.05, t_fac=3)
     x = torch.randn(64, p.shape[1])
     d = torch.randn(64, p.shape[0]) * 0.3
     for _ in range(6):
@@ -747,10 +699,10 @@ def test_diagnostic_forward_leaves_the_covariance_alone():
     Both halves are asserted, because the guard is only meaningful if the thing
     it guards against would otherwise happen.
     """
-    cfg = RunConfig(model=SMALL, optimizer="ngd-pion-s", lr=1e-2, micro_batch=4)
+    cfg = RunConfig(model=SMALL, optimizer="natural-pion-fast", lr=1e-2, micro_batch=4)
     model = Transformer(SMALL)
     rot, _, recorder = build_optimizers(model, cfg)
-    assert recorder is not None, "the S variant records activations; this test needs one"
+    assert recorder is not None, "Natural Pion records activations; this test needs one"
 
     x = torch.randint(0, SMALL.vocab_size, (4, SMALL.seq_len))
     y = torch.randint(0, SMALL.vocab_size, (4, SMALL.seq_len))

@@ -1,19 +1,13 @@
-"""`NaturalPionFast` is the probe `scripts/probes/step_norm.py` (FAST, BATCH, A and D last k) bit for bit,
-and `NaturalPion` keeps every weight's singular values."""
+"""Natural Pion: Fast is Algorithm 1 with its speed-ups off, every form keeps each matrix's spectrum, and the
+ablation switches and faster tiers behave as documented."""
 
 from __future__ import annotations
-
-import importlib.util
-import os
-import sys
-from pathlib import Path
 
 import pytest
 import torch
 
 from ngd_pion.natural_pion import NaturalPion, NaturalPionFast, NaturalPionTurbo, NaturalPionStiefel
 
-ROOT = Path(__file__).resolve().parents[1]
 # The block of a generator that cannot move a rectangular W (the reference for the Stiefel form).
 def drop_kernel(X: torch.Tensor, W: torch.Tensor, side: str) -> torch.Tensor:
     """Remove from the generator X the block that cannot move a rectangular W.
@@ -33,26 +27,6 @@ def drop_kernel(X: torch.Tensor, W: torch.Tensor, side: str) -> torch.Tensor:
 
 
 SHAPES = [(12, 8), (8, 8), (8, 8), (8, 12), (12, 8)]  # repeated shapes and sizes exercise the batching
-
-
-def _probe_class(window: int):
-    """Import the probe with its flags set; the flags are read at import time."""
-    env = {"STEP_NORM_FAST": "1", "STEP_NORM_BATCH": "1",
-           "STEP_NORM_A_LAST": str(window), "STEP_NORM_D_LAST": str(window)}
-    old = {k: os.environ.get(k) for k in env}
-    os.environ.update(env)
-    try:
-        spec = importlib.util.spec_from_file_location(f"step_norm_probe_{window}", ROOT / "scripts/probes/step_norm.py")
-        mod = importlib.util.module_from_spec(spec)
-        sys.modules[spec.name] = mod
-        spec.loader.exec_module(mod)
-    finally:
-        for k, v in old.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
-    return mod.StepNorm
 
 
 def _weights(seed: int):
@@ -83,16 +57,13 @@ def _cosine(t, peak=0.2, steps=60):
 
 
 @pytest.mark.parametrize("t_fac,window", [(5, 2), (25, 6)])
-def test_fast_is_the_probe_bit_for_bit(t_fac, window):
-    StepNorm = _probe_class(window)
+def test_fast_is_algorithm_1_bit_for_bit(t_fac, window):
+    """With its speed-ups off and the same cadence, NaturalPionFast takes NaturalPion's steps exactly."""
     a, b = _weights(0), _weights(0)
-    probe = StepNorm(a, lr=0.2, beta=0.5, eps=1e-4, alpha_max=1.0, t_fac=t_fac, use_s=True,
-                     momentum="lie", beta1=0.9, trust="none", beta_backward=0.5)
+    ref = NaturalPion(a, lr=0.2, t_fac=t_fac, stats_window=window, beta_a=0.5, beta_d=0.5)
     ours = NaturalPionFast(b, lr=0.2, t_fac=t_fac, stats_window=window, retraction="cayley", stats_dtype="fp32",
                            batch_sigma=False, share_root=False)
-    ta = _drive(probe, a, 60, 1, _cosine)
-    tb = _drive(ours, b, 60, 1, _cosine)
-    for t, (wa, wb) in enumerate(zip(ta, tb)):
+    for t, (wa, wb) in enumerate(zip(_drive(ref, a, 60, 1, _cosine), _drive(ours, b, 60, 1, _cosine))):
         for x, y in zip(wa, wb):
             assert torch.equal(x, y), f"step {t}: max diff {(x - y).abs().max().item():.3e}"
 

@@ -99,7 +99,7 @@ def machine(device: str | None = None) -> dict:
 @dataclass(frozen=True)
 class RunConfig:
     # what is being compared
-    optimizer: str = "ngd-pion"     # ngd-pion | ngd-pion-ref | pion | adamw
+    optimizer: str = "natural-pion-fast"   # natural-pion | natural-pion-fast | natural-pion-turbo | natural-pion-stiefel | pion | adamw
     lr: float = 1e-3
     # AdamW's learning rate. `0` means "follow `lr`", which is what their
     # published configuration does -- one rate for both optimizers, 1e-3 --

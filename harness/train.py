@@ -21,37 +21,17 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ngd_pion.legacy.fast import FastNGDPion
-from ngd_pion.hooks import attach
-from ngd_pion.optimizer import NGDPion
+from ngd_pion.hooks import attach, attach_backward
 from ngd_pion.pion_baseline import Pion
-from ngd_pion.with_s import NGDPionS, attach_backward
-from ngd_pion.legacy.with_s_fast import FastNGDPionS
-from ngd_pion.legacy.op_damped import OpDampedNGDPion
-from ngd_pion.legacy.powered import PoweredNGDPion
-from ngd_pion.legacy.momentum import MomentumNGDPionS
-from ngd_pion.legacy.shampoo import ShampooPion
-from ngd_pion.unified import NGDPionUnified
-from ngd_pion.legacy.damped import DampedNGDPionS
-from ngd_pion.legacy.exact_curv import ExactCurvNGDPionS
 from ngd_pion.linalg import EIGH_FALLBACKS
 from ngd_pion.natural_pion import BY_NAME, NaturalPion
 
 from .config import RunConfig
 from .data import TokenCorpus
-from .instrument import BackwardProbe, layer_diagnostics, summarise
 from .local_cache import stage_locally
 from .model import Transformer
 
 __all__ = ["build_optimizers", "lr_at", "train"]
-
-# Optimizers that expose per-layer rows to `instrument.layer_diagnostics`.
-# A tuple rather than `isinstance(rot, NGDPion)` at each call site: `ShampooPion`
-# is deliberately not an `NGDPion` subclass -- it takes no covariance and has no
-# Fisher -- and an identity check would have silently written no diagnostics at
-# all for it, which is exactly how it first behaved.
-DIAGNOSED = (NGDPion, ShampooPion)
-
 
 def query_blocks(model, cfg: RunConfig) -> dict[int, int]:
     """The query projection rotates as one block per attention head (Pion's `qkv_split_granularity="head"`; K and V
@@ -90,48 +70,8 @@ def lr_at(step: int, cfg: RunConfig, base: float | None = None, shape: str = "co
     raise ValueError(f"unknown schedule {shape!r}")
 
 
-# Two names for NGD-Pion, and the split is about provenance rather than taste.
-#
-# `ngd_pion/optimizer.py` is the reference: a transcription of docs/history/ALGORITHM.md,
-# left unoptimised so there is something to check against. `fast.py` is what
-# actually runs. Today they are bit-identical -- `tests/test_fast.py` asserts
-# equal weight trajectories -- but the next items on the cost list (a
-# Newton-Schulz retraction, a batched step) change rounding, and from then on
-# the two produce different numbers.
-#
-# `RunConfig.name` is built from this string, so giving each implementation its
-# own name is what keeps a run directory an honest record of the code that
-# produced it. A silent alias would defeat exactly that, which is why the old
-# bare "ngd" is not accepted: failing loudly costs one puzzled minute, and
-# guessing wrong costs a run.
-#
-# The fast one gets the short name because it is the one the paper runs, and
-# because the opposite arrangement fails badly: forgetting a suffix would buy
-# 62 days of wall-clock instead of 14 hours, and nothing would say so until the
-# job had been queued.
-# The fast one gets the short name in each family, for the reason given above:
-# a forgotten suffix should cost accuracy you can measure, not two months of
-# wall clock. That reason has lapsed for the `S` family and the naming has not:
-# the power iteration moved into `NGDPionS`, so `FastNGDPionS` is bit-identical
-# to it and differs only by recording `quad`, `curv` and `pred_drop`. The
-# 69.5 s of a 73.5 s step this comment used to cite is history, not a live cost.
-# The final method, exact and efficient forms (ngd_pion/natural_pion.py).
+# The rotating optimizers: Natural Pion's tiers (ngd_pion/natural_pion.py) and the Pion baseline.
 NATURAL_PION = BY_NAME
-
-NGD_IMPLEMENTATIONS = {
-    "ngd-pion": FastNGDPion,
-    "ngd-pion-ref": NGDPion,
-    "ngd-pion-s-ref": NGDPionS,
-    "ngd-pion-op": OpDampedNGDPion,
-    "ngd-pion-pow": PoweredNGDPion,
-    "ngd-pion-damped": DampedNGDPionS,
-    "ngd-pion-exact": ExactCurvNGDPionS,
-    # `with_s_fast.FastNGDPionS` and `momentum.MomentumNGDPionS` are kept as the
-    # oracles `tests/test_unified.py` checks against, not as the things that run.
-    "ngd-pion-s": NGDPionUnified,
-    "ngd-pion-m": NGDPionUnified,
-    "ngd-pion-u": NGDPionUnified,
-}
 
 
 def build_optimizers(model: Transformer, cfg: RunConfig):
@@ -148,7 +88,7 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
         return None, _adamw(model.parameters(), cfg), None
 
     if cfg.optimizer in NATURAL_PION:
-        # The final method (docs/paper/FINAL.md). Only the angle and the momentum come from the
+        # The method and its tiers. Only the angle and the momentum come from the
         # configuration; cadence, statistics window and factor EMAs are the class's own, so the legacy
         # `ngd_*` defaults cannot leak in. `--lr` is the peak rotation angle in radians.
         rot = NATURAL_PION[cfg.optimizer](weights, lr=cfg.lr, beta1=cfg.ngd_beta1, row_blocks=query_blocks(model, cfg),
@@ -160,71 +100,6 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
         recorder = attach(linears, rot)
         if cfg.np_profile:
             rot.profile = {}
-    elif cfg.optimizer in NGD_IMPLEMENTATIONS:
-        kw = {}
-        if cfg.optimizer in ("ngd-pion", "ngd-pion-op", "ngd-pion-pow"):
-            # the diagnostics and the angle cap live in the fast variant only;
-            # the reference and the S variant take neither, on purpose
-            kw["diag_every"] = cfg.log_every
-            kw["angle_max"] = cfg.ngd_angle_max
-        if cfg.optimizer == "ngd-pion-pow":
-            kw["power"] = cfg.ngd_power
-        if cfg.optimizer == "ngd-pion-damped":
-            kw["lam"] = cfg.ngd_lam
-            kw["lam_adapt"] = cfg.ngd_lam_adapt
-        if cfg.optimizer in ("ngd-pion-s", "ngd-pion-m", "ngd-pion-u"):
-            # The name is a preset for the algorithmic flags; the implementation
-            # flags come from the configuration for all three.
-            kw["use_s"] = cfg.ngd_use_s if cfg.optimizer == "ngd-pion-u" else True
-            kw["momentum"] = (
-                cfg.ngd_momentum if cfg.optimizer in ("ngd-pion-m", "ngd-pion-u") else "none"
-            )
-            kw["beta1"] = cfg.ngd_beta1
-            kw["retraction"] = cfg.ngd_retraction
-            kw["ns_iters"] = cfg.ngd_ns_iters
-            kw["ns_guard"] = cfg.ngd_ns_guard
-            kw["angle"] = cfg.ngd_angle
-            kw["trust"] = cfg.ngd_trust
-            kw["exact_tokens"] = cfg.ngd_exact_tokens
-            kw["exact_beta"] = cfg.ngd_exact_beta
-            kw["trust_lr"] = cfg.ngd_trust_lr
-            kw["trust_lr_cap"] = cfg.ngd_trust_lr_cap
-            kw["trust_lr_lo"] = cfg.ngd_trust_lr_lo
-            kw["trust_lr_hi"] = cfg.ngd_trust_lr_hi
-            kw["power"] = cfg.ngd_s_power
-        if cfg.optimizer == "ngd-pion-exact":
-            kw["exact_every"] = cfg.ngd_exact_every
-            kw["exact_tokens"] = cfg.ngd_exact_tokens
-        if cfg.optimizer in ("ngd-pion-s", "ngd-pion-s-ref", "ngd-pion-damped",
-                             "ngd-pion-exact", "ngd-pion-m", "ngd-pion-u"):
-            kw["beta_backward"] = cfg.ngd_beta_backward
-            if cfg.ngd_fisher_mc_every:
-                # `D` is only fed on the sampling steps, so its EMA has to look
-                # back over sampling events rather than over training steps
-                kw["beta_backward"] = cfg.ngd_beta_backward
-        rot = NGD_IMPLEMENTATIONS[cfg.optimizer](
-            weights, lr=cfg.lr, beta=cfg.ngd_beta, eps=cfg.ngd_eps,
-            alpha_max=cfg.ngd_alpha_max, t_fac=cfg.ngd_t_fac, **kw,
-        )
-        recorder = attach(linears, rot)
-    elif cfg.optimizer == "shampoo-pion":
-        # Deliberately not in `NGD_IMPLEMENTATIONS`: that call passes `beta`,
-        # `eps` and `alpha_max` with Fisher meanings, and reusing those names
-        # for different quantities is how `ngd_power` came to reach the run
-        # hash without reaching the optimizer.
-        rot = ShampooPion(
-            weights,
-            lr=cfg.lr,
-            power=cfg.shampoo_power,
-            beta=cfg.shampoo_beta,
-            eps=cfg.shampoo_eps,
-            damping=cfg.shampoo_damping,
-            t_fac=cfg.ngd_t_fac,
-            plane_every=cfg.shampoo_plane_every,
-        )
-        # No hooks and no recorder: the preconditioner is a function of the
-        # gradients alone, so there is nothing to observe in the forward pass.
-        recorder = None
     elif cfg.optimizer == "pion":
         # Published Pion, every setting from `RunConfig` -- the baseline, and the
         # only Pion arm (ADR 0008, 0011). There used to be a `pion_ablated` name
@@ -247,7 +122,7 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
             f"unknown optimizer {cfg.optimizer!r}; expected one of "
             + ", ".join(
                 repr(k) for k in (
-                    *NATURAL_PION, *NGD_IMPLEMENTATIONS, "shampoo-pion", "pion", "adamw"
+                    *NATURAL_PION, "pion", "adamw"
                 )
             )
         )
@@ -477,19 +352,9 @@ def train(
 
     model = Transformer(cfg.model).to(device)
     rot, adamw, recorder = build_optimizers(model, cfg)
-    # Per-layer rows, alongside the summary that goes on the training log.
-    # `summarise` reduces to a min and a max, and questions that motivated the
-    # instrument in the first place -- does the required step size depend on
-    # depth, does the antisymmetric part of the gradient survive bf16 -- cannot
-    # be answered from two order statistics over 56 weights.
-    diagnostics = (out / "diagnostics.jsonl").open("a") if isinstance(rot, DIAGNOSED) else None
-    # Measurement only, attached alongside the diagnostics file and nowhere else.
-    probe = BackwardProbe(model.parameter_split()[0]) if diagnostics is not None else None
-    # The S variant needs the backward signal as a statistic, not as a
-    # diagnostic, so it gets its own recorder alongside the activation one.
-    backward = (attach_backward(model.parameter_split()[0], rot)
-                if isinstance(rot, (NGDPionS, NaturalPion)) else None)
-    names = {id(m.weight): n for n, m in model.named_modules() if isinstance(m, nn.Linear)}
+    # Natural Pion reads the output gradients as a statistic (D), so it gets a backward recorder beside the
+    # activation one.
+    backward = attach_backward(model.parameter_split()[0], rot) if isinstance(rot, NaturalPion) else None
 
     # Local disk, not $DATA_p330, if the file is large enough to be worth the
     # copy -- see harness/local_cache.py for why. Idempotent, so staging the
@@ -531,13 +396,9 @@ def train(
         log.flush()
         if first >= steps:
             log.close()
-            if diagnostics is not None:
-                diagnostics.close()
             lock.release()
             if recorder is not None:
                 recorder.remove()
-            if probe is not None:
-                probe.remove()
             if backward is not None:
                 backward.remove()
             return out
@@ -567,11 +428,6 @@ def train(
                 recorder.enabled = micro == 0
             if backward is not None:
                 backward.enabled = micro == 0
-            if probe is not None:
-                # only on the steps that get logged, so it costs nothing on the rest
-                probe.enabled = micro == 0 and (
-                    step % cfg.log_every == 0 or step == steps - 1
-                )
             x, y = train_data.batch(cfg.micro_batch, device)
             if (
                 backward is not None
@@ -635,7 +491,7 @@ def train(
         held_batch = held_before = None
         if watch and held_data is not None:
             held_batch = held_data.batch(cfg.micro_batch, device)
-            with _recorders_off(recorder, backward, probe):
+            with _recorders_off(recorder, backward):
                 held_before = _measure_loss(model, *held_batch, cfg.rho_micro, cfg, device)
         if rot is not None:
             rot.step()
@@ -645,7 +501,7 @@ def train(
                 float(rot.state[p].get("pred_drop", 0.0))
                 for g in rot.param_groups for p in g["params"] if p in rot.state
             )
-            with _recorders_off(recorder, backward, probe):
+            with _recorders_off(recorder, backward):
                 after = _measure_loss(model, x, y, cfg.rho_micro, cfg, device)
                 if held_before is not None:
                     held_after = _measure_loss(model, *held_batch, cfg.rho_micro, cfg, device)
@@ -734,26 +590,11 @@ def train(
                 row["rho_held_lo"] = held[0]
                 row["rho_held_hi"] = held[-1]
             held_window = []
-            # The damping the Levenberg-Marquardt rule adapts. Without it a run
-            # cannot answer whether the rule fired, which is how the first
-            # attempt at this was launched -- the same blindness as recording
-            # `curv_exact` without the smoothed value the step divides by.
-            if rot is not None and "lam" in rot.param_groups[0]:
-                row["lam"] = float(rot.param_groups[0]["lam"])
             # realised rotation angle per matrix, where a length rule other than the spectral one sets it
             angles = sorted((getattr(rot, "angles", None) or {}).values())
             if angles:
                 q = lambda f: angles[min(len(angles) - 1, int(f * len(angles)))]
                 row["angle_p10"], row["angle_p50"], row["angle_p90"] = q(0.1), q(0.5), q(0.9)
-            if rot is not None and "lr_scale" in rot.param_groups[0]:
-                row["lr_scale"] = float(rot.param_groups[0]["lr_scale"])
-            if isinstance(rot, DIAGNOSED):
-                rows = layer_diagnostics(rot, names, probe)
-                row.update(summarise(rows))
-                if diagnostics is not None:
-                    for r in rows:
-                        diagnostics.write(json.dumps(r) + "\n")
-                    diagnostics.flush()
             log.write(json.dumps(row) + "\n")
             log.flush()
 
@@ -767,13 +608,9 @@ def train(
     log.close()
     if rot is not None and getattr(rot, "profile", None):
         (out / "profile.json").write_text(json.dumps({"steps": steps - first, "seconds": rot.profile}, indent=1))
-    if diagnostics is not None:
-        diagnostics.close()
     lock.release()
     if recorder is not None:
         recorder.remove()
-    if probe is not None:
-        probe.remove()
     if backward is not None:
         backward.remove()
     return out

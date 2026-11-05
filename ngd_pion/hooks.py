@@ -10,9 +10,10 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 
+import torch
 import torch.nn as nn
 
-__all__ = ["ActivationRecorder", "attach", "attached"]
+__all__ = ["ActivationRecorder", "BackwardRecorder", "attach", "attach_backward", "attached"]
 
 
 class ActivationRecorder:
@@ -63,3 +64,50 @@ def attached(modules, optimizer):
         yield recorder
     finally:
         recorder.remove()
+
+
+class BackwardRecorder:
+    """Feeds each layer's output gradient to `observe_backward`.
+
+    A forward hook that attaches a hook to the output tensor, rather than
+    `register_full_backward_hook`: the latter wraps the module in autograd
+    functions and materialises `grad_input`, which is not needed here.
+
+    `enabled` mirrors `ActivationRecorder`'s: the EMA is defined per optimizer
+    step, so under gradient accumulation only one micro-batch may feed it.
+    """
+
+    def __init__(self, modules, optimizer) -> None:
+        self.enabled = True
+        self._handles = [
+            m.register_forward_hook(self._make(m, optimizer)) for m in list(modules)
+        ]
+
+    def _make(self, module, optimizer):
+        weight = module.weight
+
+        def forward_hook(mod, inputs, output):
+            if not self.enabled or not torch.is_tensor(output) or not output.requires_grad:
+                return None
+
+            def grad_hook(grad):
+                optimizer.observe_backward(weight, grad.detach())
+                return None
+
+            output.register_hook(grad_hook)
+            return None
+
+        return forward_hook
+
+    def remove(self) -> None:
+        for h in self._handles:
+            h.remove()
+        self._handles = []
+
+    def __len__(self) -> int:
+        return len(self._handles)
+
+
+def attach_backward(modules, optimizer) -> BackwardRecorder:
+    """Start recording output gradients for `modules` into `optimizer`."""
+    return BackwardRecorder(modules, optimizer)

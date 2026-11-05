@@ -20,12 +20,8 @@ For each rotated weight `W` (m x n) with gradient `G`, one step is
 
 `lr` is `theta_t`, the rotation angle in radians; the caller schedules it (cosine in our runs).
 `A = E[x x^T]` (layer input) and `D = E[d d^T]` (gradient at the layer output) are fed by hooks:
-`ngd_pion.hooks.attach` for `observe` and `ngd_pion.with_s.attach_backward` for `observe_backward`.
-
-`NaturalPionFast` reproduces `scripts/probes/step_norm.py` with `STEP_NORM_FAST=1 STEP_NORM_BATCH=1
-STEP_NORM_A_LAST=6 STEP_NORM_D_LAST=6` bit for bit (tests/test_natural_pion.py). It is written from
-the same primitives (`covariance`, `direction`, `factorization`, `linalg`); the reference classes
-(`optimizer.py`, `with_s.py`, `unified.py`) are untouched.
+`ngd_pion.hooks.attach` for `observe` and `ngd_pion.hooks.attach_backward` for `observe_backward`.
+Built from the primitives in `covariance`, `direction`, `factorization` and `linalg`.
 """
 
 from __future__ import annotations

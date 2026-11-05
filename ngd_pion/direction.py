@@ -14,7 +14,7 @@ import torch
 from .factorization import Basis
 from .linalg import skew
 
-__all__ = ["generators", "fisher_apply", "natural_gradient", "trust_region_alpha"]
+__all__ = ["generators", "fisher_apply", "natural_gradient"]
 
 
 def generators(W: torch.Tensor, G: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -63,21 +63,3 @@ def natural_gradient(G_skew: torch.Tensor, basis: Basis) -> torch.Tensor:
     Pt = P.transpose(-1, -2)
     Y = (Pt @ G_skew @ P) / basis.denominator
     return skew(P @ Y @ Pt)
-
-
-def trust_region_alpha(
-    quad: torch.Tensor, curv: torch.Tensor, alpha_max: float
-) -> torch.Tensor:
-    """`alpha = min(alpha_max, quad / curv)` (§6).
-
-    Identically 1 on a fresh basis -- `X = F^-1 G` gives `curv = <X, F(X)> =
-    <X, G> = quad` as an identity, not an approximation. What moves it is
-    staleness: `X` is built from a basis `T_fac` steps old while `curv` is
-    measured against the current statistics, so `alpha` reads out how far the
-    factorisation has drifted behind `W`.
-
-    `alpha_max = 1` keeps the mechanism one-sided: a stale basis can only
-    shorten the step, never lengthen it.
-    """
-    ratio = quad / curv.clamp_min(torch.finfo(curv.dtype).tiny)
-    return ratio.clamp(max=alpha_max)
