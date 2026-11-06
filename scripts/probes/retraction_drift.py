@@ -20,11 +20,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 RUNS = Path(os.environ.get("DATA_p330", "")) / "runs"
-CHECKPOINTS = {                       # Natural Pion Fast, 3000 steps, angle 0.2, seed 0 (scripts/paper/v2.sbatch rows)
-    "cayley": "npv2*/ret-cayley/*/checkpoint.pt",
-    "ns": "npv2*/ret-ns/*/checkpoint.pt",
-    "trunc": "npv2*/ret-trunc/*/checkpoint.pt",
-    "ns_delta": "npv2*/s3000/*-s0-*/checkpoint.pt",   # the method itself
+CHECKPOINTS = {                       # the method (RMS rule), 3000 steps, seed 0 (scripts/paper/v2.sbatch rows)
+    "cayley": "npv2*/rms-ret-cayley/*/checkpoint.pt",
+    "ns": "npv2*/rms-ret-ns/*/checkpoint.pt",
+    "trunc": "npv2*/rms-ret-trunc/*/checkpoint.pt",
+    "ns_delta": "npv2*/rms3k/*-s0-*/checkpoint.pt",   # the method itself
 }
 
 
@@ -46,7 +46,7 @@ def measure(ckpt: Path) -> dict:
             scaled.append(float((s1 - s0).abs().max() / s0.max()))
             signed.append(float((s1 / s0 - 1).mean()))
     rel.sort(); scaled.sort()
-    return {"checkpoint": str(ckpt.relative_to(RUNS)), "setting": "v2", "units": len(rel), "rel_median": rel[len(rel) // 2],
+    return {"checkpoint": str(ckpt.relative_to(RUNS)), "setting": "rms", "units": len(rel), "rel_median": rel[len(rel) // 2],
             "scaled_median": scaled[len(scaled) // 2], "scaled_max": scaled[-1],
             "signed_mean": sum(signed) / len(signed)}
 

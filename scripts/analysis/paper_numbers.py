@@ -628,7 +628,7 @@ put("init_pion_gain_full", NUM["pion_full"] - val(f"{IL}/pion73242-lr1e-3-pl3/*"
 f = R / "probes" / "retraction_drift.json"
 d = json.load(open(f)) if f.exists() else {}
 for tag in ("cayley", "ns", "trunc", "ns_delta"):
-    if tag in d and d[tag].get("setting") == "v2":
+    if tag in d and d[tag].get("setting") == "rms":
         put(f"rd_{tag}_med", d[tag]["scaled_median"], f"{f.name}: median over the rotated matrices of max|s1-s0|/max s0")
         put(f"rd_{tag}_max", d[tag]["scaled_max"], f"{f.name}: worst matrix, same measure")
         put(f"rd_{tag}_signed", d[tag]["signed_mean"], f"{f.name}: mean signed relative change")

@@ -1,7 +1,7 @@
 """Why the Newton-Schulz retraction inflated W's spectrum in training (+1.1% mean, npns/s3000) when its own
 truncation error, R = Cay - 2 (I+A)^-1 A^8, can only shrink it.
 
-Runs the first `--max-steps` steps of the npns/s3000 configuration (natural-pion-fast, theta0 0.2 cosine over 3000)
+Runs the first `--max-steps` steps of the method (natural-pion-fast with Pion's RMS length rule, scale 6e-4, cosine over 3000)
 with an instrumented optimizer and records, per step:
   * the relative change of every weight's ||W||_F^2 = sum sigma_i^2 across `step()` (fp64; exactly invariant
     under the two-sided rotation), max |.| and mean signed over matrices, so the drift is located in time
@@ -67,7 +67,7 @@ class Probe(NaturalPionFast):
 T.NATURAL_PION["natural-pion-fast"] = Probe
 from harness import run  # noqa: E402
 
-sys.argv = ["run", "--optimizer", "natural-pion-fast", "--np-retraction", RET, "--lr", "0.2", "--ngd-beta1", "0.9",
+sys.argv = ["run", "--optimizer", "natural-pion-fast", "--np-retraction", RET, "--lr", "6e-4", "--np-kwargs", '{"length": "rms"}', "--ngd-beta1", "0.9",
             "--train-steps", "3000", "--max-steps", str(STEPS), "--batch-sequences", "512", "--micro-batch", "256",
             "--rho-micro", "128", "--precision", "bf16", "--seed", "0", "--device", "cuda", "--log-every", "23",
             "--eval-every", "100000", "--adamw-lr", "8e-3", "--data-path", sys.argv[3] + "/c4_train.bin",
