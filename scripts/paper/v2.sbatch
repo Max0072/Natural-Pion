@@ -191,6 +191,10 @@ ROWS=(
 "rms15k-3e-4|$F|15000|3e-4|0|0.9|||{\"length\":\"rms\"}|"
 "rms15k-6e-4|$F|15000|6e-4|0|0.9|||{\"length\":\"rms\"}|"
 "rms15k-1.2e-3|$F|15000|1.2e-3|0|0.9|||{\"length\":\"rms\"}|"
+# 149-150 which matrices want a larger angle (rms_angles.py: RMS gives v x2.3, o x1.7, q and k ~1): the angle rule
+# with v and o at 2x; control, q and k at 2x
+"vo-x2|$F|3000|0.2|0|0.9||||--np-angle-mult {\"wv\":2,\"wo\":2}"
+"qk-x2|$F|3000|0.2|0|0.9||||--np-angle-mult {\"wq\":2,\"wk\":2}"
 )
 IFS='|' read -r TAG OPT STEPS LR SEED B1 RET STATS KW EXTRA <<< "${ROWS[$SLURM_ARRAY_TASK_ID]}"
 case "$RET" in ""|cayley|ns|ns_delta|trunc) ;; *) echo "row $SLURM_ARRAY_TASK_ID: bad RETRACTION '$RET'"; exit 1 ;; esac

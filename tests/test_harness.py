@@ -744,3 +744,14 @@ def test_rotation_schedules():
         assert abs(got[0] - start) < 1e-3 and abs(got[1] - mid) < 1e-3 and abs(got[2] - end) < 1e-3, (shape, got)
     assert lr_at(0, cfg, shape="warmcos") < 0.01 and abs(lr_at(200, cfg, shape="warmcos") - 0.2) < 1e-3
     assert "schedule" not in RunConfig().scientific_fields() and "wsd_decay" in cfg.scientific_fields()
+
+
+def test_angle_multiplier_reaches_the_named_matrices():
+    from harness.config import RunConfig
+    from harness.train import build_optimizers
+    from harness.model import Transformer
+    model = Transformer(SMALL)
+    rot, _, rec = build_optimizers(model, RunConfig(optimizer="natural-pion-fast", model=SMALL, np_angle_mult='{"wv": 2}'))
+    vs = {id(m.weight) for n, m in model.named_modules() if n.endswith(".wv")}
+    assert set(rot.angle_mult) == vs and all(f == 2 for f in rot.angle_mult.values()) and len(vs) == SMALL.layers
+    rec.remove()

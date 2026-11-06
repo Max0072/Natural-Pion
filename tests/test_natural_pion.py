@@ -430,3 +430,10 @@ def test_polar_factor_from_the_eigenproblem_is_the_svd_one():
     assert torch.allclose(_polar_skew(X), skew(U @ Vh), atol=1e-8)
     s = torch.linalg.svdvals(_polar_skew(X))
     assert torch.allclose(s, torch.ones_like(s), atol=1e-8)
+
+
+def test_angle_multiplier_by_matrix():
+    params = _weights(60)
+    opt = NaturalPionFast(params, lr=0.05, t_fac=5, stats_window=3, angle_mult={id(params[0]): 2.0})
+    _drive(opt, params, 3, 61, lambda t: 0.05)
+    assert abs(opt.angles[id(params[0])] - 0.1) < 2e-3 and abs(opt.angles[id(params[2])] - 0.05) < 2e-3

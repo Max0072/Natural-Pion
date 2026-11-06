@@ -96,6 +96,10 @@ def build_optimizers(model: Transformer, cfg: RunConfig):
                                           ns_iters=cfg.ngd_ns_iters, ns_guard=cfg.ngd_ns_guard,
                                           **{k: v for k, v in (("retraction", cfg.np_retraction),
                                                                ("stats_dtype", cfg.np_stats_dtype)) if v is not None},
+                                          **({"angle_mult": {id(m.weight): f for name, m in model.named_modules()
+                                                             for key, f in json.loads(cfg.np_angle_mult).items()
+                                                             if name.endswith("." + key)}}
+                                             if cfg.np_angle_mult else {}),
                                           **(json.loads(cfg.np_kwargs) if cfg.np_kwargs else {}))
         recorder = attach(linears, rot)
         if cfg.np_profile:

@@ -130,6 +130,9 @@ class RunConfig:
     wsd_decay: float = 0.2
     # Natural Pion: time each part of the optimizer step (GPU-synchronised) into profile.json. Slows the run.
     np_profile: bool = False
+    # Natural Pion Fast: the angle of some matrices times a factor, by name, e.g. '{"wv": 2, "wo": 2}' (a diagnostic of
+    # which matrices want a larger step). Out of the hash when empty.
+    np_angle_mult: str = ""
     weight_decay: float = 0.1
     grad_clip: float = 1.0
 
@@ -513,6 +516,8 @@ class RunConfig:
             d.pop("np_retraction", None)
         if d.get("np_stats_dtype") in ("fp32", None):
             d.pop("np_stats_dtype", None)
+        if not d.get("np_angle_mult"):
+            d.pop("np_angle_mult", None)
         if not d.get("np_kwargs"):
             d.pop("np_kwargs", None)
         return d

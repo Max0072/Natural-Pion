@@ -487,7 +487,7 @@ class NaturalPionFast(NaturalPion):
                  beta_a: float = 0.5, beta_d: float = 0.5, share_inputs: bool = True,
                  retraction: str = "ns_delta", stats_dtype: str = "bf16", batch_sigma: bool = True,
                  share_root: bool = True, direction: str = "natural", length: str = "spectral", sides: str = "joint", planes: str = "scaled",
-                 attn_mult: float = 1.0, a_window: int | None = None, d_window: int | None = None, a_every: int = 1,
+                 attn_mult: float = 1.0, angle_mult: dict[int, float] | None = None, a_window: int | None = None, d_window: int | None = None, a_every: int = 1,
                  tf32: str = "off", fisher_dtype: str = "fp32", **kwargs) -> None:
         super().__init__(params, lr, t_fac=t_fac, stats_window=stats_window, beta_a=beta_a, beta_d=beta_d,
                          share_inputs=share_inputs, retraction=retraction, stats_dtype=stats_dtype, **kwargs)
@@ -499,6 +499,7 @@ class NaturalPionFast(NaturalPion):
         #   sides      "joint": one c for both sides, from the larger sigma | "each": each side by its own
         #   planes     "scaled": X as it is | "equal": every plane of X turned by theta (polar factor, one SVD per side)
         #   attn_mult  the angle of the square (attention) matrices times this
+        #   angle_mult {id(param): m}: the angle of those matrices times m (a diagnostic: which matrices want more)
         #   a_window, d_window   steps before a rebuild in which A, D are fed (default: stats_window); a_every: A every
         #              n-th step only
         if direction not in ("natural", "raw"):
@@ -515,7 +516,8 @@ class NaturalPionFast(NaturalPion):
             raise ValueError("attn_mult must be positive and a_every at least 1")
         self.direction, self.length, self.sides, self.planes = direction, length, sides, planes
         self.attn_mult, self.a_window, self.d_window, self.a_every = attn_mult, a_window, d_window, a_every
-        self._ablated = (length, sides, planes, attn_mult) != ("spectral", "joint", "scaled", 1.0)
+        self.angle_mult = dict(angle_mult or {})
+        self._ablated = (length, sides, planes, attn_mult) != ("spectral", "joint", "scaled", 1.0) or bool(self.angle_mult)
         self.angles: dict[int, float] | None = None    # realised angle per matrix, on the ablated length path
         self._gens: dict[tuple, torch.Tensor] = {}
         self.batch_sigma = batch_sigma
@@ -636,7 +638,7 @@ class NaturalPionFast(NaturalPion):
         for i, (p, W, X_in, X_out, b, r, whole) in enumerate(rows):
             st = self._unit_state(self.state[p], b)
             st["since_refactor"] = self.state[p]["since_refactor"]
-            theta = group["lr"] * (self.attn_mult if p.shape[0] == p.shape[1] else 1.0)
+            theta = group["lr"] * (self.attn_mult if p.shape[0] == p.shape[1] else 1.0) * self.angle_mult.get(id(p), 1.0)
             if self.planes == "equal":
                 X_in, X_out = _polar_skew(X_in), _polar_skew(X_out)
                 c_in = c_out = theta
