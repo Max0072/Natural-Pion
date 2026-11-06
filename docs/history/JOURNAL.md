@@ -7318,3 +7318,17 @@ exponent is gamma (c stays the step coefficient).
    49, 50; ngd_ns_guard's default moved to 1.8, so they land in new directories). The empirical-Fisher grid is the
    direction grid (same configuration).
 Lesson recorded in memory: list what could make a campaign obsolete before launching it.
+
+## 2026-11-06 — RMS beats the angle rule in the paper's setting
+
+All v2 runs in except Appendix D's full length, the polar step (now via eigh; rerunning) and Algorithm 1's seeds.
+Main result holds: full length 3.3285 vs Pion 3.3706 (gap 0.042), budget savings 1.42-1.80x. TF32 before the
+Cayley step (3.7152 / 3.4757 vs 3.7162 / 3.4742) and bf16 F^-1 (3.7152 / 3.4751) pass the 0.010 rule; TF32 in the
+Cayley step moves the spectrum 3e-3..2.7e-2 in 200 steps (fp32: 6e-7), so it is out. Peak angle at 15000: 0.1
+(3.4658) beats 0.05 (3.4742) by 0.008 — the long runs use a suboptimal angle.
+The finding: on Fast with momentum and Q per head, Pion's RMS length rule beats the spectral angle rule at 3000 steps
+on all four seeds (RMS - angle: -0.020, -0.013, -0.018, -0.018), and its optimum sits at the grid's lower edge
+(6e-4). In the old setting (Algorithm 1, no momentum) the angle rule won on four seeds. This hits contribution 3.
+Next (approved): RMS grid below the edge at 3000 (rows 143-144) and an RMS grid at 15000 (145-148). If RMS wins at
+15000 too, the method becomes natural-gradient direction + Pion's length rule, and the main runs are redone after
+re-tuning; the angle question at long horizons, the timing job and the remaining grid extensions wait for that.
