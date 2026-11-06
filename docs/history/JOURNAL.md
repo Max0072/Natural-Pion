@@ -7368,3 +7368,7 @@ tf32-upstream check on the angle rule had passed on loss only — its drift was 
 wrong too. Fix: the rotation of W is inside the retraction's fp32 block. The four TF32 runs are kept in
 runs/npv2-bugs as evidence. Next: final form at 3000 again, drift checked, and only then 15000 and the timing job.
 Lesson: verify every claimed invariant (here the spectrum), not only the loss, before accepting a speed-up.
+Fix verified (2026-11-06 22:00): the final form (RMS + TF32 before the Cayley step and for nothing after it + bf16
+F^-1) at 3000 steps, seed 0, on B200: val 3.6889; spectrum drift 2.58e-5 median, 3.29e-5 worst — the fp32 form's
+2.61e-5 / 3.28e-5. The method in fp32 at 3000 (rms3k, RTX): 3.6947 / 3.7008 / 3.6943 / 3.6920 (mean 3.6955). Next:
+the 15000-step check (row 163, on B200 and RTX, whichever starts first) and the timing job (RTX).
