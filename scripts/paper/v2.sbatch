@@ -195,6 +195,24 @@ ROWS=(
 # with v and o at 2x; control, q and k at 2x
 "vo-x2|$F|3000|0.2|0|0.9||||--np-angle-mult {\"wv\":2,\"wo\":2}"
 "qk-x2|$F|3000|0.2|0|0.9||||--np-angle-mult {\"wq\":2,\"wk\":2}"
+# ---- the method with Pion's RMS length rule (user, 2026-11-06). Wave 1: what unlocks the rest.
+# 151-154 Algorithm 1 with the RMS rule (Fast with every speed-up off: bases and statistics every step, exact Cayley, fp32)
+"rms-alg1-1.5e-4|$F|3000|1.5e-4|0|0.9|cayley|fp32|{\"t_fac\":1,\"stats_window\":null,\"beta_a\":0.95,\"beta_d\":0.5,\"share_inputs\":false,\"batch_sigma\":false,\"share_root\":false,\"length\":\"rms\"}|"
+"rms-alg1-3e-4|$F|3000|3e-4|0|0.9|cayley|fp32|{\"t_fac\":1,\"stats_window\":null,\"beta_a\":0.95,\"beta_d\":0.5,\"share_inputs\":false,\"batch_sigma\":false,\"share_root\":false,\"length\":\"rms\"}|"
+"rms-alg1-6e-4|$F|3000|6e-4|0|0.9|cayley|fp32|{\"t_fac\":1,\"stats_window\":null,\"beta_a\":0.95,\"beta_d\":0.5,\"share_inputs\":false,\"batch_sigma\":false,\"share_root\":false,\"length\":\"rms\"}|"
+"rms-alg1-1.2e-3|$F|3000|1.2e-3|0|0.9|cayley|fp32|{\"t_fac\":1,\"stats_window\":null,\"beta_a\":0.95,\"beta_d\":0.5,\"share_inputs\":false,\"batch_sigma\":false,\"share_root\":false,\"length\":\"rms\"}|"
+# 155-157 T_fac 25 with full statistics (the chain's second step), RMS rule
+"rms-tf25-3e-4|$F|3000|3e-4|0|0.9|cayley|fp32|{\"t_fac\":25,\"stats_window\":null,\"beta_a\":0.95,\"beta_d\":0.5,\"share_inputs\":false,\"batch_sigma\":false,\"share_root\":false,\"length\":\"rms\"}|"
+"rms-tf25-6e-4|$F|3000|6e-4|0|0.9|cayley|fp32|{\"t_fac\":25,\"stats_window\":null,\"beta_a\":0.95,\"beta_d\":0.5,\"share_inputs\":false,\"batch_sigma\":false,\"share_root\":false,\"length\":\"rms\"}|"
+"rms-tf25-1.2e-3|$F|3000|1.2e-3|0|0.9|cayley|fp32|{\"t_fac\":25,\"stats_window\":null,\"beta_a\":0.95,\"beta_d\":0.5,\"share_inputs\":false,\"batch_sigma\":false,\"share_root\":false,\"length\":\"rms\"}|"
+# 158-161 the RMS scale at 9000 and 30000 steps
+"rms9k-3e-4|$F|9000|3e-4|0|0.9|||{\"length\":\"rms\"}|"
+"rms9k-6e-4|$F|9000|6e-4|0|0.9|||{\"length\":\"rms\"}|"
+"rms30k-1.5e-4|$F|30000|1.5e-4|0|0.9|||{\"length\":\"rms\"}|"
+"rms30k-3e-4|$F|30000|3e-4|0|0.9|||{\"length\":\"rms\"}|"
+# 162-163 the candidate final form: RMS + TF32 before the Cayley step + bf16 F^-1 (Fast's 0.010 rule against rows len-rms-6e-4 and rms15k-3e-4)
+"rms-final|$F|3000|6e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
+"rms-final-15k|$F|15000|3e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
 )
 IFS='|' read -r TAG OPT STEPS LR SEED B1 RET STATS KW EXTRA <<< "${ROWS[$SLURM_ARRAY_TASK_ID]}"
 case "$RET" in ""|cayley|ns|ns_delta|trunc) ;; *) echo "row $SLURM_ARRAY_TASK_ID: bad RETRACTION '$RET'"; exit 1 ;; esac
