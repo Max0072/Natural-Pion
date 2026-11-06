@@ -539,11 +539,8 @@ tensor, its inputs and those of $D$ in bf16 with fp32 accumulation. Over four se
 against {{tf1_mom_15k:.4f}}. A step takes {{v2_ratio:.2f}}x Pion's time on our GPU.[^cost] Its peak GPU memory is
 {{peak_np:.1f}} GB against Pion's {{peak_pion:.1f}} GB ({{peak_d:+.1f}} GB for $A$, $D$, the bases and the momentum).
 
-[^cost]: Seconds per step are wall-clock time over steps of 3 000-step runs on RTX PRO 6000 (Natural Pion
-Fast {{v2_sps:.3f}} s) and of the 3 840-step Pion run ({{pion3000_sps:.3f}} s), all evaluating
-every 500 steps; Algorithm 1 is the 3 000-step run with momentum ({{tf1_mom_sps:.2f}} s). The full-length runs of
-Section 5.2, which evaluate every 2 000 steps, give {{v2_full_sps:.3f}} s and {{pion_sps:.3f}} s, a ratio of
-{{v2_full_ratio:.2f}}.
+[^cost]: Seconds per step come from one job on one GPU (RTX PRO 6000), every configuration in turn for 600 steps of
+the 3 000-step schedule without evaluation, Pion first and last (`scripts/paper/timing.sbatch`).
 
 ### 4.9 Cost in floating-point operations
 
@@ -641,7 +638,7 @@ Pion's targets are at its published learning rate $10^{-3}$. At short budgets $2
 measured against a Pion that is not at its best learning rate there.
 
 **Equal wall-clock time.** On one GPU a Natural Pion step costs {{v2_ratio:.2f}}x Pion's in the 3 000-step runs
-({{v2_sps:.3f}} s against {{pion3000_sps:.3f}} s; {{v2_full_ratio:.2f}}x in the full-length runs), so in the time of Pion's $B$
+({{v2_sps:.3f}} s against {{pion3000_sps:.3f}} s), so in the time of Pion's $B$
 steps it takes $B/{{v2_ratio:.2f}}$. These are estimates read off the budget curve above, not separate runs: the gap
 to Pion at Pion's full-length wall-clock time is {{eqt_73242_gap:.3f}} (fit; {{eqt_73242_gap_int:.3f}} by
 interpolation), at 19 200 steps' time {{eqt_19200_gap:.3f}}, and at 3 840 steps' time {{eqt_3840_gap:.3f}}.
