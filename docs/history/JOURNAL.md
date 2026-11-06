@@ -7351,3 +7351,10 @@ speed-up off plus length="rms" (bit-identical to NaturalPion's arithmetic otherw
 Wave 1 submitted (v2.sbatch rows 151-163): Algorithm 1 and T_fac-25 RMS scale grids, RMS scale at 9000 and 30000
 (gates the budget curve and the long runs), the candidate final form RMS + TF32 upstream + bf16 F^-1 at 3000 and 15000.
 Scope of the rest (full ~95 runs vs reduced ~60) to be chosen by the user once wave 1 is in.
+Items 1-5 before wave 2 (2026-11-06 night): (1) the RMS rule is batched in Fast (one host sync per step, for the
+Newton-Schulz count), tested equal to the per-matrix path; (2) rows rms3k: the method at 3000 steps, seeds 0-3, on
+the final implementation (the earlier len-rms-6e-4 ran with the old Newton-Schulz guard); (3) ns_diag trains with
+the RMS rule, paper_checks and retraction_drift read RMS checkpoints (rms3k, rms-ret-* in wave 2); (4)
+scripts/paper/timing.sbatch: every step time from one job on one GPU (Pion first and last), to run last; (5)
+paper_numbers, budget_fit, figures and collect read the RMS tags (rms3k, rms15k-3e-4, rms9k/rms30k grid best,
+rms45k, rms73242) and the timing job. Still open (user): scope of wave 2 (full vs reduced), Pion lr tuning.

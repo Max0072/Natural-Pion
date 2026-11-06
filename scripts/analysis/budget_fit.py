@@ -53,31 +53,44 @@ PION = [
 # Natural Pion Fast with the query projection per head (scripts/paper/v2.sbatch, rows 99-110). The earlier Q-whole points
 # (stepnormcombo, stepnormfinal, stepnormlong/ours*) are in git history (budget_fit.json before 2026-11-05 evening).
 V = "npv2"
+# the method: Natural Pion Fast with Pion's RMS length rule; where the scale was chosen on a grid at that budget, the
+# grid's best point (seed 0) stands for the budget
 NP = [
-    (3000, [(f"{V}/s3000/*", s) for s in (0, 1, 2, 3)]),
-    (9000, [(f"{V}/s9000/*", 0)]),
-    (15000, [(f"{V}/s15000/*", s) for s in (0, 1, 2, 3)]),
-    (30000, [(f"{V}/s30000/*", 0)]),
-    (45000, [(f"{V}/s45000/*", 0)]),
-    (73242, [(f"{V}/s73242/*", 0)]),
+    (3000, [(f"{V}/rms3k/*", s) for s in (0, 1, 2, 3)]),
+    (9000, "grid", [f"{V}/rms9k-3e-4/*", f"{V}/rms9k-6e-4/*"]),
+    (15000, [(f"{V}/rms15k-3e-4/*", s) for s in (0, 1, 2, 3)]),
+    (30000, "grid", [f"{V}/rms30k-1.5e-4/*", f"{V}/rms30k-3e-4/*"]),
+    (45000, [(f"{V}/rms45k/*", 0)]),
+    (73242, [(f"{V}/rms73242/*", 0)]),
 ]
 # equal wall-clock time is read off the Natural Pion curve: at Pion's B, Natural Pion has B * sps_pion / sps_np steps
-SPS_PION = ("stepnormfinal/pion3840/*", 0)
-SPS_NP = (f"{V}/s3000/*", 0)
+SPS_PION = ("timing/pion-a/*", "timing/pion-b/*")      # one job, one GPU (scripts/paper/timing.sbatch)
+SPS_NP = ("timing/final/*",)                            # the method's form; "timing/fast/*" if TF32 is not adopted
 EQUAL_TIME = (3840, 19200, 73242)
 
 
-def sps_of(pattern: str, seed: int) -> float:
-    for d in sorted(R.glob(pattern)):
-        if json.load(open(d / "manifest.json"))["config"]["seed"] != seed:
-            continue
-        rows = [json.loads(l) for l in open(d / "log.jsonl") if '"wall"' in l]
-        return rows[-1]["wall"] / (rows[-1]["step"] + 1)
-    raise SystemExit(f"{pattern} seed {seed}: no run")
+def sps_of(*patterns: str) -> float:
+    """Mean over the patterns of (wall at step 599 - wall at step 100) / 499, the timing job's measure."""
+    out = []
+    for pattern in patterns:
+        for d in sorted(R.glob(pattern)):
+            w = {r["step"]: r["wall"] for r in (json.loads(l) for l in open(d / "log.jsonl") if '"wall"' in l)}
+            if 100 in w and 599 in w:
+                out.append((w[599] - w[100]) / 499)
+                break
+        else:
+            raise SystemExit(f"{pattern}: no timing run")
+    return sum(out) / len(out)
 
 
 def load(spec):
-    return [(B, np.array([val_of(p, s) for p, s in runs])) for B, runs in spec]
+    out = []
+    for B, *rest in spec:
+        if rest[0] == "grid":
+            out.append((B, np.array([min(val_of(p, 0) for p in rest[1])])))
+        else:
+            out.append((B, np.array([val_of(p, s) for p, s in rest[0]])))
+    return out
 
 
 def fit(B, y):

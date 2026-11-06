@@ -164,7 +164,15 @@ put("pion3000_s0", p3000[0], "adamw2d/pion-lr0.001-s0-9e6e6d32f6 (Pion, 3000 ste
 put("pion3000_mean", sum(p3000) / 4, "Pion 3000, seeds 0-3 (adamw2d, seedshead)")
 put("pion15k", val("ladder15k/pion-lr0.001-s0-f67fdad3e9"), "ladder15k/pion-lr0.001-s0-f67fdad3e9")
 
-put("pion3000_sps", sps("stepnormfinal/pion3840/*", 0), "Pion 3840 steps, seed 0, eval every 500 like the 3000-step runs (the 3000-step Pion run, adamw2d, ran on older code and is not used for timing)")
+
+def derive(key: str, fn, deps: tuple, note: str):
+    vals = [NUM.get(d) for d in deps]
+    if any(v is None for v in vals):
+        missing(key, "needs " + ", ".join(d for d, v in zip(deps, vals) if v is None))
+        return None
+    put(key, fn(*vals), note)
+    return NUM[key]
+
 
 def peak(d: Path) -> float:
     return max(r.get("peak_gb") or 0.0 for r in _rows(d))
@@ -281,14 +289,16 @@ def _v(pattern, seed=None):
         return val(pattern, seed)
     except SystemExit:
         return None
-V2 = {}
+# the method: Natural Pion Fast with Pion's RMS length rule (v2.sbatch rows rms3k, rms15k-3e-4, rms73242)
+MAIN = {3000: "npv2/rms3k/*", 15000: "npv2/rms15k-3e-4/*"}
+FULL = "npv2/rms73242/*"
 for st in (3000, 15000):
-    vs = [_v(f"npv2/s{st}/*", sd) for sd in range(4)]
+    vs = [_v(MAIN[st], sd) for sd in range(4)]
     for sd, v in enumerate(vs):
-        (put(f"v2_{st}_s{sd}", v, f"npv2/s{st} seed {sd}") if v is not None
+        (put(f"v2_{st}_s{sd}", v, f"{MAIN[st]} seed {sd}") if v is not None
          else missing(f"v2_{st}_s{sd}", f"v2.sbatch, {st} steps, seed {sd}"))
     if all(v is not None for v in vs):
-        put(f"v2_{st}_mean", sum(vs) / 4, f"npv2/s{st}, seeds 0-3")
+        put(f"v2_{st}_mean", sum(vs) / 4, f"{MAIN[st]}, seeds 0-3")
     else:
         missing(f"v2_{st}_mean", "all four seeds")
 p3 = [val("adamw2d/pion-lr0.001-s0-9e6e6d32f6")] + [val("seedshead/pion-lr0.001-*", sd) for sd in (1, 2, 3)]
@@ -303,22 +313,41 @@ if NUM.get("v2_15000_s0") is not None:
     put("v2_gap15k", NUM["pion15k"] - NUM["v2_15000_s0"], "pion15k - v2_15000_s0 (seed 0)")
 else:
     missing("v2_gap15k", "v2_15000_s0")
-vf = runs("npv2/s73242/*")
-if vf and info(vf[0])["done"]:
-    i = info(vf[0])
-    put("v2_full", i["val"], "npv2/s73242")
-    put("v2_full_wall", i["wall"], "npv2/s73242, wall")
+vf = [d for d in runs(FULL) if info(d)["done"]]
+if vf:
+    i = info(vf[-1])
+    put("v2_full", i["val"], FULL)
     put("v2_gap_full", NUM["pion_full"] - i["val"], "pion_full - v2_full")
-    put("v2_full_sps", i["wall"] / 73242, "npv2/s73242 wall / steps")
-    put("v2_full_ratio", NUM["v2_full_sps"] / NUM["pion_sps"], "v2_full_sps / pion_sps")
 else:
-    for k in ("v2_full", "v2_full_wall", "v2_gap_full", "v2_full_sps", "v2_full_ratio"):
-        missing(k, "v2.sbatch row 110 (73 242 steps)")
-try:
-    put("v2_sps", sps("npv2/s3000/*", 0), "npv2/s3000 seed 0 (RTX)")
-    put("v2_ratio", NUM["v2_sps"] / NUM["pion3000_sps"], "v2_sps / pion3000_sps")
-except SystemExit:
-    missing("v2_sps", "npv2/s3000 seed 0")
+    for k in ("v2_full", "v2_gap_full"):
+        missing(k, "v2.sbatch row rms73242 (73 242 steps)")
+
+# step times: one job on one GPU, every configuration in turn (scripts/paper/timing.sbatch)
+TIMING = {"pion": ("pion-a", "pion-b"), "alg1": ("alg1",), "tf25": ("tf25",), "windows": ("windows",),
+          "batched": ("batched",), "fast": ("fast",), "final": ("final",)}
+METHOD_FORM = "final"                 # "final" (TF32 before the Cayley step, bf16 F^-1) once it passes the 0.010 rule
+
+
+def timing_sps(tag: str) -> float | None:
+    for d in sorted(R.glob(f"timing/{tag}/*")):
+        w = {r["step"]: r["wall"] for r in _rows(d) if "wall" in r}
+        if 100 in w and 599 in w:
+            return (w[599] - w[100]) / 499
+    return None
+
+
+for k, tags in TIMING.items():
+    xs = [timing_sps(t) for t in tags]
+    if all(x is not None for x in xs):
+        put(f"time_{k}", sum(xs) / len(xs), "runs-record/timing/" + "+".join(tags) + ": (wall at 599 - wall at 100) / 499")
+    else:
+        missing(f"time_{k}", "scripts/paper/timing.sbatch")
+if NUM.get("time_pion") is not None and len(TIMING["pion"]) == 2:
+    a, b = timing_sps("pion-a"), timing_sps("pion-b")
+    put("time_pion_spread", abs(a - b) / NUM["time_pion"], "|pion-a - pion-b| / their mean: how steady the node was")
+derive("v2_sps", lambda x: x, (f"time_{METHOD_FORM}",), f"= time_{METHOD_FORM} (the method)")
+derive("pion3000_sps", lambda x: x, ("time_pion",), "= time_pion")
+derive("v2_ratio", lambda a, b: a / b, ("v2_sps", "pion3000_sps"), "v2_sps / pion3000_sps")
 
 # steps saving from runs with their own full schedules (scripts/analysis/budget_fit.py)
 f = R / "probes" / "budget_fit.json"
@@ -416,15 +445,6 @@ def vbest(key: str, tags: list[str], seed: int = 0):
     put(key + "_interior", interior, f"is {key} inside its grid")
     NOTE[key + "_tag"], NUM[key + "_tag"] = "run of the best angle", t
     return i["val"]
-
-
-def derive(key: str, fn, deps: tuple, note: str):
-    vals = [NUM.get(d) for d in deps]
-    if any(v is None for v in vals):
-        missing(key, "needs " + ", ".join(d for d, v in zip(deps, vals) if v is None))
-        return None
-    put(key, fn(*vals), note)
-    return NUM[key]
 
 
 def grid(prefix: str, angles) -> list[str]:
