@@ -15,7 +15,7 @@
 # Rule: a setting better than the reference by >= 0.010 replaces it; otherwise the paper says the choice was
 # re-tested and does not matter. PREDICTION (low confidence): flat within 0.010 from 1e-5 to 1e-3; 1e-2 and large
 # damping worse (they push F^-1 toward the raw generator, which is 0.12 worse with momentum).
-#   sbatch -x rtx6003,rtx6004 --array=0-7 scripts/paper/natural_pion_reg.sbatch
+#   sbatch -x rtx6004 --array=0-7 scripts/paper/natural_pion_reg.sbatch
 REPO="${REPO:-$DATA_p330/Natural-Pion}"; SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"; DATA="${DATA:-$DATA_p330/c4}"
 T=$SLURM_ARRAY_TASK_ID
 EPS=(  1e-6 1e-5 1e-3 1e-2 1e-6 1e-6 1e-6 1e-6 )

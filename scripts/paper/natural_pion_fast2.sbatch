@@ -12,7 +12,7 @@
 # PREDICTION: val within 0.010 of the references; s/step about 0.48 at 3000 steps (optimizer-only bench saving 0.116 s).
 #   0  3000 steps, angle 0.2    -t 01:00:00
 #   1  15000 steps, angle 0.05  -t 03:30:00
-#   sbatch -x rtx6003,rtx6004 -t 01:00:00 --array=0 scripts/paper/natural_pion_fast2.sbatch
+#   sbatch -x rtx6004 -t 01:00:00 --array=0 scripts/paper/natural_pion_fast2.sbatch
 # CG correction (2026-11-05): NP_KWARGS='{"cg_iters": 1}' OUTROOT=npcg1 sbatch --export=ALL ... --array=0  [cg_iters removed from the code 2026-11-05; in git history]
 # HYPOTHESIS: part of the stale-basis cost (T_fac 25 vs 1: 0.0195 at 3000 steps) is the rotation of W since the refresh;
 # PREDICTION: cg_iters 1 improves 3.7224 by 0.005-0.010, 2 by a little more; step +0.03-0.04 s.

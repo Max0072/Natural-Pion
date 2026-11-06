@@ -10,7 +10,7 @@
 # part of the learning-rate check, AdamW 8e-3, Q per head). One row per run: the manifest under runs-record/.
 # These runs exist; this script is how to reproduce them, replacing the launchers they were first started from
 # (step_norm_*.sbatch, adamw2d, seeds_head, ladder15k; removed 2026-11-05, in git history).
-#   sbatch -x rtx6003,rtx6004 -t <limit> --array=<rows> scripts/paper/pion.sbatch     (OUTROOT: where to write)
+#   sbatch -x rtx6004 -t <limit> --array=<rows> scripts/paper/pion.sbatch     (OUTROOT: where to write)
 REPO="${REPO:-$DATA_p330/Natural-Pion}"; SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"; DATA="${DATA:-$DATA_p330/c4}"
 OUTROOT="${OUTROOT:-$DATA_p330/runs/pion-repro}"
 RUNS=(

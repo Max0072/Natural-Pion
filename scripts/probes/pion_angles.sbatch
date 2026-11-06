@@ -9,7 +9,7 @@
 #SBATCH -e logs/%x-%j.err
 # Pion's rotation angle per step (scripts/probes/pion_angles.py): published Pion, 3840 steps, lr 1e-3, seed 0,
 # the same flags as stepnormfinal/pion3840, whose val it should reproduce (the probe only reads).
-#   sbatch -x rtx6003,rtx6004 scripts/probes/pion_angles.sbatch
+#   sbatch -x rtx6004 scripts/probes/pion_angles.sbatch
 REPO="${REPO:-$DATA_p330/Natural-Pion}"; SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"; DATA="${DATA:-$DATA_p330/c4}"
 OUT="$DATA_p330/runs/pionangles"; mkdir -p "$OUT"; rm -f "$OUT/pion_angles.jsonl"
 apptainer exec --env PYTHONUNBUFFERED=1 --env PYTHONPATH="$REPO" --env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \

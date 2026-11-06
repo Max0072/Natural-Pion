@@ -8,7 +8,7 @@
 #SBATCH -o logs/%x-%j.out
 #SBATCH -e logs/%x-%j.err
 # scripts/probes/ns_diag.py for ns, then cayley and trunc as controls, 200 steps each.
-#   sbatch -x rtx6003,rtx6004 scripts/probes/ns_diag.sbatch
+#   sbatch -x rtx6004 scripts/probes/ns_diag.sbatch
 REPO="${REPO:-$DATA_p330/Natural-Pion}"; SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"; DATA="${DATA:-$DATA_p330/c4}"
 for RET in ${RETS:-ns cayley trunc}; do
   OUT="$DATA_p330/runs/nsdiag/$RET"; rm -rf "$OUT"; mkdir -p "$OUT"

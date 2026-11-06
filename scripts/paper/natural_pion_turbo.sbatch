@@ -21,7 +21,7 @@
 #   PREDICTION: 128 within 0.010, 64 within 0.020
 #   9 C shifted + B^-1/2 by Newton-Schulz: one eigendecomposition per side left (without T_fac 50, which costs 0.017)
 # PREDICTION: each of 1-6 within 0.010 of task 0; 7 within 0.020.
-#   sbatch -x rtx6003,rtx6004 --array=0-7%4 scripts/paper/natural_pion_turbo.sbatch
+#   sbatch -x rtx6004 --array=0-7%4 scripts/paper/natural_pion_turbo.sbatch
 REPO="${REPO:-$DATA_p330/Natural-Pion}"; SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"; DATA="${DATA:-$DATA_p330/c4}"
 T=$SLURM_ARRAY_TASK_ID
 TAG=(exact fisherbf16 stride4 stride8 cshift nsroot tfac50 all window1 cshift_nsroot default default15k default15k_floor warm4 warmonly sketch64 sketch128)

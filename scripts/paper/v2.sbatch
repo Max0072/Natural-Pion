@@ -13,7 +13,7 @@
 # cayley, fp32). Runs land in $DATA_p330/runs/npv2/<TAG>/; scripts/paper/collect_npv2.sh copies the logs to
 # runs-record/npv2 and refreshes the paper. Rows 0-98 were first submitted from v2_rest.sbatch (output under
 # runs/npv2x), rows 99-110 from v2_perhead.sbatch (runs/npv2/s<steps>); collect_npv2.sh merges both.
-#   sbatch -x rtx6003,rtx6004 -t <limit> --array=<rows>%4 scripts/paper/v2.sbatch
+#   sbatch -x rtx6004 -t <limit> --array=<rows>%4 scripts/paper/v2.sbatch
 REPO="${REPO:-$DATA_p330/Natural-Pion}"; SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"; DATA="${DATA:-$DATA_p330/c4}"
 F=natural-pion-fast; A=natural-pion
 ROWS=(

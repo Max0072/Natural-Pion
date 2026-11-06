@@ -16,7 +16,7 @@
 # 15000 steps (task 1, run only after task 0 passes).
 #   0  3000 steps, theta 0.2     -t 01:30:00
 #   1  15000 steps, theta 0.05   -t 04:30:00
-#   STATS=bf16 sbatch --export=ALL -x rtx6003,rtx6004 -t 01:30:00 --array=0 scripts/paper/natural_pion_stats.sbatch
+#   STATS=bf16 sbatch --export=ALL -x rtx6004 -t 01:30:00 --array=0 scripts/paper/natural_pion_stats.sbatch
 REPO="${REPO:-$DATA_p330/Natural-Pion}"; SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"; DATA="${DATA:-$DATA_p330/c4}"
 T=$SLURM_ARRAY_TASK_ID
 STEPS=(3000 15000); LR=(0.2 0.05); EV=(500 1000)

@@ -15,8 +15,8 @@
 # Rule: adopt if val is within 0.010 of Cayley's at both horizons and the step is >= 0.05 s faster; the trained
 # spectrum (scripts/probes/paper_checks.py on the checkpoint) must not move more than 2x Cayley's.
 # PREDICTION: val within 0.005; step about 0.10 s faster (retraction 0.157 s -> ~0.05 s).
-#   sbatch -x rtx6003,rtx6004 -t 01:30:00 --array=0 scripts/paper/natural_pion_ns.sbatch
-#   sbatch -x rtx6003,rtx6004 -t 04:30:00 --array=1 scripts/paper/natural_pion_ns.sbatch
+#   sbatch -x rtx6004 -t 01:30:00 --array=0 scripts/paper/natural_pion_ns.sbatch
+#   sbatch -x rtx6004 -t 04:30:00 --array=1 scripts/paper/natural_pion_ns.sbatch
 REPO="${REPO:-$DATA_p330/Natural-Pion}"; SIF="${SIF:-$DATA_p330/containers/ngd-pion.sif}"; DATA="${DATA:-$DATA_p330/c4}"
 T=$SLURM_ARRAY_TASK_ID
 STEPS=(3000 15000); LR=(0.2 0.05); EV=(500 1000)

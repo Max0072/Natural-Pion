@@ -736,3 +736,10 @@ left is server-side or shared-network-path contention that this project cannot
 fix or route around from the client. Worth reporting to
 `hpc.support@cyi.ac.cy` alongside the dead-`cachefilesd` finding above --
 different mechanism, same mount, both worth a cluster admin's attention.
+
+## rtx6003 back in use (2026-11-06)
+
+The `-x rtx6003,rtx6004` in our sbatch headers had no reason left: the August wedges hit every node (rtx6001 and
+rtx6002 too, see above), their cause was the corpus not staying resident (now staged to local disk by
+`harness/local_cache.py`), and no wedge has been recorded since. Only `rtx6004` (drained) stays excluded. The first
+job placed on rtx6003 is checked for progress past step 0 before anything else is sent there.
