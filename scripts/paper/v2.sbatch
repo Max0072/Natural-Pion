@@ -272,6 +272,53 @@ ROWS=(
 # 214-215 the final form with the Cayley step by scaling and squaring (2026-11-06 night): 3000 and 15000
 "rms-final-sq|$F|3000|6e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
 "rms-final-sq-15k|$F|15000|3e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
+# ---- 216-256: the paper's runs of the final form (RMS rule, TF32 before the Cayley step, bf16 F^-1, Cayley by scaling and
+# squaring), on RTX. Launched by scripts/paper/launch_final.sh once rows 214-215 pass. Code frozen until they end.
+# 216-223 Section 5: 3000 and 15000 over seeds 0-3
+"f3k|$F|3000|6e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
+"f3k|$F|3000|6e-4|1|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
+"f3k|$F|3000|6e-4|2|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
+"f3k|$F|3000|6e-4|3|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
+"f15k|$F|15000|3e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
+"f15k|$F|15000|3e-4|1|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
+"f15k|$F|15000|3e-4|2|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
+"f15k|$F|15000|3e-4|3|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
+# 224-230 the budget curve: 9000 and 30000 scale grids, then 45000 and full length at the 30000 grid's best
+"f9k-3e-4|$F|9000|3e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
+"f9k-6e-4|$F|9000|6e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
+"f30k-1.5e-4|$F|30000|1.5e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
+"f30k-3e-4|$F|30000|3e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
+"f30k-6e-4|$F|30000|6e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
+"f45k|$F|45000|best:f30k|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
+"f73242|$F|73242|best:f30k|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
+# 231-236 statistics precision and retractions
+"f-stats-fp32|$F|3000|6e-4|0|0.9||fp32|{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
+"f-stats-fp32-15k|$F|15000|3e-4|0|0.9||fp32|{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
+"f-ret-cayley|$F|3000|6e-4|0|0.9|cayley||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
+"f-ret-ns|$F|3000|6e-4|0|0.9|ns||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
+"f-ret-trunc|$F|3000|6e-4|0|0.9|trunc||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
+"f-ret-trunc-15k|$F|15000|3e-4|0|0.9|trunc||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
+# 237-256 Section 5.4: regularisation, true Fisher, direction
+"f-reg-eps1e-6|$F|3000|6e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|--ngd-eps 1e-6"
+"f-reg-eps1e-5|$F|3000|6e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|--ngd-eps 1e-5"
+"f-reg-eps1e-3|$F|3000|6e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|--ngd-eps 1e-3"
+"f-reg-eps1e-2|$F|3000|6e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|--ngd-eps 1e-2"
+"f-reg-damp1e-4|$F|3000|6e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|--ngd-eps 1e-6 --np-damping 1e-4"
+"f-reg-damp1e-3|$F|3000|6e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|--ngd-eps 1e-6 --np-damping 1e-3"
+"f-reg-damp1e-2|$F|3000|6e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|--ngd-eps 1e-6 --np-damping 1e-2"
+"f-reg-damp1e-1|$F|3000|6e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|--ngd-eps 1e-6 --np-damping 1e-1"
+"f-fisher-mc-3e-4|$F|3000|3e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|--ngd-fisher-mc-every 1"
+"f-fisher-mc-6e-4|$F|3000|6e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|--ngd-fisher-mc-every 1"
+"f-fisher-mc-1.2e-3|$F|3000|1.2e-3|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|--ngd-fisher-mc-every 1"
+"f-dir-nat-nomom-3e-4|$F|3000|3e-4|0|0|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
+"f-dir-nat-nomom-6e-4|$F|3000|6e-4|0|0|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
+"f-dir-nat-nomom-1.2e-3|$F|3000|1.2e-3|0|0|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
+"f-dir-raw-mom-3e-4|$F|3000|3e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\",\"direction\":\"raw\"}|"
+"f-dir-raw-mom-6e-4|$F|3000|6e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\",\"direction\":\"raw\"}|"
+"f-dir-raw-mom-1.2e-3|$F|3000|1.2e-3|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\",\"direction\":\"raw\"}|"
+"f-dir-raw-nomom-3e-4|$F|3000|3e-4|0|0|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\",\"direction\":\"raw\"}|"
+"f-dir-raw-nomom-6e-4|$F|3000|6e-4|0|0|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\",\"direction\":\"raw\"}|"
+"f-dir-raw-nomom-1.2e-3|$F|3000|1.2e-3|0|0|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\",\"direction\":\"raw\"}|"
 )
 IFS='|' read -r TAG OPT STEPS LR SEED B1 RET STATS KW EXTRA <<< "${ROWS[$SLURM_ARRAY_TASK_ID]}"
 case "$RET" in ""|cayley|ns|ns_delta|trunc) ;; *) echo "row $SLURM_ARRAY_TASK_ID: bad RETRACTION '$RET'"; exit 1 ;; esac
