@@ -7358,3 +7358,13 @@ the RMS rule, paper_checks and retraction_drift read RMS checkpoints (rms3k, rms
 scripts/paper/timing.sbatch: every step time from one job on one GPU (Pion first and last), to run last; (5)
 paper_numbers, budget_fit, figures and collect read the RMS tags (rms3k, rms15k-3e-4, rms9k/rms30k grid best,
 rms45k, rms73242) and the timing job. Still open (user): scope of wave 2 (full vs reduced), Pion lr tuning.
+
+## 2026-11-06 (night) — TF32 "upstream" did not keep the spectrum; fixed
+
+Verifying the final form (RMS + TF32 before the Cayley step + bf16 F^-1) at 3000 steps: loss 3.6915 (fp32 form
+3.6957, passes), but the spectrum drift on its checkpoint was 3.7e-2 median, 27% worst (fp32 form 2.6e-5). Cause:
+only the Cayley step ran in fp32; the rotation W <- R_out W R_in came after that block, back in TF32. The earlier
+tf32-upstream check on the angle rule had passed on loss only — its drift was never measured, so that verdict was
+wrong too. Fix: the rotation of W is inside the retraction's fp32 block. The four TF32 runs are kept in
+runs/npv2-bugs as evidence. Next: final form at 3000 again, drift checked, and only then 15000 and the timing job.
+Lesson: verify every claimed invariant (here the spectrum), not only the loss, before accepting a speed-up.

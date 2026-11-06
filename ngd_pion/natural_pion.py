@@ -344,7 +344,8 @@ class NaturalPion(torch.optim.Optimizer):
         return exact_fp32()
 
     def _retraction_precision(self):
-        """The arithmetic of the Cayley step inside the step's own; the reference path changes nothing."""
+        """The arithmetic of the Cayley step and of the rotation of W inside the step's own; the reference path
+        changes nothing."""
         return nullcontext()
 
     def _largest_angle(self, group: dict) -> float:
@@ -444,13 +445,16 @@ class NaturalPion(torch.optim.Optimizer):
 
         self._tick("apply W")
         new: dict[int, list] = {}
-        for p, W, R_in, R_out, b, r, whole in rows:
-            if whole:
-                p.copy_((R_out @ W @ R_in).to(p.dtype))
-            else:
-                new.setdefault(id(p), [p, []])[1].append(R_out @ W @ R_in)
-        for p, blocks in new.values():
-            p.copy_(torch.cat(blocks, dim=0).to(p.dtype))
+        # the rotation of W belongs to the retraction: in TF32 its products alone move the spectrum (3.7e-2 median after
+        # 3000 steps, measured 2026-11-06)
+        with self._retraction_precision():
+            for p, W, R_in, R_out, b, r, whole in rows:
+                if whole:
+                    p.copy_((R_out @ W @ R_in).to(p.dtype))
+                else:
+                    new.setdefault(id(p), [p, []])[1].append(R_out @ W @ R_in)
+            for p, blocks in new.values():
+                p.copy_(torch.cat(blocks, dim=0).to(p.dtype))
         for p in active:
             state = self.state[p]
             state["step"] += 1
@@ -527,7 +531,7 @@ class NaturalPionFast(NaturalPion):
         self.batch_sigma = batch_sigma
         self.share_root = share_root
         # tf32: "off" -- the whole step in true fp32 (the method); "upstream" -- fp32 products in TF32 everywhere except
-        # the Cayley step, so only the direction is affected (the rotation stays orthogonal to fp32 round-off);
+        # the Cayley step and the rotation of W, so only the direction is affected (the rotation stays orthogonal to fp32 round-off);
         # "all" -- the Cayley step in TF32 too (measured, not assumed: scripts/probes/tf32_check.py)
         if tf32 not in ("off", "upstream", "all"):
             raise ValueError(f"tf32 must be off, upstream or all, got {tf32!r}")
