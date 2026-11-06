@@ -437,3 +437,17 @@ def test_angle_multiplier_by_matrix():
     opt = NaturalPionFast(params, lr=0.05, t_fac=5, stats_window=3, angle_mult={id(params[0]): 2.0})
     _drive(opt, params, 3, 61, lambda t: 0.05)
     assert abs(opt.angles[id(params[0])] - 0.1) < 2e-3 and abs(opt.angles[id(params[2])] - 0.05) < 2e-3
+
+
+def test_batched_rms_rule_is_the_per_matrix_one():
+    """Pion's RMS rule on the batched path takes the per-matrix path's steps (round-off only) and keeps the spectrum."""
+    a, b = _weights(62), _weights(62)
+    oa = NaturalPionFast(a, lr=6e-4, t_fac=5, stats_window=3, length="rms", row_blocks={id(a[1]): 4})
+    ob = NaturalPionFast(b, lr=6e-4, t_fac=5, stats_window=3, length="rms", row_blocks={id(b[1]): 4})
+    assert not oa._ablated
+    ob._ablated = True                                    # force the per-matrix path
+    for x, y in zip(_drive(oa, a, 20, 63, lambda t: 6e-4)[-1], _drive(ob, b, 20, 63, lambda t: 6e-4)[-1]):
+        assert torch.allclose(x, y, rtol=1e-4, atol=1e-5), (x - y).abs().max()
+    ra = [oa.realised_angles()[id(p)] for p in a]
+    rb = [ob.realised_angles()[id(p)] for p in b]
+    assert all(abs(x - y) < 1e-4 * max(1.0, y) for x, y in zip(ra, rb)), (ra, rb)

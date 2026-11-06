@@ -517,7 +517,11 @@ class NaturalPionFast(NaturalPion):
         self.direction, self.length, self.sides, self.planes = direction, length, sides, planes
         self.attn_mult, self.a_window, self.d_window, self.a_every = attn_mult, a_window, d_window, a_every
         self.angle_mult = dict(angle_mult or {})
-        self._ablated = (length, sides, planes, attn_mult) != ("spectral", "joint", "scaled", 1.0) or bool(self.angle_mult)
+        # the spectral rule and Pion's RMS rule run batched without host synchronisation; the other rules and
+        # switches take the per-matrix path of _ablated_scales
+        self._ablated = (length not in ("spectral", "rms") or (sides, planes, attn_mult) != ("joint", "scaled", 1.0)
+                         or bool(self.angle_mult) or (length == "rms" and not batch_sigma))
+        self._angle_t = None                               # realised angle per unit, on the batched path (a tensor)
         self.angles: dict[int, float] | None = None    # realised angle per matrix, on the ablated length path
         self._gens: dict[tuple, torch.Tensor] = {}
         self.batch_sigma = batch_sigma
@@ -607,13 +611,40 @@ class NaturalPionFast(NaturalPion):
             for j, (side, k, _, key) in enumerate(items):
                 states[k][key] = v[j]
                 sig[side, k] = s_[j]
-        c = group["lr"] / sig.amax(dim=0).clamp_min(1e-30)
+        if self.length == "rms":
+            # Pion's rule: c such that the RMS of the induced change c (W X_in + X_out W) is theta, batched by shape
+            rms = torch.empty(n, dtype=sig.dtype, device=sig.device)
+            by_shape: dict[tuple, list] = defaultdict(list)
+            for k, row in enumerate(rows):
+                by_shape[tuple(row[1].shape)].append(k)
+            for (m_, n_), ks in by_shape.items():
+                W = torch.stack([rows[k][1] for k in ks])
+                D = W @ torch.stack([rows[k][2] for k in ks]) + torch.stack([rows[k][3] for k in ks]) @ W
+                rms[ks] = torch.linalg.matrix_norm(D) / (m_ * n_) ** 0.5
+            c = group["lr"] / rms.clamp_min(1e-30)
+            self._angle_t = c * sig.amax(dim=0)
+            self._angle_ids = [id(row[0]) for row in rows]
+        else:
+            c = group["lr"] / sig.amax(dim=0).clamp_min(1e-30)
         return list(c.unbind(0))
 
+    def realised_angles(self) -> dict[int, float] | None:
+        """The largest rotation angle each matrix took in the last step (blocks: the largest of them), where a length
+        rule other than the spectral one sets it; None under the spectral rule (theta for every matrix)."""
+        if self._ablated:
+            return self.angles
+        if self._angle_t is None:
+            return None
+        out: dict[int, float] = {}
+        for i, a in zip(self._angle_ids, self._angle_t.tolist()):
+            out[i] = max(out.get(i, 0.0), a)
+        return out
 
     def _largest_angle(self, group: dict) -> float:
         if self._ablated and self.angles:                  # the length rules set the angle themselves
             return max(self.angles.values())
+        if not self._ablated and self._angle_t is not None:
+            return float(self._angle_t.max())              # one host synchronisation: the Newton-Schulz count
         return super()._largest_angle(group)
 
     def _fisher_quadratic(self, p, W, r, whole, X_in, X_out):

@@ -595,7 +595,8 @@ def train(
                 row["rho_held_hi"] = held[-1]
             held_window = []
             # realised rotation angle per matrix, where a length rule other than the spectral one sets it
-            angles = sorted((getattr(rot, "angles", None) or {}).values())
+            got = rot.realised_angles() if hasattr(rot, "realised_angles") else None
+            angles = sorted(got.values()) if got else []
             if angles:
                 q = lambda f: angles[min(len(angles) - 1, int(f * len(angles)))]
                 row["angle_p10"], row["angle_p50"], row["angle_p90"] = q(0.1), q(0.5), q(0.9)
