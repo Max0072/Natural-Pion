@@ -7372,3 +7372,8 @@ Fix verified (2026-11-06 22:00): the final form (RMS + TF32 before the Cayley st
 F^-1) at 3000 steps, seed 0, on B200: val 3.6889; spectrum drift 2.58e-5 median, 3.29e-5 worst — the fp32 form's
 2.61e-5 / 3.28e-5. The method in fp32 at 3000 (rms3k, RTX): 3.6947 / 3.7008 / 3.6943 / 3.6920 (mean 3.6955). Next:
 the 15000-step check (row 163, on B200 and RTX, whichever starts first) and the timing job (RTX).
+Wave 2 overnight (2026-11-06 23:30, rows 168-213, 46 runs): the RMS method in fp32 at the scales its grids chose —
+6e-4 at 3000 (method, Algorithm 1 and T_fac 25 all agree), 3e-4 at 15000; 30000 gets a third point (6e-4, the edge)
+and 45000 / full length resolve best:rms30k after it. Section 4 chain, retractions, statistics, 5.4 regularisation,
+true Fisher and direction grids are in. Not submitted (they wait for the user's scope and Pion-lr decisions):
+schedules, sides, attention multiplier, polar step, Appendix D, Pion lr tuning. Code frozen until wave 2 ends.
