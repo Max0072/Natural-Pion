@@ -681,10 +681,13 @@ class NaturalPionFast(NaturalPion):
 
 def _polar_skew(X: torch.Tensor) -> torch.Tensor:
     """The polar factor of skew X, kept skew: X = U S V^T goes to U V^T on the planes above round-off (1e-6 of the
-    largest), so every plane of X turns by the same angle."""
-    U, S, Vh = torch.linalg.svd(X, full_matrices=False)
-    keep = (S > 1e-6 * S.amax().clamp_min(1e-30)).to(X.dtype)
-    Y = (U * keep) @ Vh
+    largest), so every plane of X turns by the same angle. Computed as X (X^T X)^{-1/2} from the symmetric eigenproblem
+    of X^T X = -X^2 (the same factor as from an SVD, which on these shapes runs tens of seconds per step on a GPU)."""
+    lam, V = safe_eigh(-(X @ X))
+    s = lam.clamp_min(0).sqrt()
+    keep = s > 1e-6 * s.amax(dim=-1, keepdim=True).clamp_min(1e-30)
+    inv = torch.where(keep, 1.0 / s.clamp_min(1e-30), torch.zeros_like(s))
+    Y = X @ (V * inv.unsqueeze(-2)) @ V.transpose(-1, -2)
     return 0.5 * (Y - Y.transpose(-1, -2))
 
 

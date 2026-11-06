@@ -419,3 +419,14 @@ def test_bf16_fisher_products_keep_the_spectrum_and_track_fp32():
         assert torch.allclose(torch.linalg.svdvals(p.detach().double()), s0, rtol=1e-5)
     for x, y in zip(ta[-1], tb[-1]):
         assert (x - y).abs().max() < 0.05 * x.abs().max()
+
+
+def test_polar_factor_from_the_eigenproblem_is_the_svd_one():
+    from ngd_pion.natural_pion import _polar_skew
+    from ngd_pion.linalg import skew
+    g = torch.Generator().manual_seed(58)
+    X = skew(torch.randn(12, 12, generator=g, dtype=torch.float64))
+    U, S, Vh = torch.linalg.svd(X)
+    assert torch.allclose(_polar_skew(X), skew(U @ Vh), atol=1e-8)
+    s = torch.linalg.svdvals(_polar_skew(X))
+    assert torch.allclose(s, torch.ones_like(s), atol=1e-8)

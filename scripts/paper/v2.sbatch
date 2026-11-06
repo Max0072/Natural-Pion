@@ -196,6 +196,10 @@ if [ "${LR#best:}" != "$LR" ]; then
 import glob, json, sys
 prefix, best, todo = sys.argv[1], None, []
 for m in glob.glob(f"/onyx/data/p330/runs/npv2*/{prefix}-*/*/manifest.json"):
+    try:                                     # only the grid itself: <prefix>-<angle>, not e.g. <prefix>-15k
+        float(m.split("/")[-3][len(prefix) + 1:])
+    except ValueError:
+        continue
     c = json.load(open(m))["config"]
     if c["seed"] != 0:
         continue
