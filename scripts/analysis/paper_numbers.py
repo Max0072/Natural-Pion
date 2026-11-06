@@ -223,7 +223,7 @@ for ret in ("cayley", "ns", "trunc", "ns_delta"):
         put(f"diag_{ret}_step", ms[len(ms) // 2], f"{f.name}: median over steps of the mean over matrices")
         put(f"diag_{ret}_neg", sum(m < 0 for m in ms), f"{f.name}: steps where ||W||_F^2 fell")
         put(f"diag_{ret}_sum", sum(ms), f"{f.name}: summed over the 200 steps")
-        if ret == "ns":
+        if ret == "ns" and d["sigma_ratio"]:
             put("diag_sigma_ratio", sorted(r[1] for r in d["sigma_ratio"])[len(ms) // 2],
                 f"{f.name}: median sigma_est / ||X||_2")
             put("diag_precision", d["summary"]["precision_seen"] == ['[false, false, "highest"]'],

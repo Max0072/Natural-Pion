@@ -59,7 +59,8 @@ class Probe(NaturalPionFast):
             "max_abs": max(r.abs().max().item() for r in rel),
             "mean_signed": sum(r.mean().item() for r in rel) / len(rel),
         })
-        REC["sigma_ratio"].append([min(self._ratios), sorted(self._ratios)[len(self._ratios) // 2]])
+        if self._ratios:                     # the per-matrix sigma path only; Fast batches sigma (angle_check.py covers it)
+            REC["sigma_ratio"].append([min(self._ratios), sorted(self._ratios)[len(self._ratios) // 2]])
         return out
 
 
@@ -86,7 +87,7 @@ finally:
         "cum_mean_signed": sum(x["mean_signed"] for x in s),
         "cum_mean_signed_refresh": sum(x["mean_signed"] for x in s if x["refresh_before"]),
         "worst_step_max_abs": max(x["max_abs"] for x in s) if s else None,
-        "sigma_ratio_min": min(r[0] for r in REC["sigma_ratio"]) if s else None,
+        "sigma_ratio_min": min(r[0] for r in REC["sigma_ratio"]) if REC["sigma_ratio"] else None,
         "sv_drift_median": REC.get("sv_drift_median"), "sv_drift_max": REC.get("sv_drift_max"),
         "sv_signed_mean": REC.get("sv_signed_mean"),
         "precision_seen": sorted({json.dumps(p) for p in REC["precision"]}),
