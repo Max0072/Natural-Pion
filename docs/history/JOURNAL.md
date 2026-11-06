@@ -7377,3 +7377,20 @@ Wave 2 overnight (2026-11-06 23:30, rows 168-213, 46 runs): the RMS method in fp
 and 45000 / full length resolve best:rms30k after it. Section 4 chain, retractions, statistics, 5.4 regularisation,
 true Fisher and direction grids are in. Not submitted (they wait for the user's scope and Pion-lr decisions):
 schedules, sides, attention multiplier, polar step, Appendix D, Pion lr tuning. Code frozen until wave 2 ends.
+
+## 2026-11-07 (night) — Cayley by scaling and squaring; the final form
+
+Plan agreed with the user: speed, then spectrum, then adopt and launch, no questions in between.
+1. Speed (cayley_speed probe, RTX): scaling and squaring (largest angle halved to <= 0.2, two Newton-Schulz
+   iterations, squarings in the correction form) is never slower than Newton-Schulz by angle and up to 1.7x faster
+   at large angles (512 x88 at 1.6 rad: 5.2 vs 9.1 ms; 1376 x24: 19.7 vs 33.5 ms); ||R^T R - I|| as good or better.
+2. Spectrum in training: the final form with it, 3000 steps (B200): val 3.6950 (fp32 form 3.6947); drift 2.95e-6
+   median, 4.13e-6 worst — 9x smaller than before (the exact-solve fallback on large-angle steps was the larger
+   error). Largest p90 angle in the run 2.41 rad, all by Newton-Schulz now.
+   The final form without squaring passed at 15000 too (3.4559 vs 3.4560).
+3. Adopt and launch: the 15000 check with squaring (row 215) runs; a background watcher calls
+   scripts/paper/launch_final.sh if it passes (|val - 3.4560| <= 0.010, drift < 1e-4), which drops the held
+   earlier-form runs and launches rows 216-256 (Section 5, statistics, retractions, 5.4) and the timing job; on a
+   fail it releases the held runs instead. Timing before squaring: Pion 0.461, Fast (RMS) 0.515, final 0.508 s/step.
+The final form: Natural Pion Fast + Pion's RMS length rule + TF32 before the Cayley step and the rotation of W +
+bf16 F^-1 + Cayley by Newton-Schulz with scaling and squaring.
