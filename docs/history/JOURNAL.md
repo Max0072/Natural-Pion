@@ -7332,3 +7332,17 @@ on all four seeds (RMS - angle: -0.020, -0.013, -0.018, -0.018), and its optimum
 Next (approved): RMS grid below the edge at 3000 (rows 143-144) and an RMS grid at 15000 (145-148). If RMS wins at
 15000 too, the method becomes natural-gradient direction + Pion's length rule, and the main runs are redone after
 re-tuning; the angle question at long horizons, the timing job and the remaining grid extensions wait for that.
+
+## 2026-11-06 (evening) — RMS wins at 15000 too; the v/o hypothesis fails
+
+angle_check: the angle rule does what it says (realised angle / theta: median 1.0000, worst 1.021). So RMS wins
+honestly. RMS at 15000 steps: 1.5e-4 3.4975, 3e-4 3.4560, 6e-4 3.4591, 1.2e-3 3.4902 (interior); the angle rule's
+best at 15000 is 0.1 with 3.4658 (0.05: 3.4742) -> RMS ahead by 0.010. RMS at 3000: 6e-4 3.6957 (interior after
+the extension), the angle rule's best 3.7119 -> ahead by 0.016, four of four seeds.
+rms_angles (len-rms-6e-4 final checkpoint): RMS gives v x2.3 and o x1.7 the median angle, q/k/gate/up ~1. Hypothesis
+"RMS wins because v and o get a larger angle": v,o x2 under the angle rule 3.7168 (no gain), control q,k x2 3.7110.
+Refuted; no further knobs. RMS normalises the change of W itself (it sees W), the angle rule only the rotation.
+Polar step (planes equal) diverged at 0.1 and 0.2 (NaN by step 46-115): every plane, noise ones included, gets the
+full angle; it needs a grid around 0.01 (the old optimum) at ~4 h per run. Appendix D full length: 3.3259 vs
+3.3285 (alpha 3 gains 0.003). paper_checks and optimizer_step_bench rerun; ns_diag fixed and resubmitted.
+Decision pending (user): make the RMS rule the method's length rule.
