@@ -545,7 +545,7 @@ derive("gain_fisher_nomom", lambda a, b: a - b, ("dir_raw_nomom", "dir_fisher_no
 derive("gain_fisher_mom", lambda a, b: a - b, ("dir_raw_mom", "dir_fisher_mom"), "dir_raw_mom - dir_fisher_mom")
 
 # 5.4: length rules, Fast with momentum; angle spread = median over logged steps >= 1000 of p90/p10 of the realised angle
-GRIDS = {"before": ("3e-6", "1e-5", "3e-5", "1e-4", "3e-4"), "rms": ("6e-4", "1.2e-3", "2.4e-3", "4.8e-3", "9.6e-3"),
+GRIDS = {"before": ("3e-6", "1e-5", "3e-5", "1e-4", "3e-4"), "rms": ("1.5e-4", "3e-4", "6e-4", "1.2e-3", "2.4e-3", "4.8e-3", "9.6e-3"),
          "fisher": ("2.4e-3", "4.8e-3", "9.6e-3", "1.9e-2", "3.8e-2"), "quad": ("1e-3", "2e-3", "4e-3", "8e-3", "1.6e-2"),
          "fixed": ("5e-4", "1e-3", "2e-3", "4e-3", "8e-3")}
 
