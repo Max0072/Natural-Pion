@@ -637,7 +637,7 @@ Pion's targets are at its published learning rate $10^{-3}$. At short budgets $2
 {{pion_lr_3840_2e-3:.4f}} against {{pion_lr_3840_1e-3:.4f}} at 3 840 steps), so the savings at the shortest budgets are
 measured against a Pion that is not at its best learning rate there.
 
-**Equal wall-clock time.** On one GPU a Natural Pion step costs {{v2_ratio:.2f}}x Pion's in the 3 000-step runs
+**Equal wall-clock time.** On one GPU a Natural Pion step costs {{v2_ratio:.2f}}x Pion's
 ({{v2_sps:.3f}} s against {{pion3000_sps:.3f}} s), so in the time of Pion's $B$
 steps it takes $B/{{v2_ratio:.2f}}$. These are estimates read off the budget curve above, not separate runs: the gap
 to Pion at Pion's full-length wall-clock time is {{eqt_73242_gap:.3f}} (fit; {{eqt_73242_gap_int:.3f}} by
