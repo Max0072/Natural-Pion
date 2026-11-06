@@ -451,3 +451,17 @@ def test_batched_rms_rule_is_the_per_matrix_one():
     ra = [oa.realised_angles()[id(p)] for p in a]
     rb = [ob.realised_angles()[id(p)] for p in b]
     assert all(abs(x - y) < 1e-4 * max(1.0, y) for x, y in zip(ra, rb)), (ra, rb)
+
+
+def test_scaling_and_squaring_cayley():
+    """Up to angle 0.2 the step is the two-iteration Newton-Schulz one; above, squared rotations stay orthogonal and
+    turn the largest plane by close to the requested angle."""
+    from ngd_pion.natural_pion import squarings
+    assert squarings(0.05) == 0 and squarings(0.2) == 0 and squarings(0.4) == 1 and squarings(0.8) == 2
+    for angle in (0.05, 0.4, 1.6, 2.5):
+        params = _weights(64)
+        before = [torch.linalg.svdvals(p.detach().double()) for p in params]
+        _drive(NaturalPionFast(params, lr=angle, t_fac=5, stats_window=3, stats_dtype="fp32"), params, 10, 65,
+               lambda t: angle)
+        for p, s0 in zip(params, before):
+            assert torch.allclose(torch.linalg.svdvals(p.detach().double()), s0, rtol=1e-5), angle

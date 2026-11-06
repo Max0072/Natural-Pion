@@ -269,6 +269,9 @@ ROWS=(
 "rms-dir-raw-nomom-3e-4|$F|3000|3e-4|0|0|||{\"length\":\"rms\",\"direction\":\"raw\"}|"
 "rms-dir-raw-nomom-6e-4|$F|3000|6e-4|0|0|||{\"length\":\"rms\",\"direction\":\"raw\"}|"
 "rms-dir-raw-nomom-1.2e-3|$F|3000|1.2e-3|0|0|||{\"length\":\"rms\",\"direction\":\"raw\"}|"
+# 214-215 the final form with the Cayley step by scaling and squaring (2026-11-06 night): 3000 and 15000
+"rms-final-sq|$F|3000|6e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
+"rms-final-sq-15k|$F|15000|3e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|"
 )
 IFS='|' read -r TAG OPT STEPS LR SEED B1 RET STATS KW EXTRA <<< "${ROWS[$SLURM_ARRAY_TASK_ID]}"
 case "$RET" in ""|cayley|ns|ns_delta|trunc) ;; *) echo "row $SLURM_ARRAY_TASK_ID: bad RETRACTION '$RET'"; exit 1 ;; esac

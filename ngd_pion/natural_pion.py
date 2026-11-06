@@ -27,6 +27,7 @@ Built from the primitives in `covariance`, `direction`, `factorization` and `lin
 from __future__ import annotations
 
 from collections import defaultdict
+import math
 
 import torch
 
@@ -53,6 +54,13 @@ def ns_iterations(angle: float, minimum: int) -> int | None:
     while x ** (2 ** (k + 1)) > 2.0 ** -24:
         k += 1
     return k
+
+
+def squarings(angle: float, base: float = 0.2) -> int:
+    """How many times to halve a step's largest rotation angle so it is at most `base` (where two Newton-Schulz
+    iterations are exact to fp32), for scaling and squaring."""
+    a = float(angle)
+    return max(0, math.ceil(math.log2(a / base))) if a > base else 0
 
 
 def _lmax(C: torch.Tensor, iters: int = 30) -> torch.Tensor:
@@ -420,17 +428,25 @@ class NaturalPion(torch.optim.Optimizer):
                 if group["retraction"] == "trunc":
                     A = -(half + half) * X                       # -c X: Cay(cX) and exp(-cX) agree to second order
                     R = eye + A + 0.5 * (A @ A)
-                elif group["retraction"] == "ns_delta" and iters is not None:
+                elif group["retraction"] == "ns_delta":
                     # The same Newton-Schulz iteration carried in the correction z = Z - I: residual r = M Z - I =
                     # A + z + A z, and Z (I - r) gives z <- z - r - z r. Nothing is rounded next to 1, which in "ns"
                     # biases R^T R - I positive by ~1e-6 per side per step in fp32 (the trained spectrum grew 1.1%
                     # over 3000 steps). R = I + 2 z.
-                    A = half * X
+                    # Large angles by scaling and squaring: the step's largest angle is divided by 2^k down to 0.2, where
+                    # `ns_iters` iterations are exact to fp32, and the rotation is squared k times in the same correction
+                    # form, D <- 2 D + D^2 for R = I + D. Orthogonal at any angle, never slower than more iterations
+                    # (scripts/probes/cayley_speed.py); the angle tends to the exponential's rather than Cayley's.
+                    k = squarings(angle)
+                    A = (half / 2 ** k) * X
                     z = -A
-                    for _ in range(iters):
+                    for _ in range(group["ns_iters"]):
                         r = A + z + A @ z
                         z = z - r - z @ r
-                    R = eye + 2.0 * z
+                    D = 2.0 * z
+                    for _ in range(k):
+                        D = 2.0 * D + D @ D
+                    R = eye + D
                 elif group["retraction"] == "ns" and iters is not None:
                     # Cay = 2 (I + A)^-1 - I; Newton-Schulz Z <- Z (2I - M Z) from Z0 = I - A, residual A^2 squaring
                     A = half * X
