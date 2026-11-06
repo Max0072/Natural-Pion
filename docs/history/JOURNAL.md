@@ -7346,3 +7346,8 @@ Polar step (planes equal) diverged at 0.1 and 0.2 (NaN by step 46-115): every pl
 full angle; it needs a grid around 0.01 (the old optimum) at ~4 h per run. Appendix D full length: 3.3259 vs
 3.3285 (alpha 3 gains 0.003). paper_checks and optimizer_step_bench rerun; ns_diag fixed and resubmitted.
 Decision pending (user): make the RMS rule the method's length rule.
+Decision (user, 2026-11-06 evening): the method's length rule is Pion's RMS rule. Algorithm 1 becomes Fast with every
+speed-up off plus length="rms" (bit-identical to NaturalPion's arithmetic otherwise; the reference class untouched).
+Wave 1 submitted (v2.sbatch rows 151-163): Algorithm 1 and T_fac-25 RMS scale grids, RMS scale at 9000 and 30000
+(gates the budget curve and the long runs), the candidate final form RMS + TF32 upstream + bf16 F^-1 at 3000 and 15000.
+Scope of the rest (full ~95 runs vs reduced ~60) to be chosen by the user once wave 1 is in.
