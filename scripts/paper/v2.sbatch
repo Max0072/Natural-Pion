@@ -326,6 +326,11 @@ ROWS=(
 "m-tf25-e3-15k|$F|15000|3e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|--ngd-eps 1e-3"
 "m-tf10-e3|$F|3000|6e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\",\"t_fac\":10}|--ngd-eps 1e-3"
 "m-tf10-e3-15k|$F|15000|3e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\",\"t_fac\":10}|--ngd-eps 1e-3"
+# 262-265 the RMS scale with the floor 1e-3 (6e-4 at 3000 is f-reg-eps1e-3, 3e-4 at 15000 is m-tf25-e3-15k)
+"e3-3k-3e-4|$F|3000|3e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|--ngd-eps 1e-3"
+"e3-3k-1.2e-3|$F|3000|1.2e-3|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|--ngd-eps 1e-3"
+"e3-15k-1.5e-4|$F|15000|1.5e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|--ngd-eps 1e-3"
+"e3-15k-6e-4|$F|15000|6e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|--ngd-eps 1e-3"
 )
 IFS='|' read -r TAG OPT STEPS LR SEED B1 RET STATS KW EXTRA <<< "${ROWS[$SLURM_ARRAY_TASK_ID]}"
 case "$RET" in ""|cayley|ns|ns_delta|trunc) ;; *) echo "row $SLURM_ARRAY_TASK_ID: bad RETRACTION '$RET'"; exit 1 ;; esac
