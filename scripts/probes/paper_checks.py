@@ -214,9 +214,9 @@ def main():
         json.dump(OUT, open(dst, "w"), indent=1)
         print(json.dumps(OUT, indent=1))
         return
-    # default: the method (RMS rule), 3000 steps, seed 0 (scripts/paper/v2.sbatch row rms3k)
+    # default: the method, 3000 steps, seed 0 (scripts/paper/v2.sbatch row f-reg-eps1e-3 = g3k seed 0)
     ckpt = Path(sys.argv[1]) if len(sys.argv) > 1 else sorted(
-        Path(os.environ["DATA_p330"], "runs", "npv2", "rms3k").glob("*-s0-*/checkpoint.pt"))[0]
+        Path(os.environ["DATA_p330"], "runs", "npv2", "f-reg-eps1e-3").glob("*-s0-*/checkpoint.pt"))[0]
     torch.backends.cuda.matmul.allow_tf32 = False
     power_checks(); svd_timing(); ns_checks(); tf32_check(); checkpoint_checks(ckpt)
     OUT["gpu"] = torch.cuda.get_device_name(0)

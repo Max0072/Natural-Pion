@@ -21,10 +21,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 RUNS = Path(os.environ.get("DATA_p330", "")) / "runs"
 CHECKPOINTS = {                       # the method (RMS rule), 3000 steps, seed 0 (scripts/paper/v2.sbatch rows)
-    "cayley": "npv2*/rms-ret-cayley/*/checkpoint.pt",
-    "ns": "npv2*/rms-ret-ns/*/checkpoint.pt",
-    "trunc": "npv2*/rms-ret-trunc/*/checkpoint.pt",
-    "ns_delta": "npv2*/rms3k/*-s0-*/checkpoint.pt",   # the method itself
+    "cayley": "npv2*/g-ret-cayley/*/checkpoint.pt",
+    "ns_delta": "npv2*/f-reg-eps1e-3/*/checkpoint.pt",  # the method itself (Newton-Schulz with scaling and squaring)
+    "ns": "npv2*/g-ret-ns/*/checkpoint.pt",
+    "trunc": "npv2*/g-ret-trunc/*/checkpoint.pt",
 }
 
 

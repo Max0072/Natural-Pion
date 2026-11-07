@@ -55,13 +55,14 @@ PION = [
 V = "npv2"
 # the method: Natural Pion Fast with Pion's RMS length rule; where the scale was chosen on a grid at that budget, the
 # grid's best point (seed 0) stands for the budget
+# (the final form with the floor 1e-3, tags g*; seed 0 at 3000 / 15000 are the matrix runs of that configuration)
 NP = [
-    (3000, [(f"{V}/rms3k/*", s) for s in (0, 1, 2, 3)]),
-    (9000, "grid", [f"{V}/rms9k-3e-4/*", f"{V}/rms9k-6e-4/*"]),
-    (15000, [(f"{V}/rms15k-3e-4/*", s) for s in (0, 1, 2, 3)]),
-    (30000, "grid", [f"{V}/rms30k-1.5e-4/*", f"{V}/rms30k-3e-4/*"]),
-    (45000, [(f"{V}/rms45k/*", 0)]),
-    (73242, [(f"{V}/rms73242/*", 0)]),
+    (3000, [(f"{V}/f-reg-eps1e-3/*", 0)] + [(f"{V}/g3k/*", s) for s in (1, 2, 3)]),
+    (9000, "grid", [f"{V}/g9k-3e-4/*", f"{V}/g9k-6e-4/*"]),
+    (15000, [(f"{V}/m-tf25-e3-15k/*", 0)] + [(f"{V}/g15k/*", s) for s in (1, 2, 3)]),
+    (30000, [(f"{V}/g30k/*", 0)]),
+    (45000, [(f"{V}/g45k/*", 0)]),
+    (73242, [(f"{V}/g73242/*", 0)]),
 ]
 # equal wall-clock time is read off the Natural Pion curve: at Pion's B, Natural Pion has B * sps_pion / sps_np steps
 SPS_PION = ("timing/pion-a/*", "timing/pion-b/*")      # one job, one GPU (scripts/paper/timing.sbatch)

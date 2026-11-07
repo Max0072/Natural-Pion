@@ -289,11 +289,19 @@ def _v(pattern, seed=None):
         return val(pattern, seed)
     except SystemExit:
         return None
-# the method: Natural Pion Fast with Pion's RMS length rule (v2.sbatch rows rms3k, rms15k-3e-4, rms73242)
-MAIN = {3000: "npv2/rms3k/*", 15000: "npv2/rms15k-3e-4/*"}
-FULL = "npv2/rms73242/*"
+# the method: the final form with the floor 1e-3 (v2.sbatch tags g*). Seed 0 at 3000 and 15000 are the matrix runs of
+# exactly that configuration (f-reg-eps1e-3, m-tf25-e3-15k).
+ALIAS = {("g3k", 0): "f-reg-eps1e-3", ("g15k", 0): "m-tf25-e3-15k"}
+
+
+def tagpat(tag: str, seed: int = 0) -> str:
+    return f"npv2/{ALIAS.get((tag, seed), tag)}/*"
+
+
+MAIN = {3000: "g3k", 15000: "g15k"}
+FULL = "npv2/g73242/*"
 for st in (3000, 15000):
-    vs = [_v(MAIN[st], sd) for sd in range(4)]
+    vs = [_v(tagpat(MAIN[st], sd), sd) for sd in range(4)]
     for sd, v in enumerate(vs):
         (put(f"v2_{st}_s{sd}", v, f"{MAIN[st]} seed {sd}") if v is not None
          else missing(f"v2_{st}_s{sd}", f"v2.sbatch, {st} steps, seed {sd}"))
@@ -394,7 +402,7 @@ V = "npv2"
 
 
 def vrun(tag: str, seed: int = 0) -> Path | None:
-    hits = runs(f"{V}/{tag}/*", seed)
+    hits = runs(tagpat(tag, seed), seed)
     return max(hits, key=lambda d: (d / "log.jsonl").stat().st_mtime) if hits else None
 
 
@@ -452,10 +460,10 @@ def grid(prefix: str, angles) -> list[str]:
 
 
 # the method's own runs, read by many rows below
-REF = vval("m_3000", "s3000")                              # Natural Pion Fast, angle 0.2, momentum 0.9, seed 0
-vval("m_15000", "s15000")
-vsps("m_sps", "s3000")
-_m = vrun("s3000")
+REF = vval("m_3000", "g3k")                                # the method, 3000 steps, seed 0
+vval("m_15000", "g15k")
+vsps("m_sps", "g3k")
+_m = vrun("g3k")
 if _m is not None:
     _man = json.load(open(_m / "manifest.json"))
     put("tokens_per_step", _man["tokens_per_step"], "manifest tokens_per_step")
@@ -468,23 +476,23 @@ else:
 derive("peak_d", lambda a, b: a - b, ("peak_np", "peak_pion"), "peak_np - peak_pion")
 
 # 3.1: the true Fisher (D from targets drawn from the model) against the empirical one, best of three angles each
-vbest("fisher_true", grid("fisher-mc", ("0.1", "0.2", "0.4")))
+vbest("fisher_true", grid("g-fisher-mc", ("3e-4", "6e-4", "1.2e-3")))
 # the empirical Fisher is the method itself: its angle grid is the direction grid with momentum
-vbest("fisher_empirical", ["dir-nat-mom-0.1", "s3000", "dir-nat-mom-0.4", "dir-nat-mom-0.8"])
+vbest("fisher_empirical", ["e3-3k-3e-4", "g3k", "e3-3k-1.2e-3"])
 
 # 3.4 / 4.8: retractions (3000 steps angle 0.2; 15000 steps angle 0.05)
-vval("ret_cayley_3000", "ret-cayley")
-vval("ret_ns_3000", "ret-ns")
-vval("ret_trunc_3000", "ret-trunc")
-vval("ret_trunc_15000", "ret-trunc-15k")
-vsps("ret_cayley_sps", "ret-cayley")
-vsps("ret_ns_sps", "ret-ns")
-vsps("ret_trunc_sps", "ret-trunc")
+vval("ret_cayley_3000", "g-ret-cayley")
+vval("ret_ns_3000", "g-ret-ns")
+vval("ret_trunc_3000", "g-ret-trunc")
+vval("ret_trunc_15000", "g-ret-trunc-15k")
+vsps("ret_cayley_sps", "g-ret-cayley")
+vsps("ret_ns_sps", "g-ret-ns")
+vsps("ret_trunc_sps", "g-ret-trunc")
 
 # 4.1: the step by part (400 profiled steps; ngd_pion.natural_pion's own GPU-synchronised timers)
 PARTS = {"refresh": "refresh", "sigma": "sigma", "cayley": "cayley", "Finv": "F^-1",
          "shared": ("generators+momentum", "apply W")}
-for t, tag in (("tfac1", "prof-alg1"), ("tfac25", "prof-tf25")):
+for t, tag in (("tfac1", "rms-prof-alg1"), ("tfac25", "rms-prof-tf25")):
     d = vrun(tag)
     pf_ = (d / "profile.json") if d is not None else None
     if pf_ is None or not pf_.exists():
@@ -501,41 +509,32 @@ for t, tag in (("tfac1", "prof-alg1"), ("tfac25", "prof-tf25")):
            f"prof_{t}_step - the optimizer's parts: forward and backward with the statistics hooks, AdamW, data")
 
 # 4.2: refresh cadence (Algorithm 1 = natural-pion; every row's angle tuned on its own grid)
-vbest("tf1_nomom", grid("alg1-nomom", ("0.2", "0.4", "0.8")))
-vbest("tf25_nomom", grid("tf25-nomom", ("0.4", "0.8", "1.6")))
-vbest("tf1_mom", grid("alg1-mom", ("0.05", "0.1", "0.2")))
-vbest("tf25_mom", grid("tf25-mom", ("0.1", "0.2", "0.4", "0.8")))
-vval("tf10_mom", "tf10-s0")
-for k in ("tf1_nomom", "tf25_nomom", "tf1_mom", "tf25_mom"):
+# the chain's stages on the RMS rule (their own runs, floor 1e-4; Algorithm 1 = Fast with every speed-up off)
+vbest("tf1_mom", grid("rms-alg1", ("1.5e-4", "3e-4", "6e-4", "1.2e-3")))
+vbest("tf25_mom", grid("rms-tf25", ("3e-4", "6e-4", "1.2e-3")))
+vval("tf10_mom", "rms-tf10")
+for k in ("tf1_mom", "tf25_mom"):
     if NUM.get(k + "_tag"):
         vsps(k + "_sps", NUM[k + "_tag"])
     else:
         missing(k + "_sps", f"{k} grid")
-vsps("tf10_mom_sps", "tf10-s0")
-derive("tf25_nomom_d", lambda a, b: a - b, ("tf25_nomom", "tf1_nomom"), "tf25_nomom - tf1_nomom")
+vsps("tf10_mom_sps", "rms-tf10")
 derive("tf10_mom_d", lambda a, b: a - b, ("tf10_mom", "tf1_mom"), "tf10_mom - tf1_mom")
 derive("tf25_mom_d", lambda a, b: a - b, ("tf25_mom", "tf1_mom"), "tf25_mom - tf1_mom")
-_tf10 = [vinfo("tf10-s0" if s == 0 else f"tf10-s{s}", s) for s in range(4)]
-if all(_tf10):
-    put("tf10_mom_mean", sum(i["val"] for i in _tf10) / 4, "v2 rows tf10-s0..s3, angle 0.2")
+_a1 = [vinfo("rms-alg1-6e-4", s) for s in range(4)]
+if all(_a1):
+    put("tf1_mom_mean", sum(i["val"] for i in _a1) / 4, "Algorithm 1 (RMS, 6e-4), seeds 0-3")
 else:
-    missing("tf10_mom_mean", "v2.sbatch rows tf10-s0..s3")
-# Algorithm 1 over seeds at its best angle: seed 0 from the grid, seeds 1-3 from the rows "alg1-mom-seeds"
-_s0 = NUM.get("tf1_mom")
-_s = [vinfo("alg1-mom-seeds", s) for s in (1, 2, 3)]
-if _s0 is not None and all(_s):
-    put("tf1_mom_mean", (_s0 + sum(i["val"] for i in _s)) / 4, "Algorithm 1, best angle, seeds 0-3")
-else:
-    missing("tf1_mom_mean", "v2.sbatch rows alg1-mom-seeds, seeds 1-3, at the angle of tf1_mom (add once the grid is done)")
-vval("tf1_mom_15k", "alg1-mom-15k")
+    missing("tf1_mom_mean", "rms-alg1-6e-4 seeds 0-3")
+vval("tf1_mom_15k", "rms-alg1-15k")
 derive("exact_vs_fast_3000", lambda a, b: a - b, ("v2_3000_mean", "tf1_mom_mean"), "v2_3000_mean - tf1_mom_mean")
 
 # 4.3: statistics windows on the T_fac = 25 form, angle 0.2 (reference: tf25-mom-0.2)
-vval("win_ref", "tf25-mom-0.2")
-vsps("win_ref_sps", "tf25-mom-0.2")
+vval("win_ref", "rms-tf25-6e-4")
+vsps("win_ref_sps", "rms-tf25-6e-4")
 for k in ("dlast6", "alast6", "adlast6", "aevery2", "betad09", "betad095"):
-    vval(f"win_{k}", f"win-{k}")
-    vsps(f"win_{k}_sps", f"win-{k}")
+    vval(f"win_{k}", f"rms-win-{k}")
+    vsps(f"win_{k}_sps", f"rms-win-{k}")
 _w = [NUM.get(f"win_{k}") for k in ("dlast6", "alast6", "adlast6", "aevery2", "betad09", "betad095")]
 if NUM.get("win_ref") is not None and all(v is not None for v in _w):
     put("win_maxdev", max(abs(v - NUM["win_ref"]) for v in _w), "largest |win_* - win_ref|")
@@ -543,13 +542,13 @@ else:
     missing("win_maxdev", "every win-* row")
 
 # 4.5: batching by shape (Fast with exact Cayley, fp32 statistics, unbatched sigma, one A per matrix)
-vval("batch_val", "form46")
-vsps("batch_sps", "form46")
+vval("batch_val", "rms-form46")
+vsps("batch_sps", "rms-form46")
 
 # 4.7: statistics inputs, fp32 against bf16 (the method)
-vval("stats_fp32_val", "stats-fp32")
-vsps("stats_fp32_sps", "stats-fp32")
-vval("stats_fp32_15k", "stats-fp32-15k")
+vval("stats_fp32_val", "g-stats-fp32")
+vsps("stats_fp32_sps", "g-stats-fp32")
+vval("stats_fp32_15k", "g-stats-fp32-15k")
 derive("stats_bf16_d", lambda a, b: a - b, ("m_3000", "stats_fp32_val"), "m_3000 - stats_fp32_val")
 derive("stats_bf16_saving", lambda a, b: a - b, ("stats_fp32_sps", "m_sps"), "stats_fp32_sps - m_sps")
 
@@ -557,10 +556,13 @@ derive("stats_bf16_saving", lambda a, b: a - b, ("stats_fp32_sps", "m_sps"), "st
 derive("speedup_vs_exact", lambda a, b: a / b, ("tf1_mom_sps", "m_sps"), "tf1_mom_sps / m_sps")
 
 # 5.4: direction, X = F^-1 G against X = G (best angle of each grid; 0.2 with momentum is the method's own run)
-vbest("dir_fisher_nomom", grid("dir-nat-nomom", ("0.1", "0.2", "0.4", "0.8")))
-vbest("dir_fisher_mom", ["dir-nat-mom-0.1", "s3000", "dir-nat-mom-0.4", "dir-nat-mom-0.8"])
-vbest("dir_raw_nomom", grid("dir-raw-nomom", ("0.025", "0.05", "0.1", "0.2", "0.4")))
-vbest("dir_raw_mom", grid("dir-raw-mom", ("0.1", "0.2", "0.4")))
+RMSG = ("3e-4", "6e-4", "1.2e-3")
+vbest("dir_fisher_nomom", grid("g-dir-nat-nomom", RMSG))
+vbest("dir_fisher_mom", ["e3-3k-3e-4", "g3k", "e3-3k-1.2e-3"])          # the method's own scale grid
+vbest("dir_raw_nomom", grid("g-dir-raw-nomom", RMSG))
+vbest("dir_raw_mom", grid("g-dir-raw-mom", RMSG))
+# the length rules compared among themselves (Fast, momentum, floor 1e-4, fp32): the angle rule's grid
+vbest("len_angle", ["dir-nat-mom-0.1", "s3000", "dir-nat-mom-0.4", "dir-nat-mom-0.8"])
 derive("gain_fisher_nomom", lambda a, b: a - b, ("dir_raw_nomom", "dir_fisher_nomom"), "dir_raw_nomom - dir_fisher_nomom")
 derive("gain_fisher_mom", lambda a, b: a - b, ("dir_raw_mom", "dir_fisher_mom"), "dir_raw_mom - dir_fisher_mom")
 
@@ -586,18 +588,19 @@ for rule, g in GRIDS.items():
 # the RMS rule against the spectral one over seeds (RMS at its best angle: rows "len-rms-seeds", seeds 1-3)
 for s in range(4):
     rms = NUM.get("len_rms") if s == 0 else (vinfo("len-rms-seeds", s) or {}).get("val")
-    spec = NUM.get("m_3000") if s == 0 else NUM.get(f"v2_3000_s{s}")
+    spec = (vinfo("s3000", s) or {}).get("val")             # the angle rule, angle 0.2, same seed
     if rms is not None and spec is not None:
         put(f"rms_gap_s{s}", rms - spec, f"RMS rule at its best angle - the method, seed {s}")
     else:
         missing(f"rms_gap_s{s}", "v2.sbatch rows len-rms-seeds at the angle of len_rms (add once the grid is done)")
 
 # 5.4: regularisation of the Fisher (reference: the method, floor 1e-4)
-for e in ("1e-6", "1e-5", "1e-3", "1e-2"):
-    vval(f"reg_eps_{e}", f"reg-eps{e}")
+for e in ("1e-6", "1e-5", "1e-2"):
+    vval(f"reg_eps_{e}", f"f-reg-eps{e}")
+vval("reg_eps_1e-4", "f3k")
 for dmp in ("1e-4", "1e-3", "1e-2", "1e-1"):
-    vval(f"reg_damp_{dmp}", f"reg-damp{dmp}")
-_r = [NUM.get(f"reg_eps_{e}") for e in ("1e-6", "1e-5", "1e-3", "1e-2")] + \
+    vval(f"reg_damp_{dmp}", f"f-reg-damp{dmp}")
+_r = [NUM.get(f"reg_eps_{e}") for e in ("1e-6", "1e-5", "1e-4", "1e-2")] + \
      [NUM.get(f"reg_damp_{d}") for d in ("1e-4", "1e-3", "1e-2", "1e-1")]
 if REF is not None and all(v is not None for v in _r):
     put("reg_best_other_d", min(_r) - REF, "best of the eight alternatives - m_3000")
@@ -605,44 +608,6 @@ else:
     missing("reg_best_other_d", "every reg-* row and s3000")
 
 # 5.4: other choices (reference: the method, angle 0.2, cosine)
-vbest("sides_best", grid("sides-each", ("0.1", "0.2")))
-for m in ("0.25", "0.5", "2", "4"):
-    vval(f"attn_{m}", f"attn-x{m}")
-vbest("sched_constant", grid("sched-constant", ("0.05", "0.1", "0.2")))
-vbest("sched_linear", grid("sched-linear", ("0.1", "0.2", "0.4")))
-vbest("sched_warmcos", grid("sched-warmcos", ("0.1", "0.2", "0.4")))
-for dd in ("0.2", "0.1"):
-    vval(f"wsd_{dd}", f"sched-wsd-{dd}")
-vbest("polar", grid("planes-equal", ("0.1", "0.2")))
-_p = [vsps(f"_polar_sps_{a}", f"planes-equal-{a}") for a in ("0.1", "0.2")]
-if all(v is not None for v in _p):
-    put("svd_sps_lo", min(_p), "planes-equal runs, wall / steps, min over angles")
-    put("svd_sps_hi", max(_p), "same, max")
-else:
-    missing("svd_sps_lo", "planes-equal rows"); missing("svd_sps_hi", "planes-equal rows")
-
-# Appendix D: the initial spectrum (Natural Pion Fast; Pion's runs as before)
-put("init_normal", REF, "= m_3000") if REF is not None else missing("init_normal", "s3000")
-for k in ("2", "2.5", "3", "4", "5", "flat", "orth"):
-    vval(f"init_{k}", f"init-pl{k}" if k[0].isdigit() else f"init-{k}")
-derive("init_best_d", lambda *v: min(v[1:]) - v[0], ("init_normal", "init_2", "init_2.5", "init_3", "init_4", "init_5"),
-       "best power-law tail - init_normal")
-derive("init_flat_d", lambda a, b: a - b, ("init_flat", "init_normal"), "init_flat - init_normal")
-derive("init_orth_d", lambda a, b: a - b, ("init_orth", "init_normal"), "init_orth - init_normal")
-_g = [(NUM.get(f"v2_3000_s{s}"), (vinfo("init-pl3", s) or {}).get("val")) for s in range(4)]
-if all(a is not None and b is not None for a, b in _g):
-    put("init_gain_3000_mean", sum(a - b for a, b in _g) / 4, "Natural Pion, alpha 3 vs normal, 3000 steps, seeds 0-3")
-else:
-    missing("init_gain_3000_mean", "init-pl3 seeds 0-3 and s3000 seeds 0-3")
-_i15 = vinfo("init-pl3-15k")
-derive("init_gain_15k", lambda a: a - _i15["val"], ("m_15000",), "m_15000 - init-pl3-15k") if _i15 else missing("init_gain_15k", "v2.sbatch row init-pl3-15k")
-_if = vinfo("init-pl3-73242")
-derive("init_gain_full", lambda a: a - _if["val"], ("v2_full",), "v2_full - init-pl3-73242") if _if else missing("init_gain_full", "v2.sbatch row init-pl3-73242")
-I_, IL = "stepnorminit", "stepnorminitlong"
-put("init_pion_gain_3000", NUM["pion3000_s0"] - val(f"{IL}/pion3000-lr1e-3-pl3/*"), "Pion, 3000 steps")
-put("init_pion_gain_15k", NUM["pion15k"] - val(f"{IL}/pion15000-lr1e-3-pl3/*"), "Pion, 15000 steps")
-put("init_pion_gain_full", NUM["pion_full"] - val(f"{IL}/pion73242-lr1e-3-pl3/*"), "Pion, 73242 steps")
-
 # trained spectrum drift per retraction, in units of each matrix's largest singular value (retraction_drift.py,
 # on the v2 checkpoints: ret-cayley, ret-ns, ret-trunc and the method's s3000)
 f = R / "probes" / "retraction_drift.json"

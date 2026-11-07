@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 R = "runs-record/stepnormlong"
 SERIES = [  # label, log glob or path, colour, dash
     ("Pion, 73 242 steps", f"{R}/pion73242-lr1e-3/*/log.jsonl", "#2a78d6", "-"),
-    ("Natural Pion, 73 242 steps", "runs-record/npv2/rms73242/*/log.jsonl", "#1baf7a", "-"),
+    ("Natural Pion, 73 242 steps", "runs-record/npv2/g73242/*/log.jsonl", "#1baf7a", "-"),
 ]
 MUON = ("Muon, 73 242 steps", None, "#eda100", "-.")
 INK, MUTED, GRID = "#1f1f1e", "#6b6a63", "#e4e3dd"
