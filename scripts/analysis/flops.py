@@ -16,7 +16,9 @@ and n (in):
   Natural Pion Fast (as used from 2026-11-04):
                  generators                        2mn^2 + 2m^2n
                  F^-1, both sides                  8n^3 + 8m^3            (P^T G P, P Y P^T)
-                 Cayley by Newton-Schulz in Z - I  8n^3 + 8m^3            (two iterations, two products each)
+                 RMS scale W X_in + X_out W        2mn^2 + 2m^2n          (Pion's length rule)
+                 Cayley by Newton-Schulz in Z - I  8n^3 + 8m^3            (two iterations, two products each; the
+                                                                          squarings of large-angle steps not counted)
                  rotation                          2m^2n + 2mn^2
                  sigma                             negligible (matrix-vector products)
                  statistics, 6 of 25 steps         2 T_s n^2 per distinct input, 2 T_s m^2 per output, over the
@@ -73,7 +75,7 @@ def count(c):
     stats = (sum(2 * Ts * n * n for n in inputs.values()) + sum(2 * Ts * m * m for m, _, _, _ in mats)) * WINDOW / T_FAC
     side = lambda k: 3 * 9 * k ** 3 + 5 * 2 * k ** 3
     refresh = sum(side(n) + side(m) + 2 * (2 * m * n * n + 2 * m * m * n) for m, n in us) / T_FAC
-    npf = {"generators": gen, "F^-1": sum(8 * n ** 3 + 8 * m ** 3 for m, n in us),
+    npf = {"generators": gen, "RMS scale": gen, "F^-1": sum(8 * n ** 3 + 8 * m ** 3 for m, n in us),
            "Cayley (Newton-Schulz)": sum(8 * n ** 3 + 8 * m ** 3 for m, n in us), "rotation": rot,
            "statistics": stats, "refresh": refresh}
     return model, pion, npf

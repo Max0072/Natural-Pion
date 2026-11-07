@@ -7420,3 +7420,12 @@ rows 266-294 (tags g*), submitted; seed 0 at 3000 / 15000 are f-reg-eps1e-3 / m-
 grid then seeds 1-3 at its best, 15000, T_fac 25 / 10, windows, batching, profiles); paper_numbers reads them.
 Reduced scope applied (user informed afterwards): sides, attention multiplier, schedules, polar step and Appendix D
 are not redone on the RMS method; the length-rule comparison stays at floor 1e-4 with the angle rule as a row.
+Text rewritten for the final method (2026-11-07 evening): abstract and contributions 3-5 (length from Pion's RMS
+rule; Cayley by Newton-Schulz with scaling and squaring; lower precision before the rotation), 3.3 (the RMS rule;
+Proposition 3 kept for the angles, the angle-rule corollary and design points cut), Algorithm 1 (RMS, floor 1e-3,
+exact solve), 4.2 (momentum rows only), 4.5 (scale and sigma batched; sigma only bounds the angle), 4.6 (bf16 F^-1 and
+TF32 before the rotation, the rotation in fp32, with its loss check), 4.7 (scaling and squaring), Table 6 and
+Algorithm 2, 5.1 (floor 1e-3, RMS scale per horizon), 5.4 (direction, length rules with the angle rule as a row,
+regularisation around 1e-3, true Fisher; sides, attention, schedules, polar step dropped), Appendix C, Appendix D
+removed (and its Martin & Mahoney citation). Still to do on the GPU after the campaign: optimizer_step_bench on the
+final form (Table 7 describes the old one), the timing job, the speed tweaks (one power iteration, no host sync).

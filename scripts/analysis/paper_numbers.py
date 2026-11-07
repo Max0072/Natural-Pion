@@ -480,6 +480,15 @@ vbest("fisher_true", grid("g-fisher-mc", ("3e-4", "6e-4", "1.2e-3")))
 # the empirical Fisher is the method itself: its angle grid is the direction grid with momentum
 vbest("fisher_empirical", ["e3-3k-3e-4", "g3k", "e3-3k-1.2e-3"])
 
+# 4.6: precision before the rotation — the final form against the same form in fp32 (floor 1e-4 check runs:
+# rms-final-sq / rms-final-sq-15k vs rms3k / rms15k-3e-4, seed 0)
+vval("prec_final_3k", "rms-final-sq")
+vval("prec_fp32_3k", "rms3k")
+vval("prec_final_15k", "rms-final-sq-15k")
+vval("prec_fp32_15k", "rms15k-3e-4")
+derive("prec_d_3k", lambda a, b: a - b, ("prec_final_3k", "prec_fp32_3k"), "prec_final_3k - prec_fp32_3k")
+derive("prec_d_15k", lambda a, b: a - b, ("prec_final_15k", "prec_fp32_15k"), "prec_final_15k - prec_fp32_15k")
+
 # 3.4 / 4.8: retractions (3000 steps angle 0.2; 15000 steps angle 0.05)
 vval("ret_cayley_3000", "g-ret-cayley")
 vval("ret_ns_3000", "g-ret-ns")
