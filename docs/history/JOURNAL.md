@@ -7394,3 +7394,6 @@ Plan agreed with the user: speed, then spectrum, then adopt and launch, no quest
    fail it releases the held runs instead. Timing before squaring: Pion 0.461, Fast (RMS) 0.515, final 0.508 s/step.
 The final form: Natural Pion Fast + Pion's RMS length rule + TF32 before the Cayley step and the rotation of W +
 bf16 F^-1 + Cayley by Newton-Schulz with scaling and squaring.
+2026-11-07 04:29: the 15000 check with squaring passed — val 3.4563 (fp32 form 3.4560), drift 1.45e-5 / 2.43e-5 —
+and launch_final.sh ran: held earlier-form runs cancelled; rows 216-256 and the timing job submitted
+(403383-403389).
