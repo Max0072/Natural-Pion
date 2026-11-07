@@ -7416,3 +7416,7 @@ Scale check with eps 1e-3 (2026-11-07 13:50): 3000 — 3e-4 3.7022, 6e-4 3.6765,
 3.4946, 3e-4 3.4496, 6e-4 3.4640: unchanged optima. The method is now the final form with eps 1e-3. Its series,
 rows 266-294 (tags g*), submitted; seed 0 at 3000 / 15000 are f-reg-eps1e-3 / m-tf25-e3-15k. The long horizons use
 3e-4 (the eps-1e-4 30000 grid was flat between 3e-4 and 6e-4). Then: repoint paper_numbers to the g* tags.
+2026-11-07 afternoon: Section 4's chain redone with the method's floor 1e-3 (rows 295-312, tags c-*: Algorithm 1 scale
+grid then seeds 1-3 at its best, 15000, T_fac 25 / 10, windows, batching, profiles); paper_numbers reads them.
+Reduced scope applied (user informed afterwards): sides, attention multiplier, schedules, polar step and Appendix D
+are not redone on the RMS method; the length-rule comparison stays at floor 1e-4 with the angle rule as a row.

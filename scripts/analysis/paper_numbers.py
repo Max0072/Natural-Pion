@@ -492,7 +492,7 @@ vsps("ret_trunc_sps", "g-ret-trunc")
 # 4.1: the step by part (400 profiled steps; ngd_pion.natural_pion's own GPU-synchronised timers)
 PARTS = {"refresh": "refresh", "sigma": "sigma", "cayley": "cayley", "Finv": "F^-1",
          "shared": ("generators+momentum", "apply W")}
-for t, tag in (("tfac1", "rms-prof-alg1"), ("tfac25", "rms-prof-tf25")):
+for t, tag in (("tfac1", "c-prof-alg1"), ("tfac25", "c-prof-tf25")):
     d = vrun(tag)
     pf_ = (d / "profile.json") if d is not None else None
     if pf_ is None or not pf_.exists():
@@ -509,32 +509,33 @@ for t, tag in (("tfac1", "rms-prof-alg1"), ("tfac25", "rms-prof-tf25")):
            f"prof_{t}_step - the optimizer's parts: forward and backward with the statistics hooks, AdamW, data")
 
 # 4.2: refresh cadence (Algorithm 1 = natural-pion; every row's angle tuned on its own grid)
-# the chain's stages on the RMS rule (their own runs, floor 1e-4; Algorithm 1 = Fast with every speed-up off)
-vbest("tf1_mom", grid("rms-alg1", ("1.5e-4", "3e-4", "6e-4", "1.2e-3")))
-vbest("tf25_mom", grid("rms-tf25", ("3e-4", "6e-4", "1.2e-3")))
-vval("tf10_mom", "rms-tf10")
+# the chain's stages on the RMS rule with the method's floor 1e-3 (tags c-*; Algorithm 1 = Fast with every speed-up off)
+vbest("tf1_mom", grid("c-alg1", ("3e-4", "6e-4", "1.2e-3")))
+vval("tf25_mom", "c-tf25")
+NUM["tf25_mom_tag"], NOTE["tf25_mom_tag"] = "c-tf25", "run of tf25_mom"
+vval("tf10_mom", "c-tf10")
 for k in ("tf1_mom", "tf25_mom"):
     if NUM.get(k + "_tag"):
         vsps(k + "_sps", NUM[k + "_tag"])
     else:
         missing(k + "_sps", f"{k} grid")
-vsps("tf10_mom_sps", "rms-tf10")
+vsps("tf10_mom_sps", "c-tf10")
 derive("tf10_mom_d", lambda a, b: a - b, ("tf10_mom", "tf1_mom"), "tf10_mom - tf1_mom")
 derive("tf25_mom_d", lambda a, b: a - b, ("tf25_mom", "tf1_mom"), "tf25_mom - tf1_mom")
-_a1 = [vinfo("rms-alg1-6e-4", s) for s in range(4)]
+_a1 = [vinfo(NUM.get("tf1_mom_tag") or "c-alg1-6e-4", 0)] + [vinfo("c-alg1-seeds", s) for s in (1, 2, 3)]
 if all(_a1):
-    put("tf1_mom_mean", sum(i["val"] for i in _a1) / 4, "Algorithm 1 (RMS, 6e-4), seeds 0-3")
+    put("tf1_mom_mean", sum(i["val"] for i in _a1) / 4, "Algorithm 1 at its best scale, seeds 0-3 (c-alg1 grid, c-alg1-seeds)")
 else:
-    missing("tf1_mom_mean", "rms-alg1-6e-4 seeds 0-3")
-vval("tf1_mom_15k", "rms-alg1-15k")
+    missing("tf1_mom_mean", "c-alg1 grid and c-alg1-seeds 1-3")
+vval("tf1_mom_15k", "c-alg1-15k")
 derive("exact_vs_fast_3000", lambda a, b: a - b, ("v2_3000_mean", "tf1_mom_mean"), "v2_3000_mean - tf1_mom_mean")
 
 # 4.3: statistics windows on the T_fac = 25 form, angle 0.2 (reference: tf25-mom-0.2)
-vval("win_ref", "rms-tf25-6e-4")
-vsps("win_ref_sps", "rms-tf25-6e-4")
+vval("win_ref", "c-tf25")
+vsps("win_ref_sps", "c-tf25")
 for k in ("dlast6", "alast6", "adlast6", "aevery2", "betad09", "betad095"):
-    vval(f"win_{k}", f"rms-win-{k}")
-    vsps(f"win_{k}_sps", f"rms-win-{k}")
+    vval(f"win_{k}", f"c-win-{k}")
+    vsps(f"win_{k}_sps", f"c-win-{k}")
 _w = [NUM.get(f"win_{k}") for k in ("dlast6", "alast6", "adlast6", "aevery2", "betad09", "betad095")]
 if NUM.get("win_ref") is not None and all(v is not None for v in _w):
     put("win_maxdev", max(abs(v - NUM["win_ref"]) for v in _w), "largest |win_* - win_ref|")
@@ -542,8 +543,8 @@ else:
     missing("win_maxdev", "every win-* row")
 
 # 4.5: batching by shape (Fast with exact Cayley, fp32 statistics, unbatched sigma, one A per matrix)
-vval("batch_val", "rms-form46")
-vsps("batch_sps", "rms-form46")
+vval("batch_val", "c-form46")
+vsps("batch_sps", "c-form46")
 
 # 4.7: statistics inputs, fp32 against bf16 (the method)
 vval("stats_fp32_val", "g-stats-fp32")
