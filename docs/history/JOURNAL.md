@@ -7397,3 +7397,13 @@ bf16 F^-1 + Cayley by Newton-Schulz with scaling and squaring.
 2026-11-07 04:29: the 15000 check with squaring passed — val 3.4563 (fp32 form 3.4560), drift 1.45e-5 / 2.43e-5 —
 and launch_final.sh ran: held earlier-form runs cancelled; rows 216-256 and the timing job submitted
 (403383-403389).
+
+## 2026-11-07 morning — overnight results; floor x cadence before the long runs
+
+Final form, overnight (RTX): 3000 x4 3.6952 (Pion 3.8394), 15000 x4 3.4578 (Pion 3.5254); 9000 best 6e-4 3.5157;
+retractions equal on loss; statistics fp32 = bf16; true Fisher 3.6910 vs empirical 3.6951; direction F^-1 G vs G
+with momentum 3.6952 vs 3.827 (G + RMS + momentum ~ Pion). Timing (one job, RTX): Pion 0.460, Fast 0.509, final
+0.501 (1.09x). Two findings that could change the method: floor eps 1e-3 beats 1e-4 at 3000 (3.6765 vs 3.6952,
+interior); Algorithm 1 under RMS (4 seeds 3.6764) is 0.019 ahead of Fast (rule: 0.010), and T_fac 10 (3.6741) beats
+both. Matrix eps {1e-4, 1e-3} x T_fac {25, 10} at 3000 and 15000 submitted (rows 257-261); 45000 and full length
+held until it decides.
