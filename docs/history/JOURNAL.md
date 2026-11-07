@@ -7412,3 +7412,7 @@ Matrix result (2026-11-07 11:20): eps 1e-3 with T_fac 25 closes the gap to Algor
 refresh cadence do the same job (guarding against a stale basis's noisy directions); the floor is the cheap one.
 30000 grid (eps 1e-4): 1.5e-4 3.4257, 3e-4 3.3929, 6e-4 3.3940. Long runs at eps 1e-4 cancelled. Step 1 of the
 switch to eps 1e-3: RMS scale neighbours at 3000 and 15000 (rows 262-265).
+Scale check with eps 1e-3 (2026-11-07 13:50): 3000 — 3e-4 3.7022, 6e-4 3.6765, 1.2e-3 3.7141; 15000 — 1.5e-4
+3.4946, 3e-4 3.4496, 6e-4 3.4640: unchanged optima. The method is now the final form with eps 1e-3. Its series,
+rows 266-294 (tags g*), submitted; seed 0 at 3000 / 15000 are f-reg-eps1e-3 / m-tf25-e3-15k. The long horizons use
+3e-4 (the eps-1e-4 30000 grid was flat between 3e-4 and 6e-4). Then: repoint paper_numbers to the g* tags.
