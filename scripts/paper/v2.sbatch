@@ -319,6 +319,13 @@ ROWS=(
 "f-dir-raw-nomom-3e-4|$F|3000|3e-4|0|0|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\",\"direction\":\"raw\"}|"
 "f-dir-raw-nomom-6e-4|$F|3000|6e-4|0|0|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\",\"direction\":\"raw\"}|"
 "f-dir-raw-nomom-1.2e-3|$F|3000|1.2e-3|0|0|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\",\"direction\":\"raw\"}|"
+# 257-261 floor x refresh cadence on the final form (decides epsilon and T_fac before the long runs):
+# eps 1e-4 / 1e-3 x T_fac 25 / 10; (1e-4, 25) is f3k / f15k, (1e-3, 25) at 3000 is f-reg-eps1e-3
+"m-tf10-e4|$F|3000|6e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\",\"t_fac\":10}|"
+"m-tf10-e4-15k|$F|15000|3e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\",\"t_fac\":10}|"
+"m-tf25-e3-15k|$F|15000|3e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\"}|--ngd-eps 1e-3"
+"m-tf10-e3|$F|3000|6e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\",\"t_fac\":10}|--ngd-eps 1e-3"
+"m-tf10-e3-15k|$F|15000|3e-4|0|0.9|||{\"length\":\"rms\",\"tf32\":\"upstream\",\"fisher_dtype\":\"bf16\",\"t_fac\":10}|--ngd-eps 1e-3"
 )
 IFS='|' read -r TAG OPT STEPS LR SEED B1 RET STATS KW EXTRA <<< "${ROWS[$SLURM_ARRAY_TASK_ID]}"
 case "$RET" in ""|cayley|ns|ns_delta|trunc) ;; *) echo "row $SLURM_ARRAY_TASK_ID: bad RETRACTION '$RET'"; exit 1 ;; esac
