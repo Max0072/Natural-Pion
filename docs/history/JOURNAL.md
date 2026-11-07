@@ -7407,3 +7407,8 @@ with momentum 3.6952 vs 3.827 (G + RMS + momentum ~ Pion). Timing (one job, RTX)
 interior); Algorithm 1 under RMS (4 seeds 3.6764) is 0.019 ahead of Fast (rule: 0.010), and T_fac 10 (3.6741) beats
 both. Matrix eps {1e-4, 1e-3} x T_fac {25, 10} at 3000 and 15000 submitted (rows 257-261); 45000 and full length
 held until it decides.
+Matrix result (2026-11-07 11:20): eps 1e-3 with T_fac 25 closes the gap to Algorithm 1 (3000: 3.6765 vs 3.6764;
+15000: 3.4496 vs 3.4486) and beats eps 1e-4 by 0.019 / 0.007; T_fac 10 adds nothing on top. The floor and the
+refresh cadence do the same job (guarding against a stale basis's noisy directions); the floor is the cheap one.
+30000 grid (eps 1e-4): 1.5e-4 3.4257, 3e-4 3.3929, 6e-4 3.3940. Long runs at eps 1e-4 cancelled. Step 1 of the
+switch to eps 1e-3: RMS scale neighbours at 3000 and 15000 (rows 262-265).
